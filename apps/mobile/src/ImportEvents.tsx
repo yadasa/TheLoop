@@ -20,10 +20,10 @@ export function ImportEvents({ nav }: { nav: Nav }) {
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={s.content}
     >
-      <Text style={s.title}>Your spreadsheet.{`\n`}Everyone's next plan.</Text>
+      <Text style={s.title}>Import events</Text>
       <Text style={s.body}>
-        Paste CSV exported from your event spreadsheet. Preview the dates, fix
-        anything that needs care, then add the valid plans to the calendar.
+        Paste CSV from your event spreadsheet. Review the dates and fix any
+        errors before adding events to the calendar.
       </Text>
       <Text style={s.label}>Default conference</Text>
       <Horizontal>
@@ -42,7 +42,7 @@ export function ImportEvents({ nav }: { nav: Nav }) {
         ))}
       </Horizontal>
       <View style={s.card}>
-        <Text style={s.h3}>The columns to include</Text>
+        <Text style={s.h3}>Required columns</Text>
         <Text selectable style={s.small}>
           title,startAt,endAt,location
         </Text>
@@ -74,7 +74,7 @@ export function ImportEvents({ nav }: { nav: Nav }) {
       />
       <Button
         secondary
-        title="Preview my events ↗"
+        title="Preview events"
         disabled={busy || !csv.trim() || !conferenceId}
         onPress={() =>
           setPreview(
@@ -91,7 +91,7 @@ export function ImportEvents({ nav }: { nav: Nav }) {
       {preview && (
         <>
           <Section
-            title="Before we add them"
+            title="Review import"
             subtitle={`${preview.events.length} valid · ${preview.rows.filter((r) => r.duplicate).length} duplicates · ${preview.rows.filter((r) => r.errors.length && !r.duplicate).length} need attention`}
           />
           {preview.errors.map((error, i) => (
@@ -134,7 +134,7 @@ export function ImportEvents({ nav }: { nav: Nav }) {
             title={
               busy
                 ? `Adding ${progress} / ${preview.events.length}…`
-                : `Add ${preview.events.length} valid events ↗`
+                : `Add ${preview.events.length} valid events`
             }
             disabled={
               busy || preview.events.length === 0 || preview.errors.length > 0
@@ -158,7 +158,7 @@ export function ImportEvents({ nav }: { nav: Nav }) {
                 }
                 setCSV("");
                 setPreview(null);
-                nav.toast(`${added} plans added to the calendar`);
+                nav.toast(`${added} ${added === 1 ? "event" : "events"} added to the calendar`);
               })().finally(() => setBusy(false));
             }}
           />

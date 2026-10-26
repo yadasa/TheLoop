@@ -16,11 +16,11 @@ export function Safety({ nav }: { nav: Nav }) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
     <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.title}>Take care{`\n`}of the room.</Text>
+      <Text style={s.title}>Reports</Text>
       <Text style={s.body}>
         {moderator
-          ? "Give each report context, care, and a clear decision. Every action is recorded."
-          : "Your reports help keep the community safe. Moderators review them with care."}
+          ? "Review the reported content before deciding. Moderation decisions are recorded."
+          : "Track the reports you’ve submitted. To report content, open its menu and choose Report."}
       </Text>
       <Section
         title={moderator ? "Open reports" : "Your reports"}
@@ -31,8 +31,8 @@ export function Safety({ nav }: { nav: Nav }) {
       ))}
       {reports.length === 0 && (
         <Empty
-          title={moderator ? "Nothing needs attention" : "No reports yet"}
-          body="Keep sharing generously, respect boundaries, and look out for one another."
+          title={moderator ? "No open reports" : "No reports yet"}
+          body={moderator ? "New reports will appear here." : "Reports you submit will appear here with their review status."}
         />
       )}
     </ScrollView>
@@ -120,7 +120,7 @@ function ReportCard({
           <Button
             secondary
             small
-            title="Open the conversation ↗"
+            title="Open post"
             onPress={() => nav.open({ kind: "post", id: r.postId! })}
           />
         )}

@@ -73,8 +73,8 @@ export function Events({ nav }: { nav: Nav }) {
     <ScrollView contentContainerStyle={s.content}>
       <View style={s.between}>
         <View>
-          <Text style={s.overline}>FROM ONLINE TO OUTSIDE</Text>
-          <Text style={[s.title, { marginTop: 5 }]}>Be there.</Text>
+          <Text style={s.overline}>CONFERENCES & MEETUPS</Text>
+          <Text style={[s.title, { marginTop: 5 }]}>Events</Text>
         </View>
         <Touch
           label="Create event"
@@ -92,18 +92,18 @@ export function Events({ nav }: { nav: Nav }) {
         </Touch>
       </View>
       <Text style={s.body}>
-        The panels, the link-ups, the in-between moments. Make space for all of
-        it.
+        Find conference sessions, dinners, and meetups. RSVP to keep track of
+        the events you plan to attend.
       </Text>
       <View style={[s.card, { backgroundColor: color.soft }]}>
         <Label>PUBLIC EVENTS · AFROTECH.GUIDE</Label>
-        <Text style={s.h2}>The city has plans, too.</Text>
+        <Text style={s.h2}>AfroTech side events</Text>
         <Text style={s.small}>
           Explore public conference side events and meetups from the Guide.
         </Text>
         <Button
           secondary
-          title="Explore the public Guide ↗"
+          title="Browse AfroTech.guide"
           onPress={() => nav.open({ kind: "guide" })}
         />
       </View>
@@ -114,7 +114,7 @@ export function Events({ nav }: { nav: Nav }) {
           onPress={() => setScope("all")}
         />
         <Chip
-          title="My plans"
+          title="My events"
           selected={scope === "mine"}
           onPress={() => setScope("mine")}
         />
@@ -130,12 +130,12 @@ export function Events({ nav }: { nav: Nav }) {
       <Field
         value={search}
         onChangeText={setSearch}
-        placeholder="Find an event, a city, a vibe…"
+        placeholder="Search events by name, location, or tag"
       />
       <Button
         small
         secondary
-        title="Import events from a spreadsheet ↗"
+        title="Import events from a spreadsheet"
         onPress={() => nav.open({ kind: "import-events" })}
       />
       <View style={s.between}>
@@ -151,7 +151,7 @@ export function Events({ nav }: { nav: Nav }) {
         </Horizontal>
       </View>
       <View style={s.between}>
-        <Text style={s.h2}>{events.length} good reasons</Text>
+        <Text style={s.h2}>{events.length} {events.length === 1 ? "event" : "events"}</Text>
         <View style={s.row}>
           {["agenda", "calendar"].map((v) => (
             <Touch
@@ -292,7 +292,7 @@ export function Events({ nav }: { nav: Nav }) {
       {hasMore.events && (
         <Button
           secondary
-          title="Load more plans ↓"
+          title="Load more events"
           onPress={() => loadMore("events")}
         />
       )}
@@ -300,15 +300,15 @@ export function Events({ nav }: { nav: Nav }) {
         <Empty
           title={
             scope === "mine"
-              ? "Your calendar has room"
-              : "A little breathing room"
+              ? "No RSVPs yet"
+              : "No events in this view"
           }
           body={
             scope === "mine"
               ? "RSVP to an event to keep your plans together."
-              : "No events match this view. Try another date or start something yourself."
+              : "Try another date or filter, or create an event."
           }
-          action="Host a link-up"
+          action="Create event"
           onPress={() => nav.open({ kind: "create-event" })}
         />
       )}
@@ -519,7 +519,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
       {cancelled && (
         <View style={s.card}>
           <Label dark>CANCELLED</Label>
-          <Text style={s.h3}>This plan is no longer happening.</Text>
+          <Text style={s.h3}>This event is cancelled.</Text>
           {!!event.cancellationReason && (
             <Text style={s.body}>{event.cancellationReason}</Text>
           )}
@@ -531,7 +531,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
       )}
       {!!event.updatedAt && (
         <Text style={s.small}>
-          Plan updated {new Date(event.updatedAt).toLocaleString()}. Saved
+          Event updated {new Date(event.updatedAt).toLocaleString()}. Saved
           device calendars do not update automatically.
         </Text>
       )}
@@ -566,7 +566,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
           · {event.timezone}
         </Text>
         <View style={s.divider} />
-        <Text style={s.h3}>↗ {event.location}</Text>
+        <Text style={s.h3}>{event.location}</Text>
         <Text style={s.small}>
           {cancelled
             ? `${event.attendeeIds.length} previously confirmed`
@@ -595,25 +595,25 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
               : cancelled
                 ? "This event is cancelled"
                 : expired
-                  ? "This one is in the books"
+                  ? "Event ended"
                   : full
                     ? "Join the waitlist"
-                    : "Count me in ↗"
+                    : "RSVP"
         }
         disabled={(expired || cancelled) && !going && !waiting}
         onPress={() => {
           if (going || waiting) {
             Alert.alert(
-              "Change your plans?",
+              waiting ? "Leave this waitlist?" : "Withdraw your RSVP?",
               cancelled || expired
-                ? "Your RSVP will be withdrawn. This plan is closed, so nobody will be promoted from its waitlist."
+                ? "Your RSVP will be removed. This event is closed, so its waitlist will not change."
                 : going
-                  ? "Your spot will go to the next person in line."
+                  ? "Your RSVP will be removed. If there’s a waitlist, the next person will get your spot."
                   : "You will leave this event waitlist.",
               [
-                { text: "Keep my plan", style: "cancel" },
+                { text: waiting ? "Stay on waitlist" : "Keep RSVP", style: "cancel" },
                 {
-                  text: "Leave event",
+                  text: waiting ? "Leave waitlist" : "Withdraw RSVP",
                   onPress: () =>
                     void nav.run(
                       { type: "event.rsvp", eventId: id },
@@ -640,7 +640,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
         <View style={s.grow}>
           <Button
             secondary
-            title="Share ↗"
+            title="Share"
             onPress={() =>
               void Share.share({
                 message: `${cancelled ? "CANCELLED: " : ""}${event.title}\n${new Date(event.startAt).toLocaleString()}\n${event.location}\n\n${cancelled ? event.cancellationReason || "This event has been cancelled." : event.description}\n\n${shareTargetURL({ kind: "event", id: event.id })}`,
@@ -652,7 +652,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
       {!cancelled && (
         <Button
           secondary
-          title="Share calendar file (.ics) ↗"
+          title="Share calendar file (.ics)"
           onPress={() =>
             void shareCalendarFile(eventICS(event)).catch(() =>
               nav.toast("Calendar sharing is unavailable."),
@@ -667,7 +667,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
       {canManage && !cancelled && !expired && (
         <Button
           secondary
-          title="Edit event details ↗"
+          title="Edit event details"
           disabled={pending > 0}
           onPress={() => nav.open({ kind: "edit-event", id: event.id })}
         />
@@ -675,7 +675,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
       {canManage && !cancelled && !expired && (
         <Button
           secondary
-          title={cancelDraft ? "Keep this plan" : "Cancel this event"}
+          title={cancelDraft ? "Keep event" : "Cancel this event"}
           disabled={pending > 0}
           onPress={() =>
             setCancelDraft((draft) =>
@@ -708,7 +708,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
       )}
       <Section
         title={
-          cancelled ? "The people who planned to come" : "The people make it"
+          cancelled ? "Previous attendees" : "Attendees"
         }
         subtitle={`${event.attendeeIds.length} ${cancelled ? "planned to come" : "going"}${event.waitlistIds.length ? ` · ${event.waitlistIds.length} ${cancelled ? "were waitlisted" : "on the waitlist"}` : ""}`}
       />
@@ -819,11 +819,11 @@ function EventCancellation({
       <Text style={s.h3}>Cancel “{initial.title}”?</Text>
       <Text style={s.small}>
         Cancellation is final. The event and its attendee list stay available so
-        people can understand the change. Create a new plan if you want to meet
+        people can understand the change. Create a new event if you want to meet
         another time.
       </Text>
       <Field
-        label="A note for the people who planned to come · optional"
+        label="Reason for cancellation · optional"
         value={reason}
         onChangeText={(value) => onChange({ initial, reason: value })}
         disabled={busy}
@@ -839,7 +839,7 @@ function EventCancellation({
           </Text>
           <Button
             secondary
-            title="Review the latest plan"
+            title="Review latest event details"
             disabled={busy}
             onPress={() => {
               onChange({ initial: { ...event }, reason });

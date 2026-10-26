@@ -172,7 +172,7 @@ function EventEditor({
   if (initial && role !== "admin" && current?.hostId !== state.currentUserId)
     return (
       <Empty
-        title="This plan belongs to its host"
+        title="You can’t edit this event"
         body="Only the event host or an administrator can change its details."
       />
     );
@@ -182,7 +182,7 @@ function EventEditor({
       contentContainerStyle={s.content}
     >
       <Text style={s.title}>
-        {initial ? "Keep the plan\nin sync." : "Bring your\npeople together."}
+        {initial ? "Edit event" : "Create event"}
       </Text>
       {initial && (
         <Text style={s.small}>
@@ -192,7 +192,7 @@ function EventEditor({
       )}
       {stale && (
         <View style={s.card} accessibilityRole="alert">
-          <Text style={s.h3}>This plan changed while you were editing</Text>
+          <Text style={s.h3}>This event was updated</Text>
           <Text style={s.small}>
             Your draft is still here. Load the latest details before saving a
             new version.
@@ -210,7 +210,7 @@ function EventEditor({
           <Label dark>{cancelled ? "CANCELLED" : "EVENT ENDED"}</Label>
           <Text style={s.small}>
             {cancelled
-              ? "Cancelled plans cannot be reopened or edited. The event details and attendee list stay available."
+              ? "Cancelled events cannot be reopened or edited. The event details and attendee list stay available."
               : "This event has ended. Its details stay available in the calendar."}
           </Text>
         </View>
@@ -241,7 +241,7 @@ function EventEditor({
         </Horizontal>
       )}
       <Field
-        label="The occasion"
+        label="Event name"
         value={title}
         onChangeText={edit(setTitle)}
         disabled={locked}
@@ -249,7 +249,7 @@ function EventEditor({
         maxLength={160}
       />
       <Field
-        label="What should people know? · optional"
+        label="Description · optional"
         value={description}
         onChangeText={edit(setDescription)}
         disabled={locked}
@@ -257,7 +257,7 @@ function EventEditor({
         multiline
       />
       <Field
-        label="Where are we meeting?"
+        label="Location"
         value={location}
         onChangeText={edit(setLocation)}
         disabled={locked}
@@ -378,7 +378,7 @@ function EventEditor({
       )}
       {errors.length > 0 && (
         <View style={s.card} accessibilityRole="alert">
-          <Text style={s.h3}>A few details need care</Text>
+          <Text style={s.h3}>Check these details</Text>
           {errors.map((error, index) => (
             <Text key={`${index}:${error}`} style={s.small}>
               {error}
@@ -393,8 +393,8 @@ function EventEditor({
               ? "Saving changes…"
               : "Creating…"
             : initial
-              ? "Save event changes ↗"
-              : "Make it happen ↗"
+              ? "Save event changes"
+              : "Create event"
         }
         disabled={
           locked ||
@@ -485,7 +485,7 @@ function EventEditor({
                     type: "event.create",
                     event: result.event,
                   },
-              initial ? "Event details updated" : "Your event is ready",
+              initial ? "Event details updated" : "Event created",
             )
             .then((ok) => {
               if (!mounted.current) return;
@@ -506,7 +506,7 @@ function EventEditor({
       {initial && (
         <Button
           secondary
-          title="Return to the plan"
+          title="Back to event"
           disabled={busy}
           onPress={nav.close}
         />

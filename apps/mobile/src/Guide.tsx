@@ -82,15 +82,14 @@ export function PublicGuide({ nav }: { nav: Nav }) {
       <View>
         <Text style={s.overline}>PUBLIC LISTINGS · AFROTECH.GUIDE</Text>
         <Text style={[s.title, { marginTop: 8 }]}>
-          Find your{`\n`}next good plan.
+          AfroTech side events
         </Text>
         <Text style={[s.body, { marginTop: 12 }]}>
-          The city is part of the conference. Explore public meetups, side
-          events, and the moments in between.
+          Find meetups, panels, and social events listed on AfroTech.guide.
         </Text>
       </View>
       <View style={[s.card, { backgroundColor: color.soft }]}>
-        <Text style={s.h3}>Fresh from the public Guide.</Text>
+        <Text style={s.h3}>About these listings</Text>
         <Text style={s.small}>
           These external listings are separate from your Loop community
           calendar. Registration and final event details belong with the
@@ -107,10 +106,10 @@ export function PublicGuide({ nav }: { nav: Nav }) {
         </Touch>
       </View>
       <Field
-        label="Find your kind of plan"
+        label="Search events"
         value={query}
         onChangeText={setQuery}
-        placeholder="A host, a topic, a little after-hours energy…"
+        placeholder="Event name, organizer, or topic"
         maxLength={300}
       />
       <Field
@@ -140,7 +139,7 @@ export function PublicGuide({ nav }: { nav: Nav }) {
       <View style={s.row}>
         <View style={s.grow}>
           <Button
-            title="Search the Guide ↗"
+            title="Search events"
             onPress={() => {
               setExpanded(null);
               setFilters({
@@ -169,8 +168,8 @@ export function PublicGuide({ nav }: { nav: Nav }) {
       <View style={s.between}>
         <Text style={s.h2}>
           {result.loading
-            ? "Finding the good stuff…"
-            : `${result.events.length} public plan${result.events.length === 1 ? "" : "s"}`}
+            ? "Loading events…"
+            : `${result.events.length} public event${result.events.length === 1 ? "" : "s"}`}
         </Text>
         <Touch
           label="Refresh public Guide listings"
@@ -183,7 +182,7 @@ export function PublicGuide({ nav }: { nav: Nav }) {
       </View>
       {result.error && (
         <View style={s.card}>
-          <Text style={s.h3}>The Guide needs a moment.</Text>
+          <Text style={s.h3}>Couldn’t load events</Text>
           <Text style={s.small}>{result.error}</Text>
           <Button secondary title="Try again" onPress={result.refresh} />
           <Button
@@ -195,7 +194,7 @@ export function PublicGuide({ nav }: { nav: Nav }) {
       )}
       {!result.error && !result.loading && result.events.length === 0 && (
         <Empty
-          title="A little room to explore"
+          title="No matching events"
           body="Try another date, category, or search. The full Guide may have more details."
           action="Open the full Guide"
           onPress={() => open("https://afrotech.guide")}
@@ -214,7 +213,7 @@ export function PublicGuide({ nav }: { nav: Nav }) {
       {result.bounded && (
         <Text style={s.small}>
           Showing up to {result.limit} matches. Narrow the date, category, or
-          search to find more specific plans.
+          search to find a specific event.
         </Text>
       )}
       {result.skipped > 0 && (
@@ -354,7 +353,7 @@ function GuideCard({
             <Button
               small
               secondary
-              title="Share listing ↗"
+              title="Share event"
               onPress={() =>
                 void Share.share({
                   title: event.title,
@@ -371,7 +370,7 @@ function GuideCard({
             <Button
               small
               secondary
-              title="Share calendar file ↗"
+              title="Share calendar file"
               onPress={() =>
                 void shareCalendar(ics).catch(() =>
                   nav.toast("Calendar sharing is unavailable on this device."),

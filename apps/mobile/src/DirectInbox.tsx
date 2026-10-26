@@ -61,11 +61,11 @@ export function DirectInbox({ nav }: { nav: Nav }) {
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={s.content}
     >
-      <Text style={s.overline}>A LITTLE MORE PERSONAL</Text>
-      <Text style={s.title}>Just between us.</Text>
+      <Text style={s.overline}>YOUR INBOX</Text>
+      <Text style={s.title}>Direct messages</Text>
       <Text style={s.body}>
-        Your private conversations, on your terms. Muting keeps a conversation
-        quiet. Blocking stops future messages.
+        Messages between you and another member. Mute a conversation to stop
+        its notifications, or block someone to stop new messages.
       </Text>
       <Field
         value={search}
@@ -75,14 +75,13 @@ export function DirectInbox({ nav }: { nav: Nav }) {
       />
       {backfill && (
         <View style={s.card}>
-          <Text style={s.h3}>Bring earlier conversations along</Text>
+          <Text style={s.h3}>Find older conversations</Text>
           <Text style={s.small}>
             {directCatalog.progress?.processed
               ? `${directCatalog.progress.processed.toLocaleString()} earlier messages checked. `
               : ""}
-            Find conversations that predate your recent inbox. Each step checks
-            another small batch. Unread counts update as earlier history is
-            checked.
+            Some older conversations may be missing from this inbox. Check for
+            them below. Unread counts update as they are found.
           </Text>
           <Button
             secondary
@@ -90,8 +89,8 @@ export function DirectInbox({ nav }: { nav: Nav }) {
               directCatalog.syncing
                 ? "Checking earlier conversations…"
                 : directCatalog.progress?.processed
-                  ? "Continue finding conversations ↓"
-                  : "Find earlier conversations ↓"
+                  ? "Check more conversations"
+                  : "Find older conversations"
             }
             disabled={directCatalog.syncing}
             onPress={sync}
@@ -100,7 +99,7 @@ export function DirectInbox({ nav }: { nav: Nav }) {
       )}
       {!!directCatalog.error && (
         <View style={s.card} accessibilityRole="alert">
-          <Text style={s.h3}>Your inbox needs another try</Text>
+          <Text style={s.h3}>Couldn’t load your inbox</Text>
           <Text style={s.small}>{directCatalog.error}</Text>
           <Button
             secondary
@@ -141,7 +140,7 @@ export function DirectInbox({ nav }: { nav: Nav }) {
                 {conversation.lastMessage?.body ||
                   "Open your private conversation."}
               </Text>
-              {muted && <Text style={s.small}>Muted · still in your loop</Text>}
+              {muted && <Text style={s.small}>Notifications muted</Text>}
             </View>
             <View style={{ alignItems: "flex-end", gap: 9 }}>
               <RelativeTime date={conversation.lastAt} />
@@ -160,7 +159,7 @@ export function DirectInbox({ nav }: { nav: Nav }) {
           accessibilityLiveRegion="polite"
         >
           <ActivityIndicator color={color.ink} />
-          <Text style={s.small}>Finding your conversations…</Text>
+          <Text style={s.small}>Loading conversations…</Text>
         </View>
       )}
       {!directCatalog.loading &&
@@ -168,16 +167,16 @@ export function DirectInbox({ nav }: { nav: Nav }) {
         !directCatalog.error && (
           <Empty
             title={
-              query ? "No match in this inbox page" : "Make room for a hello"
+              query ? "No matching conversations" : "No direct messages yet"
             }
             body={
               query
                 ? "Search matches the conversations loaded so far. Load more or try another name."
                 : backfill
-                  ? "Find earlier conversations above, or start a thoughtful hello with someone in your circle."
-                  : "Your private conversations will appear here. Start with someone in your circle."
+                  ? "Check for older conversations above, or find someone in People to message."
+                  : "Find someone in People and select Message. Their message settings determine who can contact them."
             }
-            action="Find your people"
+            action="Browse people"
             onPress={() => nav.navigate("People")}
           />
         )}
@@ -191,7 +190,7 @@ export function DirectInbox({ nav }: { nav: Nav }) {
       )}
       <Button
         secondary
-        title="Find a connection ↗"
+        title="Browse people"
         onPress={() => nav.navigate("People")}
       />
     </ScrollView>

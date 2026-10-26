@@ -85,21 +85,21 @@ export function People({ nav }: { nav: Nav }) {
   return (
     <ScrollView contentContainerStyle={s.content}>
       <View>
-        <Text style={s.overline}>YOUR NEXT INTRO IS HERE</Text>
+        <Text style={s.overline}>COMMUNITY DIRECTORY</Text>
         <Text style={[s.title, { marginTop: 5 }]}>
-          Good people.{`\n`}Great possibilities.
+          People
         </Text>
       </View>
       <Field
         value={search}
         onChangeText={setSearch}
-        placeholder="A name, skill, city, or next collaborator…"
+        placeholder="Search by name, role, or skill"
       />
       {requests.length > 0 && (
         <>
           <Section
-            title="A new connection?"
-            subtitle={`${requests.length} people would like to connect`}
+            title="Connection requests"
+            subtitle={`${requests.length} ${requests.length === 1 ? "person wants" : "people want"} to connect`}
           />
           {requests.map((c) => {
             const p = state.profiles.find((p) => p.id === c.fromId);
@@ -114,7 +114,7 @@ export function People({ nav }: { nav: Nav }) {
                 </View>
                 <View style={s.row}>
                   <Button
-                    title="Accept ↗"
+                    title="Accept"
                     onPress={() =>
                       void nav.run(
                         {
@@ -122,7 +122,7 @@ export function People({ nav }: { nav: Nav }) {
                           connectionId: c.id,
                           accept: true,
                         },
-                        "A new door just opened",
+                        "Connection accepted",
                       )
                     }
                   />
@@ -161,16 +161,16 @@ export function People({ nav }: { nav: Nav }) {
           ]}
         >
           <Text style={[s.overline, { color: color.heroMuted }]}>
-            A LITTLE SERENDIPITY
+            MEET SOMEONE NEW
           </Text>
           <Text style={[s.h2, { color: color.onHero }]}>
-            One good introduction{`\n`}can change everything.
+            Start with a profile.
           </Text>
           <Text style={[s.small, { color: color.heroMuted }]}>
-            Find someone outside your usual circle.
+            See what someone is working on before you reach out.
           </Text>
           <Button
-            title="Meet someone new ↗"
+            title="Meet someone new"
             secondary
             onPress={() =>
               nav.open({
@@ -182,34 +182,34 @@ export function People({ nav }: { nav: Nav }) {
         </View>
       )}
       <Section
-        title={filter === "For you" ? "Your circles could overlap" : filter}
+        title={filter === "For you" ? "Suggested connections" : filter}
         subtitle={
           filter === "For you"
             ? "Suggestions based on your shared interests"
-            : `${people.length} people in your loop`
+            : `${people.length} ${people.length === 1 ? "person" : "people"}`
         }
       />
       {people.map((p) => (
         <PersonCard key={p.id} profile={p} nav={nav} />
       ))}
       {filter === "For you" && directory.loading && (
-        <Text style={s.small}>Finding your people…</Text>
+        <Text style={s.small}>Loading people…</Text>
       )}
       {filter === "For you" && directory.hasMore && (
         <Button
           secondary
-          title={directory.loading ? "Finding people…" : "Meet more people ↓"}
+          title={directory.loading ? "Loading people…" : "Load more people"}
           disabled={directory.loading}
           onPress={loadMoreDirectory}
         />
       )}
       {people.length === 0 && !(filter === "For you" && directory.loading) && (
         <Empty
-          title="Give your circle room to grow"
+          title={search ? "No matching people" : filter === "For you" ? "No suggested connections yet" : `No ${filter.toLowerCase()} yet`}
           body={
             search
-              ? "No matches yet. Try a different name, skill, or city."
-              : "Explore the community and say hello to someone new."
+              ? "Try another name, role, or skill."
+              : "Browse suggested connections to find people to connect with or follow."
           }
         />
       )}
@@ -255,7 +255,7 @@ export function PersonCard({
       </Touch>
       {shared.length > 0 && (
         <Text style={s.small}>
-          ◎ You both care about {shared.slice(0, 2).join(" + ")}
+          Shared interests: {shared.slice(0, 2).join(" + ")}
         </Text>
       )}
       <View style={s.wrap}>
@@ -268,7 +268,7 @@ export function PersonCard({
           small
           title={
             connection?.status === "accepted"
-              ? "Message ↗"
+              ? "Message"
               : connection
                 ? "Request pending"
                 : "Connect ＋"
@@ -296,7 +296,7 @@ export function PersonCard({
           <Text style={[s.small, { fontWeight: "600", color: color.ink }]}>
             {state.preferences.followingIds.includes(p.id)
               ? "Following ✓"
-              : "Follow ↗"}
+              : "Follow"}
           </Text>
         </Touch>
       </View>
@@ -323,10 +323,10 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
   if (!p)
     return (
       <Empty
-        title={loading ? "Finding your connection…" : "Profile unavailable"}
+        title={loading ? "Loading profile…" : "Profile unavailable"}
         body={
           loading
-            ? "Their profile is on its way."
+            ? "Checking whether this profile is available to you."
             : "This member may have limited their profile visibility."
         }
       />
@@ -389,7 +389,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
       </View>
       {mine ? (
         <Button
-          title="Edit your profile ↗"
+          title="Edit your profile"
           onPress={() => nav.open({ kind: "edit-profile" })}
         />
       ) : (
@@ -400,9 +400,9 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
                 blocked
                   ? "Unblock member"
                   : incoming
-                    ? "Accept request ↗"
+                    ? "Accept request"
                     : connection?.status === "accepted"
-                      ? "Message ↗"
+                      ? "Message"
                       : connection
                         ? "Request pending"
                         : "Connect ＋"
@@ -420,7 +420,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
                           connectionId: connection.id,
                           accept: true,
                         },
-                        "A new connection is in your loop",
+                        "Connection accepted",
                       )
                     : connection?.status === "accepted"
                       ? nav.open({ kind: "dm", id })
@@ -445,23 +445,23 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
       )}
       {canSee ? (
         <>
-          <Section title="The person behind the profile" />
+          <Section title="About" />
           <Text style={s.body}>
-            {p.bio || "A good story is still being written."}
+            {p.bio || "No bio added yet."}
           </Text>
           {p.company && (
             <View style={s.card}>
-              <Text style={s.overline}>BUILDING AT</Text>
+              <Text style={s.overline}>COMPANY</Text>
               <Text style={s.h3}>{p.company}</Text>
             </View>
           )}
-          <Section title="Brings to the table" />
+          <Section title="Skills" />
           <View style={s.wrap}>
             {p.skills.map((skill) => (
               <Label key={skill}>{skill}</Label>
             ))}
           </View>
-          <Section title="Open doors" />
+          <Section title="Open to" />
           <View style={s.wrap}>
             {p.openTo.map((v) => (
               <Chip key={v} title={v} onPress={() => {}} />
@@ -469,7 +469,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
           </View>
           {p.links.length > 0 && (
             <>
-              <Section title="Elsewhere on the internet" />
+              <Section title="Links" />
               {p.links.map((link) => (
                 <Touch
                   key={link.url}
@@ -498,7 +498,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
         </>
       ) : (
         <Empty
-          title="A little more personal"
+          title="Profile limited to connections"
           body="Connect with this member to see their full professional profile."
         />
       )}
@@ -534,7 +534,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
         {mine && (
           <Button
             secondary
-            title="Understand your trust score ↗"
+            title="Understand your trust score"
             onPress={() => nav.open({ kind: "trust" })}
           />
         )}
@@ -543,7 +543,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
         <>
           <Button
             secondary
-            title="Share profile ↗"
+            title="Share profile"
             onPress={() =>
               void Share.share({
                 message: `Meet ${p.name} on TheLoop\n${shareTargetURL({ kind: "profile", id })}`,
@@ -553,7 +553,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
           <Touch
             label="Member safety actions"
             onPress={() =>
-              Alert.alert(p.name, "Your comfort and safety come first.", [
+              Alert.alert(p.name, "Block this member or report their profile.", [
                 {
                   text: blocked ? "Unblock member" : "Block member",
                   style: "destructive",
@@ -723,8 +723,8 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
               <Text style={s.h3}>{identity.name}</Text>
               <Text style={s.small}>
                 {connected(state, id)
-                  ? "In your circle"
-                  : "A new connection starts with a hello"}
+                  ? "Connected"
+                  : "Not connected"}
               </Text>
             </View>
           </Touch>
@@ -819,7 +819,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
         )}
         {blocked && (
           <Empty
-            title="Your boundaries are respected"
+            title="Member blocked"
             body="This member's conversation is hidden. You can manage blocked members in Privacy & notifications."
           />
         )}
@@ -828,8 +828,8 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
         )}
         {!blocked && !directHistory.loading && messages.length === 0 && (
           <Empty
-            title="A real hello goes a long way"
-            body="Introduce yourself, share what brought you here, and keep it thoughtful."
+            title="No messages yet"
+            body="Start with a short introduction and why you’re reaching out."
           />
         )}
         {messages.map((m) => {
@@ -1012,14 +1012,14 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                   value={body}
                   onChangeText={setBody}
                   disabled={busy}
-                  placeholder="A thoughtful hello…"
+                  placeholder="Write a message…"
                   multiline
                   compact
                   maxLength={4000}
                 />
               </View>
               <Button
-                title={busy ? "…" : editing ? "Save changes" : "Send ↗"}
+                title={busy ? "…" : editing ? "Save changes" : "Send"}
                 disabled={busy || attachment.busy || !body.trim()}
                 onPress={() => {
                   loadingOlder.current = false;

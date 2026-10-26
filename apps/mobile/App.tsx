@@ -331,36 +331,36 @@ function LoopApp() {
   if (!ready) return <Loading />;
   const title = (route: Route) =>
     ({
-      post: "The conversation",
-      community: "Your kind of people",
-      "edit-post": "Your perspective",
-      channel: "The room",
-      event: "The plan",
-      "edit-event": "Keep the plan in sync",
-      profile: "In the loop",
-      dm: "Just between us",
-      inbox: "Private conversations",
-      compose: "Share with your people",
+      post: "Post",
+      community: "Community",
+      "edit-post": "Edit post",
+      channel: "Group chat",
+      event: "Event",
+      "edit-event": "Edit event",
+      profile: "Profile",
+      dm: "Direct message",
+      inbox: "Direct messages",
+      compose: "Create post",
       communities: "Your communities",
-      "create-community": "A new corner",
-      "create-event": "Bring people together",
-      notifications: "In your loop",
-      "edit-profile": "Your story",
-      settings: "Your boundaries",
+      "create-community": "Create community",
+      "create-event": "Create event",
+      notifications: "Notifications",
+      "edit-profile": "Edit profile",
+      settings: "Settings",
       auth: "Welcome to TheLoop",
-      onboarding: "A loop of your own",
+      onboarding: "Set up TheLoop",
       trust: "Community trust",
       export: "Your information",
-      search: "Find your way around",
-      safety: "Community care",
+      search: "Search",
+      safety: "Reports",
       spaces: "Community spaces",
-      "import-events": "Bring your plans into the loop",
+      "import-events": "Import events",
       squads: "Your squads",
       "create-squad": "Start a squad",
-      squad: "A room for your people",
-      "squad-members": "Your circle",
+      squad: "Squad",
+      "squad-members": "Squad members",
       guide: "Explore AfroTech.guide",
-      tutorial: "Find your way around",
+      tutorial: "Quick tour",
     })[route.kind];
   const renderRoute = (route: Route) => {
     const scope = state.currentUserId || "signed-out";
@@ -524,7 +524,7 @@ function LoopApp() {
                   fontWeight: "600",
                 }}
               >
-                SAMPLE LOOP
+                SAMPLE DATA
               </Text>
             </View>
           ) : (

@@ -21,7 +21,7 @@ export function DetailState({
   status: DetailStatus;
   retry: () => void;
 }) {
-  const noun = kind === "post" ? "conversation" : "event";
+  const noun = kind === "post" ? "post" : "event";
   if (status.id !== id || status.loading)
     return (
       <View style={s.empty} accessibilityLiveRegion="polite">
@@ -43,7 +43,7 @@ export function DetailState({
     );
   return (
     <Empty
-      title={kind === "post" ? "Conversation unavailable" : "Event unavailable"}
+      title={kind === "post" ? "Post unavailable" : "Event unavailable"}
       body={
         status.notFound
           ? `This ${noun} is no longer available.`

@@ -81,7 +81,7 @@ export function Search({ nav }: { nav: Nav }) {
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={s.content}
     >
-      <Text style={s.title}>Find the good stuff.</Text>
+      <Text style={s.title}>Search</Text>
       <Field
         value={query}
         onChangeText={setQuery}
@@ -101,19 +101,19 @@ export function Search({ nav }: { nav: Nav }) {
       </Horizontal>
       {!q && (
         <Empty
-          title="A name. An idea. An open door."
-          body="Search recent conversations, community posts, people, and events. Hidden spaces stay outside your results."
+          title="Search TheLoop"
+          body="Search the messages, posts, people, and events loaded on this device. Hidden chats and communities are excluded."
         />
       )}
       {!!q && total === 0 && (
         <Empty
-          title="No matches just yet"
-          body="Try a different phrase, a skill, or a city."
+          title="No results"
+          body="Try another name or keyword. Older content may not be loaded yet."
         />
       )}
       {(scope === "Everything" || scope === "Posts") && posts.length > 0 && (
         <>
-          <Section title="Conversations" />
+          <Section title="Posts" />
           {posts.map((p) => (
             <Touch
               key={p.id}
@@ -137,7 +137,7 @@ export function Search({ nav }: { nav: Nav }) {
       {(scope === "Everything" || scope === "Messages") &&
         messages.length > 0 && (
           <>
-            <Section title="In the rooms" />
+            <Section title="Messages" />
             {messages.map((m) => (
               <Touch
                 key={m.id}
@@ -167,7 +167,7 @@ export function Search({ nav }: { nav: Nav }) {
         )}
       {(scope === "Everything" || scope === "People") && people.length > 0 && (
         <>
-          <Section title="Your people" />
+          <Section title="People" />
           {people.map((p) => (
             <Touch
               key={p.id}
@@ -187,7 +187,7 @@ export function Search({ nav }: { nav: Nav }) {
       )}
       {(scope === "Everything" || scope === "Events") && events.length > 0 && (
         <>
-          <Section title="Good reasons to show up" />
+          <Section title="Events" />
           {events.map((e) => (
             <Touch
               key={e.id}
