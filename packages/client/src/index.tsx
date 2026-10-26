@@ -58,6 +58,12 @@ export type StorageDriver = {
   save(state: LoopState): Promise<void>;
 };
 export type LoopRole = "member" | "moderator" | "admin";
+export type EmulatorConfig = {
+  host?: string;
+  authPort?: number;
+  firestorePort?: number;
+  functionsPort?: number;
+};
 type LoopContextValue = {
   state: LoopState;
   dispatch(command: Command): Promise<void>;
@@ -93,6 +99,7 @@ function setup(
   config: FirebaseOptions,
   emulator = false,
   persistence?: Persistence,
+  emulators: EmulatorConfig = {},
 ) {
   if (cloud) return cloud;
   const app =
@@ -104,11 +111,18 @@ function setup(
     db = getFirestore(app),
     functions = getFunctions(app, "us-central1");
   if (emulator) {
-    connectAuthEmulator(auth, "http://127.0.0.1:9099", {
+    const host = (emulators.host || "127.0.0.1").trim();
+    if (!host || /[\s/?#]/.test(host)) throw new Error("Use a hostname or IP address for the emulator host.");
+    const address = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+    const authPort = emulators.authPort ?? 9099;
+    const firestorePort = emulators.firestorePort ?? 8080;
+    const functionsPort = emulators.functionsPort ?? 5001;
+    if ([authPort, firestorePort, functionsPort].some(port => !Number.isInteger(port) || port < 1 || port > 65535)) throw new Error("Emulator ports must be whole numbers from 1 to 65,535.");
+    connectAuthEmulator(auth, `http://${address}:${authPort}`, {
       disableWarnings: true,
     });
-    connectFirestoreEmulator(db, "127.0.0.1", 8080);
-    connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+    connectFirestoreEmulator(db, address, firestorePort);
+    connectFunctionsEmulator(functions, address, functionsPort);
   }
   cloud = { auth, db, functions };
   return cloud;
@@ -148,12 +162,14 @@ export function LoopProvider({
   firebaseConfig,
   useEmulators = false,
   authPersistence,
+  emulators,
 }: {
   children: React.ReactNode;
   storage?: StorageDriver;
   firebaseConfig?: FirebaseOptions;
   useEmulators?: boolean;
   authPersistence?: Persistence;
+  emulators?: EmulatorConfig;
 }) {
   const mode = firebaseConfig?.apiKey ? "live" : "demo";
   const [state, setState] = useState<LoopState>(() =>
@@ -204,7 +220,7 @@ export function LoopProvider({
     }
     let c: ReturnType<typeof setup>;
     try {
-      c = setup(firebaseConfig!, useEmulators, authPersistence);
+      c = setup(firebaseConfig!, useEmulators, authPersistence, emulators);
     } catch (e) {
       setError(readableError(e));
       setReady(true);
@@ -724,7 +740,7 @@ export function LoopProvider({
       dispose.forEach((fn) => fn());
       messageDispose.forEach((fn) => fn());
     };
-  }, [mode, firebaseConfig?.projectId, useEmulators]);
+  }, [mode, firebaseConfig?.projectId, useEmulators, emulators?.host, emulators?.authPort, emulators?.firestorePort, emulators?.functionsPort]);
   useEffect(() => {
     if (mode === "demo" && ready)
       storageRef.current
@@ -748,7 +764,7 @@ export function LoopProvider({
           stateRef.current = next;
           setState(next);
         } else {
-          const c = setup(firebaseConfig!, useEmulators);
+          const c = setup(firebaseConfig!, useEmulators, authPersistence, emulators);
           if (!c.auth.currentUser) throw new Error("Sign in to continue.");
           await httpsCallable(
             c.functions,
@@ -763,7 +779,7 @@ export function LoopProvider({
         setPending((n) => Math.max(0, n - 1));
       }
     },
-    [mode, firebaseConfig?.projectId, useEmulators],
+    [mode, firebaseConfig?.projectId, useEmulators, emulators?.host, emulators?.authPort, emulators?.firestorePort, emulators?.functionsPort],
   );
   const authAction = async (fn: (auth: Auth) => Promise<unknown>) => {
     setError(null);
@@ -772,7 +788,7 @@ export function LoopProvider({
         throw new Error(
           "Account sign-in is available in the connected live app. This preview uses fictional sample data.",
         );
-      await fn(setup(firebaseConfig!, useEmulators).auth);
+      await fn(setup(firebaseConfig!, useEmulators, authPersistence, emulators).auth);
     } catch (e) {
       const m = readableError(e);
       setError(m);
@@ -790,7 +806,7 @@ export function LoopProvider({
       setEmailVerified(verified);
       if (verified)
         await httpsCallable(
-          setup(firebaseConfig!, useEmulators).functions,
+          setup(firebaseConfig!, useEmulators, authPersistence, emulators).functions,
           "executeCommand",
         )({ command: { type: "profile.update", profile: {} }, requestId: requestId() });
     });
@@ -813,7 +829,7 @@ export function LoopProvider({
     try {
       return (
         await httpsCallable(
-          setup(firebaseConfig!, useEmulators).functions,
+          setup(firebaseConfig!, useEmulators, authPersistence, emulators).functions,
           name,
         )(payload)
       ).data;
@@ -840,6 +856,15 @@ export function LoopProvider({
         ),
         directMessages: current.directMessages.filter((m) =>
           [m.fromId, m.toId].includes(current.currentUserId),
+        ),
+        connections: current.connections.filter(connection =>
+          [connection.fromId, connection.toId].includes(current.currentUserId),
+        ),
+        follows: current.follows.filter(follow =>
+          follow.followerId === current.currentUserId || follow.followingId === current.currentUserId,
+        ),
+        events: current.events.filter(event =>
+          event.hostId === current.currentUserId || event.attendeeIds.includes(current.currentUserId) || event.waitlistIds.includes(current.currentUserId),
         ),
       };
     }
@@ -897,11 +922,11 @@ export function LoopProvider({
             );
             await updateProfile(result.user, { displayName: name.trim() });
             await httpsCallable(
-              setup(firebaseConfig!, useEmulators).functions,
+              setup(firebaseConfig!, useEmulators, authPersistence, emulators).functions,
               "bootstrap",
             )({ name: name.trim() });
             await httpsCallable(
-              setup(firebaseConfig!, useEmulators).functions,
+              setup(firebaseConfig!, useEmulators, authPersistence, emulators).functions,
               "executeCommand",
             )({
               command: {
@@ -917,7 +942,7 @@ export function LoopProvider({
           if (registered && registered.userId === auth.currentUser?.uid) {
             // Logging out remains possible offline; the native client also retains a token for retry.
             await httpsCallable(
-              setup(firebaseConfig!, useEmulators).functions,
+              setup(firebaseConfig!, useEmulators, authPersistence, emulators).functions,
               "registerPushToken",
               { timeout: 5000 },
             )({ token: registered.token, platform: registered.platform, remove: true }).catch(() => undefined);
@@ -933,10 +958,10 @@ export function LoopProvider({
         exportAccount,
         deleteAccount: async (confirmation) => {
           await accountCall("deleteAccount", { confirmation });
-          await firebaseSignOut(setup(firebaseConfig!, useEmulators).auth);
+          await firebaseSignOut(setup(firebaseConfig!, useEmulators, authPersistence, emulators).auth);
         },
         registerPushToken: async (token, platform = "web", remove = false) => {
-          const userId = mode === "live" ? setup(firebaseConfig!, useEmulators).auth.currentUser?.uid : undefined;
+          const userId = mode === "live" ? setup(firebaseConfig!, useEmulators, authPersistence, emulators).auth.currentUser?.uid : undefined;
           await accountCall("registerPushToken", { token, platform, remove });
           if (remove) {
             if (registeredPushToken.current?.token === token) registeredPushToken.current = null;

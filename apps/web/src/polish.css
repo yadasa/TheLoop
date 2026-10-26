@@ -1,0 +1,426 @@
+.profile-counts {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+  color: #858580;
+  font-size: 11px;
+}
+.profile-counts button {
+  padding: 0;
+  font-size: 11px;
+  color: #858580;
+}
+.profile-counts button strong,
+.profile-counts span strong {
+  color: #282828;
+  font-weight: 600;
+}
+.profile-counts button:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.profile-counts button:not(:disabled):hover {
+  text-decoration: underline;
+}
+.conference-default {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  justify-content: space-between;
+}
+.conference-default h3 {
+  margin-bottom: 0;
+}
+.conference-default select {
+  width: 155px;
+  padding: 8px;
+  font-size: 10px;
+}
+.subscription-note {
+  font-size: 9px;
+  color: #99998b;
+  margin-top: 10px;
+}
+.moderation-card {
+  padding: 18px;
+  border: 1px solid #deded7;
+  border-radius: 9px;
+}
+.moderation-card > p {
+  font-size: 13px;
+  margin-top: 12px;
+}
+.moderation-card blockquote {
+  font-size: 11px;
+  color: #85857c;
+  border-left: 2px solid #ccc;
+  margin: 15px 0;
+  padding-left: 15px;
+  white-space: pre-wrap;
+}
+.moderation-card form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.moderation-card form .field {
+  min-width: 140px;
+}
+.moderation-card form .button {
+  margin-top: 10px;
+}
+.reply-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.profile-actions button:disabled {
+  opacity: 0.6;
+}
+.workspace-footer {
+  font-size: 9px;
+}
+.preview-badge {
+  font-size: 8px;
+}
+.workspace-footer > button {
+  font-size: 9px;
+}
+@media (min-width: 761px) {
+  .nav-list button {
+    font-size: 13px;
+  }
+  .channel-nav > button {
+    font-size: 11px;
+  }
+  .sidebar-label {
+    font-size: 9px;
+  }
+  .conference-select strong {
+    font-size: 11px;
+  }
+  .conference-select small {
+    font-size: 9px;
+  }
+  .my-profile strong {
+    font-size: 11px;
+  }
+  .my-profile small {
+    font-size: 9px;
+  }
+  .breadcrumb {
+    font-size: 11px;
+  }
+  .page-heading p {
+    font-size: 12px;
+  }
+  .post-author .name-button {
+    font-size: 12px;
+  }
+  .post-author > div > span {
+    font-size: 9px;
+  }
+  .post-body > p {
+    font-size: 13px;
+    line-height: 1.85;
+  }
+  .post-title {
+    font-size: 21px;
+  }
+  .post-kind {
+    font-size: 8px;
+  }
+  .post-actions > button {
+    font-size: 10px;
+  }
+  .tags > span {
+    font-size: 9px;
+  }
+  .feed-tabs > button {
+    font-size: 12px;
+  }
+  .composer-prompt > span {
+    font-size: 12px;
+  }
+  .hero-content > .eyebrow {
+    font-size: 8px;
+  }
+  .hero p {
+    font-size: 12px;
+  }
+  .hero-content > button {
+    font-size: 11px;
+  }
+  .hero-bottom > span {
+    font-size: 8px;
+  }
+  .hero-bottom .hero-sign {
+    font-size: 7px;
+  }
+  .rail-section > .section-label {
+    font-size: 9px;
+  }
+  .rail-section > .section-label button {
+    font-size: 10px;
+  }
+  .compact .event-info h3 {
+    font-size: 14px;
+  }
+  .compact .event-info p {
+    font-size: 10px;
+  }
+  .compact .event-info > .eyebrow {
+    font-size: 7px;
+  }
+  .compact .event-actions .button {
+    font-size: 10px;
+  }
+  .compact .event-attendees > span {
+    font-size: 9px;
+  }
+  .rail-intro {
+    font-size: 11px;
+  }
+  .person-mini .name-button {
+    font-size: 12px;
+  }
+  .person-mini p {
+    font-size: 10px;
+  }
+  .connect-link {
+    font-size: 10px;
+  }
+  .daily-prompt > .eyebrow {
+    font-size: 8px;
+  }
+  .daily-prompt > button,
+  .rail-link {
+    font-size: 10px;
+  }
+  .message .name-button {
+    font-size: 12px;
+  }
+  .message time {
+    font-size: 9px;
+  }
+  .message p {
+    font-size: 13px;
+  }
+  .topic-label {
+    font-size: 9px;
+  }
+  .topic-tabs > button {
+    font-size: 11px;
+  }
+  .chat-welcome p {
+    font-size: 12px;
+  }
+  .chat-welcome small {
+    font-size: 10px;
+  }
+  .chat-composer textarea {
+    font-size: 13px;
+  }
+  .chat-composer footer > span {
+    font-size: 9px;
+  }
+  .composer-topic select {
+    font-size: 11px;
+  }
+  .person-card > p {
+    font-size: 12px;
+  }
+  .person-location {
+    font-size: 10px;
+  }
+  .person-card .tags > span {
+    font-size: 9px;
+  }
+  .person-card .match-note {
+    font-size: 10px;
+  }
+  .community-card p {
+    font-size: 12px;
+  }
+  .community-card footer > span {
+    font-size: 10px;
+  }
+  .event-info p {
+    font-size: 12px;
+  }
+  .event-info > .eyebrow {
+    font-size: 8px;
+  }
+  .event-info h3 {
+    font-size: 18px;
+  }
+  .event-attendees > span {
+    font-size: 10px;
+  }
+  .dm-bubble p {
+    font-size: 13px;
+  }
+  .dm-layout > aside strong {
+    font-size: 12px;
+  }
+  .dm-layout > aside small {
+    font-size: 10px;
+  }
+  .dm-layout input {
+    font-size: 12px;
+  }
+  .modal-form .field > span {
+    font-size: 11px;
+  }
+  .modal > header p {
+    font-size: 12px;
+  }
+  .subscription-row p {
+    font-size: 11px;
+  }
+  .subscription-row strong {
+    font-size: 12px;
+  }
+  .interest-chips button {
+    font-size: 12px;
+  }
+  .notification-item p {
+    font-size: 12px;
+  }
+  .profile-section > p {
+    font-size: 13px;
+  }
+  .trust-card > p {
+    font-size: 12px;
+  }
+  .trust-reason {
+    font-size: 11px;
+  }
+  .trust-card > small {
+    font-size: 10px;
+  }
+  .calendar-day {
+    font-size: 12px;
+  }
+  .calendar-day > button {
+    font-size: 10px;
+  }
+  .weekday {
+    font-size: 9px;
+  }
+}
+@media (max-width: 760px) {
+  .post-body > p {
+    font-size: 12px;
+  }
+  .post-title {
+    font-size: 20px;
+  }
+  .post-author .name-button {
+    font-size: 11px;
+  }
+  .post-author > div > span {
+    font-size: 8px;
+  }
+  .post-actions > button {
+    font-size: 9px;
+  }
+  .tags > span {
+    font-size: 8px;
+  }
+  .hero p {
+    font-size: 11px;
+  }
+  .hero-content > button {
+    font-size: 10px;
+  }
+  .composer-prompt > span {
+    font-size: 10px;
+  }
+  .message p {
+    font-size: 12px;
+  }
+  .message .name-button {
+    font-size: 11px;
+  }
+  .message time {
+    font-size: 8px;
+  }
+  .topic-label {
+    font-size: 8px;
+  }
+  .chat-composer textarea {
+    font-size: 12px;
+  }
+  .button {
+    min-height: 40px;
+  }
+  .icon-button {
+    min-width: 34px;
+    min-height: 34px;
+  }
+  .subscription-row p {
+    font-size: 10px;
+  }
+  .subscription-row strong {
+    font-size: 12px;
+  }
+  .subscription-row select {
+    font-size: 11px;
+    width: 101px;
+  }
+  .subscription-legend > span {
+    font-size: 9px;
+  }
+  .subscription-note {
+    font-size: 10px;
+  }
+  .conference-default {
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .conference-default h3 {
+    font-size: 16px;
+  }
+  .conference-default select {
+    width: 130px;
+    font-size: 9px;
+  }
+  .workspace-footer {
+    font-size: 8px;
+  }
+  .workspace-footer > button {
+    font-size: 8px;
+  }
+  .preview-badge {
+    font-size: 7px;
+  }
+  .profile-counts {
+    gap: 15px;
+    font-size: 10px;
+  }
+  .profile-counts button {
+    font-size: 10px;
+  }
+  .modal > header p {
+    font-size: 11px;
+  }
+  .notification-item p {
+    font-size: 11px;
+  }
+  .dm-bubble p {
+    font-size: 12px;
+  }
+  .calendar-day > button {
+    font-size: 7px;
+  }
+  .people-search input {
+    font-size: 11px;
+  }
+  .community-card p {
+    font-size: 12px;
+  }
+}

@@ -269,7 +269,7 @@ export function initialState(): LoopState {
       moderatorIds: ["imani"],
     },
   ];
-  const time = (h: number) => `2026-10-26T${String(h).padStart(2, "0")}:00:00Z`;
+  const time = (h: number) => `2026-10-25T${String(h).padStart(2, "0")}:00:00Z`;
   s.messages = [
     {
       id: "m1",
