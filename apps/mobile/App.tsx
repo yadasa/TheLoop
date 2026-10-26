@@ -18,7 +18,7 @@ import {
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
-import { authPersistence } from "./src/authPersistence";
+import { loadAuthPersistence } from "./src/authPersistence";
 import { LoopProvider, useLoop } from "@theloop/client";
 import {
   parseSharedTarget,
@@ -106,7 +106,7 @@ export default function App() {
       <LoopProvider
         storage={storage}
         firebaseConfig={firebaseConfig}
-        authPersistence={authPersistence}
+        authPersistenceFactory={loadAuthPersistence}
         useEmulators={!!emulators}
         emulators={emulators}
       >
