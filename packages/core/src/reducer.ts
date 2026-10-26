@@ -1,6 +1,7 @@
 import type { Command, CommandContext, LoopState } from "./types";
 import { connected, safeURL } from "./selectors";
 import { applySquadCommand } from "./squads";
+import { applyEventCommand } from "./events";
 import { bindPreviewImage, prunePreviewImages } from "./previewImages";
 const clean = (v: string, max: number, required = true) => {
   const value = v.trim();
@@ -320,49 +321,12 @@ export function applyCommand(
       p.poll.options.find((o) => o.id === cmd.optionId)!.voterIds.push(uid);
       break;
     }
-    case "event.rsvp": {
-      const e = s.events.find((x) => x.id === cmd.eventId);
-      if (!e) throw new Error("Event not found.");
-      if (e.endAt < ctx.now) throw new Error("This event has ended.");
-      if (e.attendeeIds.includes(uid)) {
-        e.attendeeIds = e.attendeeIds.filter((x) => x !== uid);
-        if (e.waitlistIds.length) e.attendeeIds.push(e.waitlistIds.shift()!);
-      } else if (e.waitlistIds.includes(uid))
-        e.waitlistIds = e.waitlistIds.filter((x) => x !== uid);
-      else if (e.capacity === 0 || e.attendeeIds.length < e.capacity)
-        e.attendeeIds.push(uid);
-      else e.waitlistIds.push(uid);
+    case "event.create":
+    case "event.edit":
+    case "event.cancel":
+    case "event.rsvp":
+      applyEventCommand(s, cmd, ctx);
       break;
-    }
-    case "event.create": {
-      const e = cmd.event;
-      if (!s.conferences.some((c) => c.id === e.conferenceId))
-        throw new Error("Choose a conference.");
-      if (
-        !Number.isFinite(Date.parse(e.startAt)) ||
-        !Number.isFinite(Date.parse(e.endAt)) ||
-        Date.parse(e.endAt) <= Date.parse(e.startAt) ||
-        Date.parse(e.startAt) < Date.parse(ctx.now)
-      )
-        throw new Error("Choose a future event with an end after its start.");
-      if (!Number.isInteger(e.capacity) || e.capacity < 0 || e.capacity > 10000)
-        throw new Error("Capacity must be between 0 and 10,000.");
-      if (e.url && !safeURL(e.url)) throw new Error("Use a valid event link.");
-      new Intl.DateTimeFormat("en-US", { timeZone: e.timezone });
-      s.events.push({
-        ...e,
-        id: ctx.id,
-        title: clean(e.title, 160),
-        description: clean(e.description, 3000, false),
-        location: clean(e.location, 300),
-        startAt: new Date(e.startAt).toISOString(),
-        endAt: new Date(e.endAt).toISOString(),
-        hostId: uid,
-        attendeeIds: [uid],
-        waitlistIds: [],
-      });
-      break;
-    }
     case "connection.request":
       person(cmd.userId);
       if (s.preferences.blockedIds.includes(cmd.userId))

@@ -10,7 +10,8 @@ export type Community = { id: string; slug: string; name: string; description: s
 export type Poll = { options: { id: string; label: string; voterIds: string[] }[]; closesAt: string };
 export type Post = { id: string; communityId: string; authorId: string; authorName?: string; authorInitials?: string; title: string; body: string; kind: 'discussion' | 'win' | 'opportunity' | 'poll' | 'link'; createdAt: string; editedAt?: string; votes: Record<string, number>; comments: Comment[]; tags: string[]; poll?: Poll; url?: string; image?: ImageAttachment };
 export type Comment = { id: string; authorId: string; authorName?: string; authorInitials?: string; body: string; createdAt: string; editedAt?: string };
-export type LoopEvent = { id: string; conferenceId: string; title: string; description: string; startAt: string; endAt: string; timezone: string; location: string; kind: 'conference' | 'meetup' | 'workshop' | 'social'; hostId: string; capacity: number; attendeeIds: string[]; waitlistIds: string[]; tags: string[]; url?: string };
+export type LoopEvent = { id: string; conferenceId: string; title: string; description: string; startAt: string; endAt: string; timezone: string; location: string; kind: 'conference' | 'meetup' | 'workshop' | 'social'; hostId: string; capacity: number; attendeeIds: string[]; waitlistIds: string[]; tags: string[]; url?: string; status?: 'scheduled' | 'cancelled'; sequence?: number; updatedAt?: string; cancelledAt?: string; cancelledBy?: string; cancellationReason?: string };
+export type EventDetails = Pick<LoopEvent, 'conferenceId' | 'title' | 'description' | 'startAt' | 'endAt' | 'timezone' | 'location' | 'kind' | 'capacity' | 'tags' | 'url'>;
 export type Connection = { id: string; fromId: string; toId: string; status: 'pending' | 'accepted'; createdAt: string };
 export type Follow = { id: string; followerId: string; followingId: string; participantIds: string[]; createdAt: string };
 export type SquadMember = { userId: string; name: string; initials: string; joinedAt: string };
@@ -62,7 +63,9 @@ export type Command =
   | { type: 'poll.vote'; postId: string; optionId: string }
   | { type: 'event.rsvp'; eventId: string }
   | { type: 'event.checkin'; eventId: string; userId: string }
-  | { type: 'event.create'; event: Omit<LoopEvent, 'id' | 'hostId' | 'attendeeIds' | 'waitlistIds'> }
+  | { type: 'event.create'; event: EventDetails }
+  | { type: 'event.edit'; eventId: string; expectedSequence: number; event: Partial<Omit<EventDetails, 'conferenceId'>> }
+  | { type: 'event.cancel'; eventId: string; expectedSequence: number; reason?: string }
   | { type: 'connection.request'; userId: string }
   | { type: 'connection.respond'; connectionId: string; accept: boolean }
   | { type: 'profile.follow'; userId: string }

@@ -1,8 +1,8 @@
-import type { Conference, LoopEvent } from './types';
+import type { Conference, EventDetails, LoopEvent } from './types';
 import { safeURL } from './selectors';
 import { exceedsUTF8Bytes } from './text';
 
-export type EventDraft = Omit<LoopEvent, 'id' | 'hostId' | 'attendeeIds' | 'waitlistIds'>;
+export type EventDraft = EventDetails;
 export type EventCSVRow = { row: number; event?: EventDraft; errors: string[]; duplicate: boolean };
 export type EventCSVPreview = { columns: string[]; rows: EventCSVRow[]; events: EventDraft[]; errors: string[] };
 export type EventCSVOptions = {
@@ -134,7 +134,7 @@ export function previewEventCSV(input: string, options: EventCSVOptions): EventC
       if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(value)) row.errors.push(`${key}: remove unsupported control characters.`);
       return value;
     };
-    const title = text('title', 160, true), description = text('description', 3000, false), location = text('location', 240, true);
+    const title = text('title', 160, true), description = text('description', 5000, false), location = text('location', 240, true);
     const timezone = data.timezone || options.defaultTimezone || 'UTC';
     const timezoneOK = zoneValid(timezone);
     if (!timezoneOK) row.errors.push('timezone: use an IANA timezone such as America/Chicago.');
