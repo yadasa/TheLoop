@@ -24,6 +24,7 @@ import type { Command, LoopState } from "@theloop/core";
 import {
   Feed,
   PostDetail,
+  EditPost,
   Compose,
   Communities,
   CreateCommunity,
@@ -131,6 +132,11 @@ function LoopApp() {
     [],
   );
   const close = useCallback(() => setStack((v) => v.slice(0, -1)), []);
+  const closeIfTop = useCallback(
+    (kind: Route["kind"]) =>
+      setStack((v) => (v.at(-1)?.kind === kind ? v.slice(0, -1) : v)),
+    [],
+  );
   const navigate = useCallback(
     (target: Tab) => {
       setStack([]);
@@ -174,7 +180,16 @@ function LoopApp() {
     },
     [dispatch, showToast],
   );
-  const nav: Nav = { open, close, navigate, run, toast: showToast };
+  const nav: Nav = { open, close, closeIfTop, navigate, run, toast: showToast };
+  useEffect(() => {
+    onboarded.current = false;
+    transition.current++;
+    fade.stopAnimation();
+    fade.setValue(1);
+    setTab("Home");
+    setStack([]);
+    setToast("");
+  }, [state.currentUserId, fade]);
   useEffect(() => {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (
@@ -186,6 +201,10 @@ function LoopApp() {
       void run({ type: "preferences.update", preferences: { timezone } });
   }, [ready, state.currentUserId, state.preferences.timezone, run]);
   useEffect(() => {
+    if (state.preferences.onboardingComplete) {
+      onboarded.current = false;
+      return;
+    }
     if (
       ready &&
       state.currentUserId &&
@@ -237,6 +256,7 @@ function LoopApp() {
   const title = (route: Route) =>
     ({
       post: "The conversation",
+      "edit-post": "Your perspective",
       channel: "The room",
       event: "The plan",
       profile: "In the loop",
@@ -261,6 +281,8 @@ function LoopApp() {
     switch (route.kind) {
       case "post":
         return <PostDetail id={route.id} nav={nav} />;
+      case "edit-post":
+        return <EditPost id={route.id} nav={nav} />;
       case "channel":
         return <ChannelDetail id={route.id} nav={nav} />;
       case "event":

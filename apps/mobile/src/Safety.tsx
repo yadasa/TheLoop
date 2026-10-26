@@ -54,7 +54,14 @@ function ReportCard({
       ? state.posts.find((p) => p.id === r.targetId)?.title
       : r.targetType === "message"
         ? state.messages.find((m) => m.id === r.targetId)?.body
-        : state.profiles.find((p) => p.id === r.targetId)?.name;
+        : r.targetType === "comment"
+          ? state.posts
+              .find((p) => p.id === r.postId)
+              ?.comments.find((c) => c.id === r.targetId)?.body
+          : r.targetType === "directMessage"
+            ? state.directMessages.find((m) => m.id === r.targetId)?.body
+            : state.profiles.find((p) => p.id === r.targetId)?.name;
+  const hasContext = !!content || !!r.snapshot?.body;
   const review = (outcome: "dismiss" | "remove") => {
     setBusy(true);
     void nav
@@ -72,7 +79,41 @@ function ReportCard({
         <Label>{r.targetType.toUpperCase()}</Label>
         <Label dark={r.status === "open"}>{r.status.toUpperCase()}</Label>
       </View>
-      <Text style={s.h3}>{content || "Content unavailable"}</Text>
+      <Text style={s.h3}>
+        {r.snapshot?.title ||
+          (r.snapshot ? "Reported excerpt" : content || "Content unavailable")}
+      </Text>
+      {r.snapshot && (
+        <>
+          <Text style={s.body}>{r.snapshot.body}</Text>
+          <Text style={s.small}>
+            Captured when reported ·{" "}
+            {new Date(r.snapshot.capturedAt).toLocaleString()}
+          </Text>
+          {r.targetType === "directMessage" && (
+            <Text style={s.small}>
+              Only this reported message is available to moderators. The private
+              conversation is not included.
+            </Text>
+          )}
+          {content && content !== r.snapshot.body && (
+            <>
+              <Label>CURRENT CONTENT</Label>
+              <Text style={s.body}>{content}</Text>
+            </>
+          )}
+        </>
+      )}
+      {r.targetType === "comment" &&
+        r.postId &&
+        state.posts.some((p) => p.id === r.postId) && (
+          <Button
+            secondary
+            small
+            title="Open the conversation ↗"
+            onPress={() => nav.open({ kind: "post", id: r.postId! })}
+          />
+        )}
       <Text style={s.body}>{r.reason}</Text>
       <Text style={s.small}>{new Date(r.createdAt).toLocaleString()}</Text>
       {moderator && (
@@ -97,11 +138,19 @@ function ReportCard({
               <View style={s.grow}>
                 <Button
                   title="Remove content"
-                  disabled={busy}
+                  disabled={
+                    busy ||
+                    !hasContext ||
+                    (r.targetType === "directMessage" && !r.snapshot)
+                  }
                   onPress={() =>
                     Alert.alert(
                       "Remove this content?",
-                      "The content will be removed and your moderation action recorded.",
+                      r.targetType === "comment"
+                        ? "Only this reply will be removed. The rest of the conversation stays. Your action is recorded."
+                        : r.targetType === "directMessage"
+                          ? "Only the message identified by this report will be removed. Your moderation action is recorded."
+                          : "The content will be removed and your moderation action recorded.",
                       [
                         { text: "Keep reviewing", style: "cancel" },
                         {

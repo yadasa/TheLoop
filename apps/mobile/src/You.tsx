@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Alert, ScrollView, Switch, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
-import { interests, safeURL } from "@theloop/core";
+import { interests, safeURL, subscriptionFor } from "@theloop/core";
 import {
   Avatar,
   Button,
@@ -708,10 +708,16 @@ function DeleteAccount({ nav }: { nav: Nav }) {
 
 export function Onboarding({ nav }: { nav: Nav }) {
   const { state } = useLoop();
+  const eligibleChannels = state.channels.filter(
+    (c) =>
+      c.visibility === "public" || c.memberIds?.includes(state.currentUserId),
+  );
   const [chosen, setChosen] = useState<string[]>(state.preferences.interests);
   const [channels, setChannels] = useState<string[]>(
-    state.channels
-      .filter((c) => state.preferences.subscriptions[c.id] === "following")
+    eligibleChannels
+      .filter(
+        (c) => subscriptionFor(state, c.id, c.conferenceId) === "following",
+      )
       .map((c) => c.id),
   );
   const [step, setStep] = useState(1);
@@ -748,7 +754,7 @@ export function Onboarding({ nav }: { nav: Nav }) {
           ))}
         </View>
       ) : (
-        state.channels.map((c) => (
+        eligibleChannels.map((c) => (
           <Touch
             key={c.id}
             label={`Select ${c.name}`}
@@ -794,7 +800,11 @@ export function Onboarding({ nav }: { nav: Nav }) {
               {
                 type: "onboarding.complete",
                 interests: chosen,
-                channelIds: channels,
+                channelIds: channels.filter((id) =>
+                  eligibleChannels.some((c) => c.id === id),
+                ),
+                replaceChannels: true,
+                channelScopeIds: eligibleChannels.map((c) => c.id),
               },
               "Your loop is ready",
             )
@@ -1122,7 +1132,7 @@ export function Auth({ nav }: { nav: Nav }) {
               ? signUp(email.trim(), password, name)
               : signIn(email.trim(), password);
           })()
-            .then(() => nav.close())
+            .then(() => nav.closeIfTop("auth"))
             .catch((e) => nav.toast(e.message))
             .finally(() => setBusy(false));
         }}

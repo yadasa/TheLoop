@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Linking, ScrollView, Share, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
-import type { Post } from "@theloop/core";
+import { safeURL, type Post, type Comment } from "@theloop/core";
 import {
   Avatar,
   Button,
@@ -11,6 +11,7 @@ import {
   Field,
   Horizontal,
   Label,
+  LinkifiedText,
   pickSubscription,
   RelativeTime,
   s,
@@ -20,9 +21,27 @@ import {
 import type { Nav } from "./navigation";
 
 export function Feed({ nav }: { nav: Nav }) {
-  const { state, hasMore, loadMore } = useLoop();
+  const { state, hasMore, loadMore, loadSavedPosts } = useLoop();
   const [filter, setFilter] = useState("for-you");
   const [sort, setSort] = useState("Hot");
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  useEffect(() => {
+    if (filter !== "saved") return;
+    let mounted = true;
+    setLoadingSaved(true);
+    void loadSavedPosts()
+      .catch(() =>
+        nav.toast(
+          "Could not refresh saved conversations. Try opening Saved again.",
+        ),
+      )
+      .finally(() => {
+        if (mounted) setLoadingSaved(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [filter, loadSavedPosts]);
   const me = state.profiles.find((p) => p.id === state.currentUserId);
   const posts = useMemo(
     () =>
@@ -251,14 +270,17 @@ export function Feed({ nav }: { nav: Nav }) {
       {posts.map((post) => (
         <PostCard key={post.id} post={post} nav={nav} />
       ))}
-      {hasMore.posts && (
+      {loadingSaved && (
+        <Text style={s.small}>Finding your saved conversations…</Text>
+      )}
+      {filter !== "saved" && hasMore.posts && (
         <Button
           secondary
           title="More from the community ↓"
           onPress={() => loadMore("posts")}
         />
       )}
-      {posts.length === 0 && (
+      {posts.length === 0 && !loadingSaved && (
         <Empty
           title="A little quiet here"
           body={
@@ -310,6 +332,7 @@ export function PostCard({
   const community = state.communities.find((c) => c.id === post.communityId);
   const votes = Object.values(post.votes).reduce((a, b) => a + b, 0);
   const saved = state.preferences.savedPostIds.includes(post.id);
+  const mine = post.authorId === state.currentUserId;
   return (
     <View style={s.card}>
       <View style={s.between}>
@@ -326,7 +349,10 @@ export function PostCard({
             <Text style={s.small}>l/{community?.slug || "community"}</Text>
           </View>
         </Touch>
-        <RelativeTime date={post.createdAt} />
+        <View style={{ alignItems: "flex-end" }}>
+          <RelativeTime date={post.editedAt || post.createdAt} />
+          {post.editedAt && <Text style={s.small}>edited</Text>}
+        </View>
       </View>
       <Touch
         label={post.title}
@@ -442,29 +468,53 @@ export function PostCard({
           <Touch
             label="More post actions"
             onPress={() =>
-              Alert.alert("This conversation", post.title, [
-                {
-                  text: "Share",
-                  onPress: () =>
-                    void Share.share({
-                      message: `${post.title}\n\nJoin the conversation on TheLoop: theloop://post/${post.id}`,
-                    }),
-                },
-                {
-                  text: "Report",
-                  onPress: () =>
-                    void nav.run(
+              mine
+                ? Alert.alert(
+                    "Your conversation",
+                    post.title,
+                    [
                       {
-                        type: "report.create",
-                        targetId: post.id,
-                        targetType: "post",
-                        reason: "Community guideline concern",
+                        text: "Edit post",
+                        onPress: () =>
+                          nav.open({ kind: "edit-post", id: post.id }),
                       },
-                      "Report sent to the moderation queue",
-                    ),
-                },
-                { text: "Cancel", style: "cancel" },
-              ])
+                      {
+                        text: "Delete post",
+                        style: "destructive",
+                        onPress: () => confirmPostDelete(post, nav),
+                      },
+                      { text: "Cancel", style: "cancel" },
+                    ],
+                    { cancelable: true },
+                  )
+                : Alert.alert(
+                    "This conversation",
+                    post.title,
+                    [
+                      {
+                        text: "Share",
+                        onPress: () =>
+                          void Share.share({
+                            message: `${post.title}\n\nJoin the conversation on TheLoop: theloop://post/${post.id}`,
+                          }),
+                      },
+                      {
+                        text: "Report",
+                        onPress: () =>
+                          void nav.run(
+                            {
+                              type: "report.create",
+                              targetId: post.id,
+                              targetType: "post",
+                              reason: "Community guideline concern",
+                            },
+                            "Report sent to the moderation queue",
+                          ),
+                      },
+                      { text: "Cancel", style: "cancel" },
+                    ],
+                    { cancelable: true },
+                  )
             }
             style={{ padding: 8 }}
           >
@@ -560,29 +610,41 @@ export function PostDetail({ id, nav }: { id: string; nav: Nav }) {
       contentContainerStyle={s.content}
     >
       <PostCard post={post} nav={nav} detail />
+      {post.authorId === state.currentUserId && (
+        <View style={s.row}>
+          <View style={s.grow}>
+            <Button
+              secondary
+              title="Edit post"
+              onPress={() => nav.open({ kind: "edit-post", id: post.id })}
+            />
+          </View>
+          <View style={s.grow}>
+            <Button
+              secondary
+              title="Delete post"
+              onPress={() => confirmPostDelete(post, nav)}
+            />
+          </View>
+        </View>
+      )}
+      <Button
+        secondary
+        title="Share conversation ↗"
+        onPress={() =>
+          void Share.share({
+            message: `${post.title}\n\ntheloop://post/${post.id}`,
+          })
+        }
+      />
       <Section
         title="The conversation"
-        subtitle={`${post.comments.length} replies`}
+        subtitle={`${post.comments.length} ${post.comments.length === 1 ? "reply" : "replies"}`}
       />
       {post.comments
         .filter((c) => !state.preferences.blockedIds.includes(c.authorId))
         .map((c) => (
-          <View key={c.id} style={[s.row, { alignItems: "flex-start" }]}>
-            <Avatar
-              profile={state.profiles.find((p) => p.id === c.authorId)}
-              size={32}
-            />
-            <View style={[s.grow, { gap: 4 }]}>
-              <View style={s.between}>
-                <Text style={s.h3}>
-                  {state.profiles.find((p) => p.id === c.authorId)?.name ||
-                    "Loop member"}
-                </Text>
-                <RelativeTime date={c.createdAt} />
-              </View>
-              <Text style={s.body}>{c.body}</Text>
-            </View>
-          </View>
+          <CommentItem key={c.id} comment={c} postId={post.id} nav={nav} />
         ))}
       {post.comments.length === 0 && (
         <Text style={s.small}>
@@ -609,6 +671,273 @@ export function PostDetail({ id, nav }: { id: string; nav: Nav }) {
         }}
       />
     </ScrollView>
+  );
+}
+
+function confirmPostDelete(post: Post, nav: Nav) {
+  Alert.alert(
+    "Delete your conversation?",
+    "Your post and its replies will be removed. This cannot be undone.",
+    [
+      { text: "Keep it", style: "cancel" },
+      {
+        text: "Delete post",
+        style: "destructive",
+        onPress: () =>
+          void nav
+            .run(
+              { type: "post.delete", postId: post.id },
+              "Your post was deleted",
+            )
+            .then((ok) => {
+              if (ok) nav.close();
+            }),
+      },
+    ],
+    { cancelable: true },
+  );
+}
+
+export function EditPost({ id, nav }: { id: string; nav: Nav }) {
+  const { state } = useLoop();
+  const post = state.posts.find((p) => p.id === id);
+  const [title, setTitle] = useState(post?.title || "");
+  const [body, setBody] = useState(post?.body || "");
+  const [tags, setTags] = useState(post?.tags.join(", ") || "");
+  const [url, setUrl] = useState(post?.url || "");
+  const [busy, setBusy] = useState(false);
+  if (!post || post.authorId !== state.currentUserId)
+    return (
+      <Empty
+        title="This edit belongs to its author"
+        body="You can edit your own posts. Report a concern on someone else's conversation."
+      />
+    );
+  return (
+    <ScrollView
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={s.content}
+    >
+      <Text style={s.title}>A little more{`\n`}of your perspective.</Text>
+      <Text style={s.body}>
+        Make it clearer, add context, or fix a detail. The conversation and its
+        replies stay together.
+      </Text>
+      <Field
+        label="Title"
+        value={title}
+        onChangeText={setTitle}
+        maxLength={160}
+      />
+      <Field label="Your post" value={body} onChangeText={setBody} multiline />
+      <Field
+        label="Tags · comma separated"
+        value={tags}
+        onChangeText={setTags}
+      />
+      <Field
+        label={
+          post.kind === "link"
+            ? "Website · required for a link post"
+            : "Website · optional"
+        }
+        value={url}
+        onChangeText={setUrl}
+        keyboardType="url"
+        placeholder="https://…"
+      />
+      <Text style={s.small}>
+        {post.poll
+          ? "Poll choices stay the same so every existing vote keeps its meaning."
+          : "Edits are marked on your post."}
+      </Text>
+      <Button
+        title={busy ? "Saving…" : "Save changes ↗"}
+        disabled={busy || !title.trim() || !body.trim()}
+        onPress={() => {
+          if (
+            (post.kind === "link" && !url.trim()) ||
+            (url.trim() && !safeURL(url.trim()))
+          ) {
+            nav.toast("Use a valid website address for this link.");
+            return;
+          }
+          setBusy(true);
+          void nav
+            .run(
+              {
+                type: "post.edit",
+                postId: id,
+                post: {
+                  title,
+                  body,
+                  tags: tags
+                    .split(",")
+                    .map((t) => t.trim())
+                    .filter(Boolean),
+                  url: url.trim(),
+                },
+              },
+              "Your post was updated",
+            )
+            .then((ok) => {
+              if (ok) nav.close();
+            })
+            .finally(() => setBusy(false));
+        }}
+      />
+      <Button secondary title="Cancel" onPress={nav.close} />
+    </ScrollView>
+  );
+}
+
+function CommentItem({
+  comment,
+  postId,
+  nav,
+}: {
+  comment: Comment;
+  postId: string;
+  nav: Nav;
+}) {
+  const { state } = useLoop();
+  const [editing, setEditing] = useState(false);
+  const [body, setBody] = useState(comment.body);
+  const [busy, setBusy] = useState(false);
+  const mine = comment.authorId === state.currentUserId;
+  const author = state.profiles.find((p) => p.id === comment.authorId);
+  return (
+    <View style={[s.row, { alignItems: "flex-start" }]}>
+      <Avatar profile={author} size={32} />
+      <View style={[s.grow, { gap: 7 }]}>
+        <View style={s.between}>
+          <Text style={[s.h3, { flex: 1 }]}>
+            {author?.name || "Loop member"}
+          </Text>
+          <View style={{ alignItems: "flex-end" }}>
+            <RelativeTime date={comment.editedAt || comment.createdAt} />
+            {comment.editedAt && <Text style={s.small}>edited</Text>}
+          </View>
+        </View>
+        {editing ? (
+          <>
+            <Field
+              label="Edit your reply"
+              value={body}
+              onChangeText={setBody}
+              multiline
+              maxLength={3000}
+            />
+            <View style={s.row}>
+              <Button
+                small
+                title={busy ? "Saving…" : "Save reply"}
+                disabled={busy || !body.trim()}
+                onPress={() => {
+                  setBusy(true);
+                  void nav
+                    .run(
+                      {
+                        type: "comment.edit",
+                        postId,
+                        commentId: comment.id,
+                        body,
+                      },
+                      "Reply updated",
+                    )
+                    .then((ok) => {
+                      if (ok) setEditing(false);
+                    })
+                    .finally(() => setBusy(false));
+                }}
+              />
+              <Button
+                small
+                secondary
+                title="Cancel"
+                onPress={() => {
+                  setEditing(false);
+                  setBody(comment.body);
+                }}
+              />
+            </View>
+          </>
+        ) : (
+          <>
+            <LinkifiedText text={comment.body} />
+            <View style={s.row}>
+              {mine ? (
+                <>
+                  <Touch
+                    label="Edit your reply"
+                    onPress={() => {
+                      setBody(comment.body);
+                      setEditing(true);
+                    }}
+                    style={{ paddingVertical: 9, paddingRight: 14 }}
+                  >
+                    <Text style={s.small}>Edit</Text>
+                  </Touch>
+                  <Touch
+                    label="Delete your reply"
+                    disabled={busy}
+                    onPress={() =>
+                      Alert.alert(
+                        "Delete your reply?",
+                        "This reply will be removed from the conversation.",
+                        [
+                          { text: "Keep it", style: "cancel" },
+                          {
+                            text: "Delete reply",
+                            style: "destructive",
+                            onPress: () => {
+                              setBusy(true);
+                              void nav
+                                .run(
+                                  {
+                                    type: "comment.delete",
+                                    postId,
+                                    commentId: comment.id,
+                                  },
+                                  "Your reply was deleted",
+                                )
+                                .finally(() => setBusy(false));
+                            },
+                          },
+                        ],
+                        { cancelable: true },
+                      )
+                    }
+                    style={{ paddingVertical: 9, paddingRight: 14 }}
+                  >
+                    <Text style={s.small}>Delete</Text>
+                  </Touch>
+                </>
+              ) : (
+                <Touch
+                  label="Report this reply"
+                  onPress={() =>
+                    void nav.run(
+                      {
+                        type: "report.create",
+                        targetId: comment.id,
+                        targetType: "comment",
+                        postId,
+                        reason: "Community guideline concern in this reply",
+                      },
+                      "Reply reported to moderators",
+                    )
+                  }
+                  style={{ paddingVertical: 9, paddingRight: 14 }}
+                >
+                  <Text style={s.small}>Report</Text>
+                </Touch>
+              )}
+            </View>
+          </>
+        )}
+      </View>
+    </View>
   );
 }
 

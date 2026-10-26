@@ -258,7 +258,7 @@ export function Chats({ nav }: { nav: Nav }) {
 }
 
 export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
-  const { state } = useLoop();
+  const { state, watchConversation, loadOlderMessages, history } = useLoop();
   const channel = state.channels.find((c) => c.id === id);
   const [topic, setTopic] = useState("all");
   const [newTopic, setNewTopic] = useState("");
@@ -275,8 +275,15 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
   const [showJump, setShowJump] = useState(false);
   const reducedMotion = useReducedMotion();
   useEffect(() => {
+    stickToBottom.current = true;
+    firstLayout.current = true;
+    setShowJump(false);
+    watchConversation(id, topic === "all" ? undefined : topic);
+    return () => watchConversation(null);
+  }, [id, topic, watchConversation]);
+  useEffect(() => {
     void nav.run({ type: "channel.read", channelId: id });
-  }, [id]);
+  }, [id, state.messages.length]);
   if (!channel)
     return (
       <Empty
@@ -472,6 +479,7 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
       </View>
       <ScrollView
         ref={scroll}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ padding: 20, gap: 24, paddingBottom: 35 }}
@@ -500,6 +508,29 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
             {channel.description}
           </Text>
         </View>
+        {history.hasMore && (
+          <Button
+            secondary
+            small
+            title={
+              history.loading
+                ? "Loading history…"
+                : "Earlier in this conversation ↑"
+            }
+            disabled={history.loading}
+            onPress={() => {
+              stickToBottom.current = false;
+              void loadOlderMessages().catch(() =>
+                nav.toast("Could not load earlier messages. Please try again."),
+              );
+            }}
+          />
+        )}
+        {history.loading && !history.hasMore && (
+          <Text style={[s.small, { textAlign: "center" }]}>
+            Opening the conversation…
+          </Text>
+        )}
         {messages.map((m, i) => {
           const author = state.profiles.find((p) => p.id === m.authorId);
           const mine = m.authorId === state.currentUserId;
@@ -552,21 +583,52 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
                           ...(mine
                             ? [
                                 {
-                                  text: "Edit",
-                                  onPress: () => {
-                                    setEditing(m);
-                                    setBody(m.body);
-                                    setReply(null);
-                                  },
-                                },
-                                {
-                                  text: "Delete",
-                                  style: "destructive" as const,
+                                  text: "Edit or delete",
                                   onPress: () =>
-                                    void nav.run({
-                                      type: "message.delete",
-                                      messageId: m.id,
-                                    }),
+                                    Alert.alert(
+                                      "Your message",
+                                      "Make a change or remove this message.",
+                                      [
+                                        {
+                                          text: "Edit",
+                                          onPress: () => {
+                                            setEditing(m);
+                                            setBody(m.body);
+                                            setReply(null);
+                                          },
+                                        },
+                                        {
+                                          text: "Delete",
+                                          style: "destructive",
+                                          onPress: () =>
+                                            Alert.alert(
+                                              "Delete your message?",
+                                              "This message will be removed from the room.",
+                                              [
+                                                {
+                                                  text: "Keep it",
+                                                  style: "cancel",
+                                                },
+                                                {
+                                                  text: "Delete message",
+                                                  style: "destructive",
+                                                  onPress: () =>
+                                                    void nav.run(
+                                                      {
+                                                        type: "message.delete",
+                                                        messageId: m.id,
+                                                      },
+                                                      "Message deleted",
+                                                    ),
+                                                },
+                                              ],
+                                              { cancelable: true },
+                                            ),
+                                        },
+                                        { text: "Cancel", style: "cancel" },
+                                      ],
+                                      { cancelable: true },
+                                    ),
                                 },
                               ]
                             : [

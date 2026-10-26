@@ -11,7 +11,7 @@ pnpm install
 pnpm mobile
 ```
 
-Use an installed SDK 58 development build for reliable device testing. Expo's [SDK 58 release notes](https://expo.dev/changelog/sdk-58) say the matching Expo Go store release follows the SDK release; use Expo Go only when your installed version supports SDK 58. The phone and development computer must be on the same network. If LAN discovery is blocked, start `pnpm --filter @theloop/mobile start --tunnel`. A tunnel requires Expo's tunnel dependency and an internet connection.
+Use an installed SDK 58 development build for reliable device testing. Expo's [SDK 58 Go installation page](https://expo.dev/go?platform=android&sdkVersion=58&device=true) links to the Android store release. Your Expo Go installation must support SDK 58; use an internal preview APK if it does not. The phone and development computer must be on the same network when using Metro. If LAN discovery is blocked, start `pnpm --filter @theloop/mobile start --tunnel`. A tunnel requires Expo's tunnel dependency and an internet connection.
 
 The app starts in **SAMPLE LOOP** mode when no Firebase API key is configured. All people, messages, reputation and events are fictional. Actions persist in AsyncStorage on the device. Reset sample data under **You** to start over. This lets the native interactions be tested immediately without creating accounts or touching production data.
 
@@ -27,7 +27,7 @@ npx eas-cli login
 npx eas-cli build --profile preview --platform android
 ```
 
-The preview profile produces an Android APK for internal testing. An iOS internal build requires an Apple developer account, registered devices and signing credentials. `npx eas-cli build --profile preview --platform ios` follows the interactive signing workflow. The repository does not contain signing credentials or an EAS project ID; EAS associates the project with the account you choose during setup.
+The preview profile produces an Android APK for internal testing. The project is registered as [`@keithazodeh/theloop-community`](https://expo.dev/accounts/keithazodeh/projects/theloop-community); `app.json` contains its public owner and project ID. Signing credentials remain in EAS and are not in the repository. The first Android preview built successfully on October 26, 2026; get current builds from the project dashboard. An iOS internal build requires an Apple developer account, registered devices and signing credentials. `npx eas-cli build --profile preview --platform ios` follows the interactive signing workflow.
 
 For a development build that connects to the local Metro server, use `npx eas-cli build --profile development --platform android` (or `ios`), install it, then run `pnpm --filter @theloop/mobile start --dev-client`. Configure the public Firebase environment variables in your selected EAS environment for a live cloud build; an ignored local `.env.local` is not automatically uploaded to EAS.
 
@@ -44,8 +44,8 @@ Native bundle export verifies module resolution for both platforms. It does not 
 
 ## Interaction checks
 
-1. Pick interests and rooms in onboarding. Browse Home, switch feed/community filters, vote, save, reply, post a win, and vote in a poll.
-2. Open Chat, choose a conference and room, then a topic. Follow, mute and hide independently. Create a topic, send a message, reply, react, edit and delete your own message. Explicit mutes must persist after reopening the app.
+1. Pick interests and rooms in onboarding. Refine your loop and deselect a followed room; it should become muted while existing hidden rooms stay hidden. Browse Home, switch feed/community filters, vote, save, reply, post a win, and vote in a poll. Edit your own post and reply, then remove them with the confirmation. Report another reply and verify it targets that reply only.
+2. Open Chat, choose a conference and room, then a topic. Follow, mute and hide independently. Create a topic, send a message, reply, react, edit and delete your own message. Explicit mutes must persist after reopening the app. In a live room with more than 100 messages, load earlier history; selecting a topic should retrieve its own history.
 3. In Events, compare global, conference and My plans scopes. Switch list/month views, choose a date, inspect a plan and RSVP. Fill a small event to test waitlisting, then cancel an RSVP to test promotion. Add an event through the OS calendar dialog and share it.
 4. In People, inspect shared-interest suggestions, send a request, accept an incoming request, follow, view social links, and start a private conversation. Block a member and confirm content disappears.
 5. Edit the professional profile, change profile visibility, inspect trust reasons, submit a live trust review request, change notification/DM preferences and quiet hours, and export personal information as a JSON file through the native share sheet. The export file is written inside the app's private cache and replaced by the next export.

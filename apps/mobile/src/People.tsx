@@ -37,9 +37,14 @@ import {
 import type { Nav } from "./navigation";
 
 export function People({ nav }: { nav: Nav }) {
-  const { state } = useLoop();
+  const { state, directory, setDirectoryQuery, loadMoreDirectory } = useLoop();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("For you");
+  useEffect(() => {
+    const timeout = setTimeout(() => setDirectoryQuery(search), 250);
+    return () => clearTimeout(timeout);
+  }, [search, setDirectoryQuery]);
+  useEffect(() => () => setDirectoryQuery(""), [setDirectoryQuery]);
   const requests = state.connections.filter(
     (c) =>
       c.toId === state.currentUserId &&
@@ -60,14 +65,16 @@ export function People({ nav }: { nav: Nav }) {
           ? state.profiles.filter((p) =>
               state.preferences.followingIds.includes(p.id),
             )
-          : suggestedConnections(state);
+          : search.trim()
+            ? directory.results
+            : suggestedConnections({ ...state, profiles: directory.results });
   people = people.filter(
     (p) =>
       p.id !== state.currentUserId &&
       !state.preferences.blockedIds.includes(p.id) &&
-      `${p.name} ${p.headline} ${p.location} ${p.skills.join(" ")}`
+      `${p.name} ${p.headline} ${p.company} ${p.location} ${p.skills.join(" ")}`
         .toLowerCase()
-        .includes(search.toLowerCase()),
+        .includes(search.trim().toLowerCase()),
   );
   return (
     <ScrollView contentContainerStyle={s.content}>
@@ -179,7 +186,18 @@ export function People({ nav }: { nav: Nav }) {
       {people.map((p) => (
         <PersonCard key={p.id} profile={p} nav={nav} />
       ))}
-      {people.length === 0 && (
+      {filter === "For you" && directory.loading && (
+        <Text style={s.small}>Finding your people…</Text>
+      )}
+      {filter === "For you" && directory.hasMore && (
+        <Button
+          secondary
+          title={directory.loading ? "Finding people…" : "Meet more people ↓"}
+          disabled={directory.loading}
+          onPress={loadMoreDirectory}
+        />
+      )}
+      {people.length === 0 && !(filter === "For you" && directory.loading) && (
         <Empty
           title="Give your circle room to grow"
           body={
@@ -281,13 +299,30 @@ export function PersonCard({
 }
 
 export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
-  const { state } = useLoop();
+  const { state, loadProfile } = useLoop();
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    void loadProfile(id)
+      .catch(() => nav.toast("Could not load this profile. Please try again."))
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [id, loadProfile]);
   const p = state.profiles.find((p) => p.id === id);
   if (!p)
     return (
       <Empty
-        title="Profile unavailable"
-        body="This member may have limited their profile visibility."
+        title={loading ? "Finding your connection…" : "Profile unavailable"}
+        body={
+          loading
+            ? "Their profile is on its way."
+            : "This member may have limited their profile visibility."
+        }
       />
     );
   const mine = id === state.currentUserId;
@@ -646,8 +681,45 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                   style={{ color: mine ? "#fff" : color.ink }}
                 />
               </View>
-              <View style={{ alignSelf: mine ? "flex-end" : "flex-start" }}>
+              <View
+                style={[
+                  s.row,
+                  { alignSelf: mine ? "flex-end" : "flex-start", gap: 12 },
+                ]}
+              >
                 <RelativeTime date={m.createdAt} />
+                {!mine && (
+                  <Touch
+                    label="Report this private message"
+                    style={{ paddingVertical: 8 }}
+                    onPress={() =>
+                      Alert.alert(
+                        "Report this private message?",
+                        "The reported message excerpt will be shared with moderators. The rest of this conversation stays private.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Send report",
+                            onPress: () =>
+                              void nav.run(
+                                {
+                                  type: "report.create",
+                                  targetType: "directMessage",
+                                  targetId: m.id,
+                                  reason:
+                                    "Safety concern in this private message",
+                                },
+                                "Private message reported",
+                              ),
+                          },
+                        ],
+                        { cancelable: true },
+                      )
+                    }
+                  >
+                    <Text style={[s.small, { fontSize: 10 }]}>Report</Text>
+                  </Touch>
+                )}
               </View>
             </View>
           );

@@ -1,7 +1,10 @@
 import type { Command } from "@theloop/core";
 export type Tab = "Home" | "Chat" | "Events" | "People" | "You";
 export type Route =
-  | { kind: "post" | "channel" | "event" | "profile" | "dm"; id: string }
+  | {
+      kind: "post" | "edit-post" | "channel" | "event" | "profile" | "dm";
+      id: string;
+    }
   | {
       kind:
         | "compose"
@@ -23,6 +26,7 @@ export type Route =
 export type Nav = {
   open: (route: Route) => void;
   close: () => void;
+  closeIfTop: (kind: Route["kind"]) => void;
   navigate: (tab: Tab) => void;
   run: (command: Command, success?: string) => Promise<boolean>;
   toast: (text: string) => void;
