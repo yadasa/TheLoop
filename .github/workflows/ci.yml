@@ -29,5 +29,22 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
-      - run: pnpm dlx firebase-tools emulators:exec --project demo-theloop --only firestore,auth "pnpm --filter @theloop/functions test:rules && pnpm --filter @theloop/client test:pagination"
+      - name: Firestore access and pagination rules
+        run: pnpm dlx firebase-tools@15.26.0 emulators:exec --project demo-theloop --only firestore,auth "pnpm --filter @theloop/functions test:rules && pnpm --filter @theloop/client test:pagination"
+      - name: Callable and private image integration
+        env:
+          FUNCTIONS_DISCOVERY_TIMEOUT: "120"
+          THELOOP_INTEGRATION: "1"
+          THELOOP_MEDIA_INTEGRATION: "1"
+          THELOOP_INTEGRATION_PROJECT_ID: demo-theloop-integration
+          THELOOP_INTEGRATION_FIRESTORE_HOST: 127.0.0.1:8080
+          THELOOP_INTEGRATION_AUTH_HOST: 127.0.0.1:9099
+          THELOOP_INTEGRATION_FUNCTIONS_HOST: 127.0.0.1:5001
+          THELOOP_INTEGRATION_STORAGE_HOST: 127.0.0.1:9199
+          THELOOP_STORAGE_BUCKET: demo-theloop-integration.firebasestorage.app
+        run: >-
+          pnpm dlx firebase-tools@15.26.0 emulators:exec
+          --config firebase.json --project demo-theloop-integration
+          --only auth,firestore,functions,storage
+          "node scripts/run-callable-integration.mjs"
       - run: pnpm --filter @theloop/mobile export:native

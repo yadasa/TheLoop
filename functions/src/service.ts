@@ -18,6 +18,7 @@ import {
 import { withContributors } from "./contributions";
 import { commandFields, editablePost } from "./authorControls";
 import { directoryFields } from "./directory.js";
+import { linkImage } from "./media";
 import {
   executeSquad,
   readableSquadMessage,
@@ -663,6 +664,14 @@ export async function execute(
       break;
     }
     case "message.send": {
+      commandFields(command, [
+        "type",
+        "channelId",
+        "topic",
+        "body",
+        "replyTo",
+        "imageId",
+      ]);
       const channel = await channelAccess(command.channelId);
       const body = text(command.body, "Message", 4000);
       const topic = text(command.topic, "Topic", 80);
@@ -696,6 +705,21 @@ export async function execute(
           channel.id,
           "reply",
         );
+      }
+      const image = await linkImage(
+        store,
+        actor.uid,
+        user,
+        command.imageId,
+        { kind: "channel", id: channel.id },
+        "messages",
+        entityId,
+        body,
+        now,
+      );
+      if (image) {
+        message.image = image;
+        savePreferences();
       }
       store.set(`messages/${entityId}`, message);
       // Sending a message deliberately does not subscribe a muted/hidden channel or topic.
@@ -769,6 +793,17 @@ export async function execute(
       break;
     }
     case "post.create": {
+      commandFields(command, [
+        "type",
+        "communityId",
+        "title",
+        "body",
+        "kind",
+        "tags",
+        "options",
+        "url",
+        "imageId",
+      ]);
       const community = await communityAccess(command.communityId);
       const kind = command.kind;
       assert(
@@ -807,6 +842,21 @@ export async function execute(
       if (command.url) post.url = httpsUrl(command.url);
       if (kind === "link")
         assert(post.url, "invalid-argument", "Add a link for this post.");
+      const image = await linkImage(
+        store,
+        actor.uid,
+        user,
+        command.imageId,
+        { kind: "community", id: post.communityId },
+        "posts",
+        entityId,
+        post.body,
+        now,
+      );
+      if (image) {
+        post.image = image;
+        savePreferences();
+      }
       store.set(`posts/${entityId}`, withContributors(post));
       break;
     }
@@ -820,6 +870,7 @@ export async function execute(
       );
       const { patch, removeUrl } = editablePost(command.post, post.kind);
       const updated: Doc = { ...post, ...patch, editedAt: now };
+      if (updated.image) text(updated.body, "Image caption", 10000);
       if (removeUrl) delete updated.url;
       assert(
         updated.kind !== "link" || updated.url,
@@ -1326,6 +1377,7 @@ export async function execute(
       break;
     }
     case "dm.send": {
+      commandFields(command, ["type", "userId", "body", "imageId"]);
       const peer = await requirePeer(command.userId);
       const connection = await store.get(
         `connections/${pairId(actor.uid, peer.userId)}`,
@@ -1336,6 +1388,18 @@ export async function execute(
         "This member only accepts messages according to their privacy settings.",
       );
       const body = text(command.body, "Message", 4000);
+      const image = await linkImage(
+        store,
+        actor.uid,
+        user,
+        command.imageId,
+        { kind: "directMessage", id: peer.userId },
+        "directMessages",
+        entityId,
+        body,
+        now,
+      );
+      if (image) savePreferences();
       store.set(`directMessages/${entityId}`, {
         id: entityId,
         fromId: actor.uid,
@@ -1346,6 +1410,7 @@ export async function execute(
         body,
         createdAt: now,
         read: false,
+        ...(image ? { image } : {}),
       });
       await notify(
         peer.userId,
@@ -1483,6 +1548,23 @@ export async function execute(
           ? { title: String(target.title || "").slice(0, 180) }
           : {}),
       };
+      if (target.image && !["profile", "comment"].includes(targetType)) {
+        const media = await store.get(`privateMedia/${id(target.image.id)}`);
+        const collection =
+          targetType === "message"
+            ? "messages"
+            : targetType === "directMessage"
+              ? "directMessages"
+              : targetType === "squadMessage"
+                ? "squadMessages"
+                : "posts";
+        if (
+          media?.state === "ready" &&
+          media.linkedCollection === collection &&
+          media.linkedId === targetId
+        )
+          Object.assign(snapshot, { image: media.image });
+      }
       store.set(`reports/${entityId}`, {
         id: entityId,
         reporterId: actor.uid,

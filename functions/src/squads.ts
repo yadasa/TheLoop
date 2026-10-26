@@ -11,6 +11,7 @@ import {
 } from "./policy";
 import { commandFields } from "./authorControls";
 import type { Actor, TransactionStore } from "./service";
+import { linkImage } from "./media";
 
 export const SQUAD_CAPACITY = 12;
 export const SQUAD_MEMBERSHIPS = 50;
@@ -597,7 +598,7 @@ export async function executeSquad(
       );
       if (command.muted) preferences.squadMutedIds.push(squad.id);
     } else if (type === "squad.message.send") {
-      commandFields(command, ["type", "squadId", "body", "replyTo"]);
+      commandFields(command, ["type", "squadId", "body", "replyTo", "imageId"]);
       let audienceIds = await context.audience(squad, preferences);
       if (command.replyTo) {
         const reply = await store.get(`squadMessages/${id(command.replyTo)}`);
@@ -623,6 +624,18 @@ export async function executeSquad(
         reactions: {},
         ...(command.replyTo ? { replyTo: id(command.replyTo) } : {}),
       };
+      const image = await linkImage(
+        store,
+        actor.uid,
+        user,
+        command.imageId,
+        { kind: "squad", id: squad.id },
+        "squadMessages",
+        requestId,
+        message.body,
+        now,
+      );
+      if (image) message.image = image;
       store.set(`squadMessages/${requestId}`, message);
       for (const uid of audienceIds.filter((uid) => uid !== actor.uid)) {
         if (
@@ -667,20 +680,12 @@ export async function expireSquadInvitation(
   )
     return;
   const squad = await store.get(`squads/${invite.squadId}`);
-  if (!squad) {
-    store.set(`squadInvites/${invite.id}`, {
-      ...invite,
-      status: "expired",
-      respondedAt: now,
-    });
-    return;
-  }
   const user = await store.get(`users/${invite.toId}`);
   const context = new SquadTransaction(store, invite.toId, user || {}, now);
-  await context.settle(squad, invite, "expired");
+  await context.settle(squad || { pendingInviteeIds: [] }, invite, "expired");
   if (user)
     store.set(`users/${invite.toId}`, { ...context.user, updatedAt: now });
-  store.set(`squads/${squad.id}`, { ...squad, updatedAt: now });
+  if (squad) store.set(`squads/${squad.id}`, { ...squad, updatedAt: now });
 }
 
 export async function revokeDeletedSquadInvitation(
@@ -694,12 +699,12 @@ export async function revokeDeletedSquadInvitation(
     store.get(`squads/${invite.squadId}`),
     store.get(`users/${invite.toId}`),
   ]);
-  if (squad && invite.status === "pending") {
+  if (invite.status === "pending") {
     const context = new SquadTransaction(store, invite.toId, user || {}, now);
-    await context.settle(squad, invite, "revoked");
+    await context.settle(squad || { pendingInviteeIds: [] }, invite, "revoked");
     if (user)
       store.set(`users/${invite.toId}`, { ...context.user, updatedAt: now });
-    store.set(`squads/${squad.id}`, { ...squad, updatedAt: now });
+    if (squad) store.set(`squads/${squad.id}`, { ...squad, updatedAt: now });
   }
   store.remove(`squadInvites/${inviteId}`);
 }

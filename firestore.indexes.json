@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "privateMedia",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "unlinked", "order": "ASCENDING" },
+        { "fieldPath": "expiresAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "squads",
       "queryScope": "COLLECTION",
       "fields": [

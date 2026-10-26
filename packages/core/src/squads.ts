@@ -6,6 +6,7 @@ import type {
   SquadMessage,
 } from "./types";
 import { connected } from "./selectors";
+import {bindPreviewImage} from './previewImages';
 type SquadCommand = Extract<Command, { type: `squad.${string}` }>;
 const text = (value: string, max: number, required = true) => {
   if (
@@ -322,6 +323,7 @@ export function applySquadCommand(
           (id) => !s.preferences.blockedIds.includes(id),
         ),
         reactions: {},
+          ...(cmd.imageId!==undefined?{image:bindPreviewImage(s,cmd.imageId,{kind:'squad',id:value.id},{kind:'squadMessage',id:ctx.id},ctx.now)}:{}),
         ...(cmd.replyTo ? { replyTo: cmd.replyTo } : {}),
       };
       s.squadMessages.push(m);

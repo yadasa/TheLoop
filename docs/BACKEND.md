@@ -31,15 +31,17 @@ pnpm test:rules
 
 Region: `us-central1`. Every callable requires Firebase Authentication. `bootstrap` runs after sign-in and before listeners begin. Authentication identity comes from the verified callable context, never a client-supplied user ID.
 
-| Function            | Input                      | Result                                                                                         |
-| ------------------- | -------------------------- | ---------------------------------------------------------------------------------------------- |
-| `bootstrap`         | `{name?: string}`          | `{userId, preferences, role}`; creates only the signed-in member's empty profile               |
-| `executeCommand`    | `{requestId, command}`     | `{ok:true,id,...}`; duplicate retries return `duplicate:true`                                  |
-| `getTrust`          | `{userId?: string}`        | Authoritative trust score, reasons, verification flag, explanation                             |
-| `appealTrust`       | `{reason}`                 | Opens one private appeal per member per UTC day                                                |
-| `registerPushToken` | `{token,platform,remove?}` | Registers/removes the signed-in member's Expo token; at most 10 devices                        |
-| `exportAccount`     | `{collection?,cursor?}`    | Own profile/preferences or a page of at most 100 own records with `nextCursor`                 |
-| `deleteAccount`     | `{confirmation:'DELETE'}`  | Starts an idempotent deletion worker; requires authentication within the previous five minutes |
+| Function            | Input                                   | Result                                                                                                 |
+| ------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `bootstrap`         | `{name?: string}`                       | `{userId, preferences, role}`; creates only the signed-in member's empty profile                       |
+| `executeCommand`    | `{requestId, command}`                  | `{ok:true,id,...}`; duplicate retries return `duplicate:true`                                          |
+| `getTrust`          | `{userId?: string}`                     | Authoritative trust score, reasons, verification flag, explanation                                     |
+| `appealTrust`       | `{reason}`                              | Opens one private appeal per member per UTC day                                                        |
+| `registerPushToken` | `{token,platform,remove?}`              | Registers/removes the signed-in member's Expo token; at most 10 devices                                |
+| `exportAccount`     | `{collection?,cursor?}`                 | Own profile/preferences or a page of at most 100 own records with `nextCursor`                         |
+| `deleteAccount`     | `{confirmation:'DELETE'}`               | Starts an idempotent deletion worker; requires authentication within the previous five minutes         |
+| `uploadMedia`       | `{target,contentType,base64,requestId}` | Re-encodes one private still image; returns `{image}` with server-owned metadata                       |
+| `getMedia`          | `{mediaId,reportId?}`                   | Returns `{image,base64}` only while the linked content is readable, or for its exact moderation report |
 
 `requestId` is a fresh UUID (letters, digits, `_` and `-` only) per **logical action**, retained for retries of that same action. Receipts are per user, with an expiry timestamp seven days later. Automatic Firestore TTL cleanup is enabled only after billing approval; the Spark deployment excludes TTL. Changing the payload with the same ID returns the original result rather than executing twice. Limits are 45 successful commands per minute and 2,000 per UTC day per member. Rejected commands do not mutate data or consume successful-operation quota.
 
@@ -116,7 +118,21 @@ Account export is paginated: request the collection names returned by the initia
 
 Account deletion disables authentication, deletes authored messages/posts and private edges, removes private memberships, follows/blocks/access grants, corrects membership and accepted-connection signals, releases RSVP capacity to the waitlist, scrubs embedded post comments/votes/polls and message reactions, anonymizes hosted events/community/channel ownership, removes the user's private document tree/profile/trust data, and deletes Firebase Auth. Mutable shared arrays are reread and changed in transactions so cleanup cannot overwrite another member's concurrent activity. A small completed deletion-job marker retains the UID and completion timestamp for operational idempotency; no content is retained there. Audit external integrations separately before enabling them.
 
-Untrusted file uploads remain disabled in `storage.rules` until malware scanning, upload completion checks, image metadata stripping and retention policies are provisioned. HTTPS link sharing works without an upload bucket.
+## Private images
+
+The image pipeline accepts JPEG, PNG and WebP still images up to 5 MiB. `uploadMedia` takes a target `{kind:'channel'|'squad'|'directMessage'|'community',id}`, a matching MIME type, canonical base64 without a data-URL prefix, and a stable request ID. Authorization and upload quotas run before pixel decoding. Raw bytes stay in function memory and are never stored or logged. Requests use 512 MiB, concurrency one and at most three instances.
+
+Sharp checks signatures, decodes with strict warnings, rejects animations and images above 12 million input pixels, rotates pixels, resizes to at most 2,048 pixels per side, and fully re-encodes to a WebP of at most 1 MiB. EXIF/ICC and trailing input payloads are not copied. This is a restricted image transformation pipeline, not an antivirus or content-safety certification. Other file types remain unsupported. [Sharp input safety options](https://sharp.pixelplumbing.com/api-constructor/).
+
+All direct Storage reads/writes remain denied. Only Admin saves the sanitized output without Firebase download-token metadata. Firebase client upload endpoints are intentionally unused. `privateMedia` metadata is server-only. A UID/request-ID/hash claim makes identical retries return the original image and rejects a changed payload under the same request ID; a newer processing claim prevents a stale encoder from finalizing it. There are at most five outstanding images per member, 10 upload attempts per minute and 100 per UTC day.
+
+Send commands accept only `imageId`, never user-supplied image metadata or URLs. The server atomically checks the ready image's owner, exact destination, one-use link and one-hour expiry, then attaches bounded metadata to a channel/Squad/DM message or community post. A nonempty caption is required. Local picker bytes can provide an unsent preview; unlinked server images cannot be retrieved through `getMedia`.
+
+`getMedia` rechecks the linked source and its current access: channel membership, Squad membership plus captured audience, DM participants, or an active account for public posts. The source must still carry that image ID. Moderators may pass only a report ID whose verified snapshot contains that exact linked image; their role does not open other private images. Source deletion denies retrieval immediately, including moderation retrieval. A response carries WebP base64 and dimensions, never a persistent download URL. Client caches must clear on authentication, selection, membership and block changes. Viewing is limited to 120 requests/30 MiB per minute and 10,000 requests/500 MiB per UTC day per member.
+
+`cleanupPrivateMedia` runs every five minutes, prioritizing expired unlinked/failed uploads in bounded pages, then sweeping linked sources with a persisted cursor. Unlinked ready images expire after one hour; missing source records trigger deletion. Cleanup claims the metadata before deleting only that owner's image namespace. Account deletion removes owned images; an encoder still in flight keeps a short inaccessible cleanup tombstone until its three-minute claim expires, so late output is swept again. All operations are retry safe. Account exports retain image metadata in the member's authored records; image retrieval still requires current source authorization.
+
+The standalone local Storage fixture uses `firebase.media-test.json` and port 9198. Start it only with project `demo-theloop-integration`; start Auth/Functions with the same project, `FIREBASE_STORAGE_EMULATOR_HOST=127.0.0.1:9198` and bucket `demo-theloop-integration.firebasestorage.app`. With Firestore on 53991, Auth on 9098 and Functions on 5019, run `THELOOP_MEDIA_INTEGRATION=1 pnpm --filter @theloop/functions test:media:integration`. The suite refuses non-loopback endpoints and cleans only its disposable UID/ID namespaces. Ordinary callable integration separately uses `THELOOP_INTEGRATION=1` and `test:integration`. Windows cold starts can use `FUNCTIONS_DISCOVERY_TIMEOUT=120`. Production image Functions/Storage remain undeployed until billing is authorized.
 
 ## Production provisioning
 

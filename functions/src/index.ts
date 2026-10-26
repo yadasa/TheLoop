@@ -1,5 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getStorage } from "firebase-admin/storage";
+import { randomUUID } from "node:crypto";
 import {
   DocumentReference,
   FieldPath,
@@ -37,6 +39,15 @@ import {
   expireSquadInvitation,
   revokeDeletedSquadInvitation,
 } from "./squads";
+import {
+  authorizeMediaRead,
+  claimMediaUpload,
+  finishMedia,
+  MAX_IMAGE_BYTES,
+  mediaNeedsCleanup,
+  mediaUploadInput,
+} from "./media";
+import { sanitizeImage } from "./imageCodec";
 
 export { sendCommunityDigests, sendEventReminders } from "./workers";
 
@@ -117,6 +128,250 @@ async function transaction<T>(
     return result;
   });
 }
+
+function mediaBucket() {
+  const project =
+    process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || "";
+  assert(
+    !project.startsWith("demo-") ||
+      Boolean(process.env.FIREBASE_STORAGE_EMULATOR_HOST),
+    "failed-precondition",
+    "The local image storage emulator is not connected.",
+  );
+  let configuredBucket: string | undefined;
+  try {
+    configuredBucket = JSON.parse(
+      process.env.FIREBASE_CONFIG || "{}",
+    ).storageBucket;
+  } catch {
+    /* A path-based Firebase config can use the explicit bucket setting. */
+  }
+  return getStorage().bucket(
+    process.env.THELOOP_STORAGE_BUCKET ||
+      configuredBucket ||
+      `${project}.firebasestorage.app`,
+  );
+}
+
+export const uploadMedia = onCall(
+  {
+    ...callableOptions,
+    memory: "512MiB",
+    timeoutSeconds: 120,
+    concurrency: 1,
+    maxInstances: 3,
+    cpu: 1,
+  },
+  async (request) => {
+    const identity = actor(request);
+    let claim: Doc | undefined,
+      outputPath: string | undefined,
+      finished = false,
+      bucket: ReturnType<typeof mediaBucket> | undefined;
+    const claimId = randomUUID();
+    try {
+      const input = mediaUploadInput(request.data);
+      bucket = mediaBucket();
+      claim = await transaction((store) =>
+        claimMediaUpload(
+          store,
+          identity.uid,
+          input,
+          claimId,
+          new Date().toISOString(),
+        ),
+      );
+      if (claim.complete) return { image: claim.image, duplicate: true };
+      const bytes = Buffer.from(input.base64, "base64");
+      assert(
+        bytes.length === input.sourceSize &&
+          bytes.toString("base64") === input.base64,
+        "invalid-argument",
+        "Use canonical base64 image bytes without a data URL prefix.",
+      );
+      const sanitized = await sanitizeImage(bytes, input.contentType, claim.id);
+      outputPath = `sanitized/${identity.uid}/${claim.id}/${claimId}.webp`;
+      await bucket.file(outputPath).save(sanitized.bytes, {
+        resumable: false,
+        preconditionOpts: { ifGenerationMatch: 0 },
+        metadata: {
+          contentType: "image/webp",
+          cacheControl: "private, no-store",
+          metadata: { theloopMediaId: claim.id },
+        },
+      });
+      finished = await transaction((store) =>
+        finishMedia(
+          store,
+          identity.uid,
+          claim!.id,
+          claimId,
+          new Date().toISOString(),
+          { image: sanitized.image, sanitizedPath: outputPath! },
+        ),
+      );
+      assert(
+        finished,
+        "failed-precondition",
+        "This image processing request expired. Please try again.",
+      );
+      return { image: sanitized.image };
+    } catch (error) {
+      if (claim && !claim.complete && !finished) {
+        if (outputPath && bucket)
+          await bucket
+            .file(outputPath)
+            .delete({ ignoreNotFound: true })
+            .catch(() => undefined);
+        await transaction((store) =>
+          finishMedia(
+            store,
+            identity.uid,
+            claim!.id,
+            claimId,
+            new Date().toISOString(),
+          ),
+        ).catch(() => undefined);
+      }
+      return domainError(error);
+    }
+  },
+);
+
+export const getMedia = onCall(
+  {
+    ...callableOptions,
+    memory: "256MiB",
+    timeoutSeconds: 30,
+    concurrency: 10,
+    maxInstances: 3,
+  },
+  async (request) => {
+    const identity = actor(request);
+    try {
+      assert(
+        request.data &&
+          typeof request.data === "object" &&
+          Object.keys(request.data).every((key) =>
+            ["mediaId", "reportId"].includes(key),
+          ),
+        "invalid-argument",
+        "Provide an image ID and optional moderation report.",
+      );
+      const media = await transaction((store) =>
+        authorizeMediaRead(
+          store,
+          identity.uid,
+          request.data.mediaId,
+          new Date().toISOString(),
+          request.data.reportId,
+        ),
+      );
+      const [bytes] = await mediaBucket().file(media.sanitizedPath).download();
+      assert(
+        bytes.length === media.image.size && bytes.length <= MAX_IMAGE_BYTES,
+        "not-found",
+        "This image is no longer available.",
+      );
+      return { image: media.image, base64: bytes.toString("base64") };
+    } catch (error) {
+      if ((error as Doc)?.code === 404)
+        return domainError(
+          new DomainError("not-found", "This image is no longer available."),
+        );
+      return domainError(error);
+    }
+  },
+);
+
+async function removePrivateMedia(
+  mediaId: string,
+  now: string,
+  forceOwner?: string,
+): Promise<void> {
+  const media = await transaction(async (store) => {
+    const current = await store.get(`privateMedia/${mediaId}`);
+    if (!current || (forceOwner && current.ownerId !== forceOwner)) return;
+    const source = [
+      "messages",
+      "posts",
+      "squadMessages",
+      "directMessages",
+    ].includes(current.linkedCollection)
+      ? await store.get(`${current.linkedCollection}/${id(current.linkedId)}`)
+      : undefined;
+    if (!forceOwner && !mediaNeedsCleanup(current, source, now)) return;
+    const user = await store.get(`users/${current.ownerId}`);
+    if (user) {
+      const intents = { ...user.mediaIntents };
+      delete intents[mediaId];
+      store.set(`users/${current.ownerId}`, { ...user, mediaIntents: intents });
+    }
+    const deferred =
+      current.deferCleanupUntil ||
+      (current.state === "processing" &&
+      Date.parse(current.claimUntil) > Date.parse(now)
+        ? current.claimUntil
+        : undefined);
+    const marked: Doc = {
+      ...current,
+      state: "deleting",
+      ...(deferred ? { deferCleanupUntil: deferred } : {}),
+    };
+    store.set(`privateMedia/${mediaId}`, marked);
+    return marked;
+  });
+  if (!media) return;
+  // Only this server's bounded owner/image namespace can be deleted; retries also clear
+  // a sanitized object left by a terminated processing attempt.
+  const prefix = `sanitized/${id(media.ownerId)}/${id(media.id)}/`;
+  await mediaBucket().deleteFiles({ prefix, force: true });
+  // An account may be deleted while its isolated encoder is still running. Retain a
+  // short tombstone until that claim expires so a late output is swept again.
+  if (Date.parse(media.deferCleanupUntil || "") > Date.parse(now)) return;
+  await transaction(async (store) => {
+    const current = await store.get(`privateMedia/${mediaId}`);
+    if (current?.state === "deleting") store.remove(`privateMedia/${mediaId}`);
+  });
+}
+
+export const cleanupPrivateMedia = onSchedule(
+  {
+    schedule: "every 5 minutes",
+    timeZone: "UTC",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+    maxInstances: 1,
+  },
+  async () => {
+    const now = new Date().toISOString();
+    for (let page = 0; page < 5; page++) {
+      const expired = await db
+        .collection("privateMedia")
+        .where("unlinked", "==", true)
+        .where("expiresAt", "<=", now)
+        .orderBy("expiresAt")
+        .limit(100)
+        .get();
+      if (expired.empty) break;
+      for (const media of expired.docs) await removePrivateMedia(media.id, now);
+      if (expired.size < 100) break;
+    }
+    const checkpoint = db.doc("system/mediaCleanup"),
+      cursor = (await checkpoint.get()).get("cursor");
+    let query = db
+      .collection("privateMedia")
+      .orderBy(FieldPath.documentId())
+      .limit(100);
+    if (cursor) query = query.startAfter(cursor);
+    const page = await query.get();
+    for (const media of page.docs) await removePrivateMedia(media.id, now);
+    await checkpoint.set({
+      cursor: page.size === 100 ? page.docs.at(-1)!.id : null,
+      updatedAt: now,
+    });
+  },
+);
 
 export const expireSquadInvites = onSchedule(
   {
@@ -540,6 +795,20 @@ export const processAccountDeletion = onDocumentCreated(
         if (error.code !== "auth/user-not-found") throw error;
       });
     const deletionTime = new Date().toISOString();
+    let mediaCursor: string | undefined;
+    for (;;) {
+      let query = db
+        .collection("privateMedia")
+        .where("ownerId", "==", uid)
+        .orderBy(FieldPath.documentId())
+        .limit(100);
+      if (mediaCursor) query = query.startAfter(mediaCursor);
+      const page = await query.get();
+      if (page.empty) break;
+      for (const media of page.docs)
+        await removePrivateMedia(media.id, deletionTime, uid);
+      mediaCursor = page.docs.at(-1)!.id;
+    }
     for (;;) {
       const page = await db
         .collection("squads")

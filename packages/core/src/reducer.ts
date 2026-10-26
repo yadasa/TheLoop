@@ -1,6 +1,7 @@
 import type { Command, CommandContext, LoopState } from "./types";
 import { connected, safeURL } from "./selectors";
 import {applySquadCommand} from './squads';
+import {bindPreviewImage,prunePreviewImages} from './previewImages';
 const clean = (v: string, max: number, required = true) => {
   const value = v.trim();
   if ((required && !value) || value.length > max)
@@ -26,7 +27,7 @@ export function applyCommand(
     if (!p) throw new Error("This post is no longer available.");
     return p;
   };
-  if(cmd.type.startsWith('squad.')){applySquadCommand(s,cmd as Extract<Command,{type:`squad.${string}`}>,ctx);return s;}
+  if(cmd.type.startsWith('squad.')){applySquadCommand(s,cmd as Extract<Command,{type:`squad.${string}`}>,ctx);prunePreviewImages(s,ctx.now);return s;}
   switch (cmd.type) {
     case "topic.create": {
       const channel = s.channels.find((c) => c.id === cmd.channelId);
@@ -111,6 +112,7 @@ export function applyCommand(
         body: clean(cmd.body, 4000),
         createdAt: ctx.now,
         reactions: {},
+        ...(cmd.imageId!==undefined?{image:bindPreviewImage(s,cmd.imageId,{kind:'channel',id:cmd.channelId},{kind:'message',id:ctx.id},ctx.now)}:{}),
         ...(cmd.replyTo ? { replyTo: cmd.replyTo } : {}),
       });
       break;
@@ -170,6 +172,7 @@ export function applyCommand(
         votes: {},
         comments: [],
         tags: (cmd.tags ?? []).slice(0, 5),
+        ...(cmd.imageId!==undefined?{image:bindPreviewImage(s,cmd.imageId,{kind:'community',id:cmd.communityId},{kind:'post',id:ctx.id},ctx.now)}:{}),
         ...(cmd.url ? { url: cmd.url } : {}),
         ...(cmd.kind === "poll"
           ? {
@@ -401,6 +404,7 @@ export function applyCommand(
         body: clean(cmd.body, 4000),
         createdAt: ctx.now,
         read: false,
+        ...(cmd.imageId!==undefined?{image:bindPreviewImage(s,cmd.imageId,{kind:'directMessage',id:cmd.userId},{kind:'directMessage',id:ctx.id},ctx.now)}:{}),
       });
       break;
     case "dm.read":
@@ -462,7 +466,7 @@ export function applyCommand(
         reason: clean(cmd.reason, 1500),
         createdAt: ctx.now,
         status: "open",
-          snapshot:{body:body.slice(0,2000),authorId,capturedAt:ctx.now,...('title' in target&&typeof target.title==='string'?{title:target.title}: {})},
+          snapshot:{body:body.slice(0,2000),authorId,capturedAt:ctx.now,...('title' in target&&typeof target.title==='string'?{title:target.title}: {}),...('image' in target&&target.image?{image:target.image}:{})},
       });
       break;
     }
@@ -471,6 +475,7 @@ export function applyCommand(
         "This moderation action is available in the connected live app.",
       );
   }
+  prunePreviewImages(s,ctx.now);
   s.profiles.forEach((p) => {
     p.followerCount = s.follows.filter((f) => f.followingId === p.id).length;
     p.followingCount = s.follows.filter((f) => f.followerId === p.id).length;

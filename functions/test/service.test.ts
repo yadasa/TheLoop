@@ -583,15 +583,19 @@ test("post mutation handlers maintain the contributor query index without accept
   const db = await database();
   for (const uid of ["alice", "bob"])
     await db.command(uid, { type: "community.join", communityId: "builders" });
-  const created = await db.command("alice", {
+  const payload = {
     type: "post.create",
     communityId: "builders",
     title: "A useful poll",
     body: "",
     kind: "poll",
     options: ["Coffee", "Dinner"],
-    contributorIds: ["forged"],
-  });
+  };
+  await assert.rejects(
+    () => db.command("alice", { ...payload, contributorIds: ["forged"] }),
+    /cannot be changed/,
+  );
+  const created = await db.command("alice", payload);
   assert.deepEqual(db.get(`posts/${created.id}`).contributorIds, []);
   await db.command("bob", { type: "post.vote", postId: created.id, value: 1 });
   assert.deepEqual(db.get(`posts/${created.id}`).contributorIds, ["bob"]);

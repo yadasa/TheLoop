@@ -615,3 +615,26 @@ test("new owners and global moderators gain no automatic private history or repo
   });
   assert.equal(db.get(`squadMessages/${message}`), undefined);
 });
+
+test("orphan invitation expiry and deletion still release the recipient's private inbox reservation", async () => {
+  for (const cleanup of ["expire", "delete"]) {
+    const db = await fixture();
+    const squad = (
+      await db.command("alice", {
+        type: "squad.create",
+        name: "Orphan fixture",
+        inviteeIds: ["bob"],
+      })
+    ).id;
+    const inviteId = squadInviteId(squad, "bob");
+    db.docs.delete(`squads/${squad}`);
+    db.now = "2026-11-03T12:00:00.000Z";
+    await db.tx((store) =>
+      cleanup === "expire"
+        ? expireSquadInvitation(store, inviteId, db.now)
+        : revokeDeletedSquadInvitation(store, inviteId, db.now),
+    );
+    assert.equal(db.get("users/bob").pendingSquadInvites[inviteId], undefined);
+    assert.equal(db.get(`squads/${squad}`), undefined);
+  }
+});

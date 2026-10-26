@@ -1,8 +1,8 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Uploads remain disabled until the attachment scanner and retention worker are provisioned.
-    // Link sharing and text chat work without giving untrusted files a public hosting route.
+    // Authenticated uploadMedia fully decodes and re-encodes still images in memory.
+    // Only Admin writes sanitized output; no Firebase download tokens or client object access.
     match /{allPaths=**} { allow read, write: if false; }
   }
 }

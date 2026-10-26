@@ -35,6 +35,14 @@
     },
     "plugins": [
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose an image to share with your people.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
