@@ -12,7 +12,11 @@ async function createNoticeOnce(
     const ref = db.doc(`notifications/${notificationId}`);
     const existing = await tx.get(ref);
     if (existing.exists) return false;
-    tx.create(ref, { id: notificationId, ...notice });
+    tx.create(ref, {
+      id: notificationId,
+      ...notice,
+      unreadUserId: notice.userId,
+    });
     return true;
   });
 }

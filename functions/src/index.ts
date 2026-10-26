@@ -1,6 +1,11 @@
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { FieldPath, getFirestore, Transaction } from "firebase-admin/firestore";
+import {
+  DocumentReference,
+  FieldPath,
+  getFirestore,
+  Transaction,
+} from "firebase-admin/firestore";
 import { setGlobalOptions } from "firebase-functions/v2";
 import {
   CallableRequest,
@@ -24,6 +29,7 @@ import {
   text,
 } from "./policy";
 import { inQuietHours } from "./notifications";
+import { scrubCommunityOwner, scrubPost, scrubReactions } from "./cleanup";
 
 export { sendCommunityDigests, sendEventReminders } from "./workers";
 
@@ -152,22 +158,51 @@ export const getTrust = onCall(callableOptions, async (request) => {
   const identity = actor(request);
   try {
     const targetId = id(request.data?.userId || identity.uid);
-    const [profile, connection] = await Promise.all([
-      db.doc(`profiles/${targetId}`).get(),
-      db.doc(`connections/${pairId(identity.uid, targetId)}`).get(),
-    ]);
-    assert(profile.exists, "not-found", "Member not found.");
-    assert(
-      targetId === identity.uid ||
-        profile.get("visibility") === "public" ||
-        connection.get("status") === "accepted",
-      "permission-denied",
-      "This profile is visible to connections only.",
-    );
+    const snapshot = await db.runTransaction(async (tx) => {
+      const [profile, signals, connection, privateUser] = await Promise.all([
+        tx.get(db.doc(`profiles/${targetId}`)),
+        tx.get(db.doc(`trustSignals/${targetId}`)),
+        tx.get(db.doc(`connections/${pairId(identity.uid, targetId)}`)),
+        tx.get(db.doc(`users/${identity.uid}`)),
+      ]);
+      assert(
+        privateUser.exists &&
+          !privateUser.get("disabled") &&
+          !privateUser.get("deletionPending"),
+        "permission-denied",
+        "This account is unavailable.",
+      );
+      assert(profile.exists, "not-found", "Member not found.");
+      assert(
+        targetId === identity.uid ||
+          profile.get("visibility") === "public" ||
+          connection.get("status") === "accepted",
+        "permission-denied",
+        "This profile is visible to connections only.",
+      );
+      const serverSignals = {
+        ...signals.data(),
+        ...(targetId === identity.uid
+          ? { emailVerified: identity.emailVerified }
+          : {}),
+      };
+      const trust = calculateTrust(
+        profile.data()!,
+        serverSignals,
+        new Date().toISOString(),
+      );
+      if (JSON.stringify(profile.get("trust")) !== JSON.stringify(trust))
+        tx.update(profile.ref, { trust });
+      if (
+        targetId === identity.uid &&
+        signals.get("emailVerified") !== identity.emailVerified
+      )
+        tx.set(signals.ref, serverSignals);
+      return { trust, verified: profile.get("verified") === true };
+    });
     return {
       userId: targetId,
-      trust: profile.get("trust"),
-      verified: profile.get("verified") === true,
+      ...snapshot,
       explanation:
         "Trust reflects account history and verifiable community signals. It is not a background check, professional credential, identity guarantee, or ranking of personal worth. Reports never reduce trust before moderator review.",
       appealAvailable: targetId === identity.uid,
@@ -310,6 +345,7 @@ export const exportAccount = onCall(callableOptions, async (request) => {
       posts: { field: "authorId", operator: "==" },
       events: { field: "attendeeIds", operator: "array-contains" },
       connections: { field: "participantIds", operator: "array-contains" },
+      follows: { field: "participantIds", operator: "array-contains" },
       directMessages: { field: "participantIds", operator: "array-contains" },
       notifications: { field: "userId", operator: "==" },
       reports: { field: "reporterId", operator: "==" },
@@ -402,14 +438,33 @@ async function mutateMatching(
       .limit(200)
       .get();
     if (matches.empty) return;
-    const batch = db.batch();
-    for (const doc of matches.docs) {
-      if (update) batch.set(doc.ref, update(doc.data()));
-      else batch.delete(doc.ref);
+    if (update) {
+      for (const doc of matches.docs)
+        await db.runTransaction(async (tx) => {
+          const current = await tx.get(doc.ref);
+          if (!current.exists) return;
+          const value = current.get(field);
+          if (operator === "==" ? value !== uid : !value?.includes(uid)) return;
+          tx.set(doc.ref, update(current.data()!));
+        });
+    } else {
+      const batch = db.batch();
+      for (const doc of matches.docs) batch.delete(doc.ref);
+      await batch.commit();
     }
-    await batch.commit();
     // Update callbacks remove the queried UID, allowing the next bounded page to advance.
   }
+}
+async function patchLatest(
+  ref: DocumentReference,
+  transform: (data: Doc) => Doc | undefined,
+): Promise<void> {
+  await db.runTransaction(async (tx) => {
+    const current = await tx.get(ref);
+    if (!current.exists) return;
+    const patch = transform(current.data()!);
+    if (patch) tx.update(ref, patch);
+  });
 }
 export const processAccountDeletion = onDocumentCreated(
   {
@@ -421,12 +476,49 @@ export const processAccountDeletion = onDocumentCreated(
   async (event) => {
     const job = event.data?.data();
     if (!job || job.status === "complete") return;
+    if ((await event.data!.ref.get()).get("status") === "complete") return;
     const uid: string = job.userId;
     await getAuth()
       .updateUser(uid, { disabled: true })
       .catch((error) => {
         if (error.code !== "auth/user-not-found") throw error;
       });
+    // Directional follow edges are removed with their surviving member's public counts in
+    // one transaction. Deleting a repeated job cannot subtract a count twice.
+    for (;;) {
+      const page = await db
+        .collection("follows")
+        .where("participantIds", "array-contains", uid)
+        .limit(100)
+        .get();
+      if (page.empty) break;
+      for (const edge of page.docs)
+        await db.runTransaction(async (tx) => {
+          const current = await tx.get(edge.ref);
+          if (!current.exists) return;
+          const outgoing = current.get("followerId") === uid;
+          const peerId = outgoing
+            ? current.get("followingId")
+            : current.get("followerId");
+          const [peerProfile, peerUser] = await Promise.all([
+            tx.get(db.doc(`profiles/${peerId}`)),
+            tx.get(db.doc(`users/${peerId}`)),
+          ]);
+          if (peerProfile.exists) {
+            const field = outgoing ? "followerCount" : "followingCount";
+            tx.update(peerProfile.ref, {
+              [field]: Math.max(0, Number(peerProfile.get(field) || 0) - 1),
+            });
+          }
+          if (!outgoing && peerUser.exists)
+            tx.update(peerUser.ref, {
+              "preferences.followingIds": (
+                peerUser.get("preferences.followingIds") || []
+              ).filter((value: string) => value !== uid),
+            });
+          tx.delete(edge.ref);
+        });
+    }
     // Remove each accepted edge with its peer trust signal atomically, so worker retries cannot
     // repeatedly subtract reputation or leave private-profile grants behind.
     for (;;) {
@@ -486,6 +578,36 @@ export const processAccountDeletion = onDocumentCreated(
     // Decrement community counts exactly once by clearing the disappearing membership in the
     // same transaction. This also remains safe if the worker resumes after a partial failure.
     const privateUser = await db.doc(`users/${uid}`).get();
+    for (const [targetId, value] of Object.entries(
+      privateUser.get("preferences.subscriptions") || {},
+    )) {
+      if (value !== "following" || targetId.includes(":")) continue;
+      await db.runTransaction(async (tx) => {
+        const [user, channel, conference] = await Promise.all([
+          tx.get(db.doc(`users/${uid}`)),
+          tx.get(db.doc(`channels/${targetId}`)),
+          tx.get(db.doc(`conferences/${targetId}`)),
+        ]);
+        const subscriptions = user.get("preferences.subscriptions") || {};
+        if (subscriptions[targetId] !== "following") return;
+        tx.update(user.ref, {
+          "preferences.subscriptions": {
+            ...subscriptions,
+            [targetId]: "hidden",
+          },
+        });
+        const target =
+          channel.exists && channel.get("visibility") === "public"
+            ? channel
+            : conference.exists
+              ? conference
+              : undefined;
+        if (target)
+          tx.update(target.ref, {
+            members: Math.max(0, Number(target.get("members") || 0) - 1),
+          });
+      });
+    }
     for (const communityId of privateUser.get(
       "preferences.joinedCommunityIds",
     ) || [])
@@ -555,6 +677,7 @@ export const processAccountDeletion = onDocumentCreated(
                 targetId: item.id,
                 createdAt: new Date().toISOString(),
                 read: false,
+                unreadUserId: promotedId,
               });
             }
           });
@@ -565,13 +688,70 @@ export const processAccountDeletion = onDocumentCreated(
       hostId: "deleted-member",
       hostDeleted: true,
     }));
-    await mutateMatching("communities", "creatorId", "==", uid, (data) => ({
-      ...data,
-      creatorId: "deleted-member",
-      moderatorIds: (data.moderatorIds || []).filter(
-        (value: string) => value !== uid,
-      ),
-    }));
+    await mutateMatching("communities", "creatorId", "==", uid, (data) =>
+      scrubCommunityOwner(data, uid),
+    );
+    for (;;) {
+      const page = await db
+        .collection("channels")
+        .where("memberIds", "array-contains", uid)
+        .limit(100)
+        .get();
+      if (page.empty) break;
+      for (const doc of page.docs)
+        await patchLatest(doc.ref, (current) => {
+          const memberIds = (current.memberIds || []).filter(
+            (value: string) => value !== uid,
+          );
+          const moderatorIds = (current.moderatorIds || []).filter(
+            (value: string) => value !== uid,
+          );
+          return {
+            memberIds,
+            members: memberIds.length,
+            moderatorIds,
+            needsModerator: moderatorIds.length === 0,
+            ...(current.creatorId === uid
+              ? { creatorId: "deleted-member" }
+              : {}),
+          };
+        });
+    }
+    for (;;) {
+      const page = await db
+        .collection("channels")
+        .where("moderatorIds", "array-contains", uid)
+        .limit(100)
+        .get();
+      if (page.empty) break;
+      for (const doc of page.docs)
+        await patchLatest(doc.ref, (current) => {
+          const moderatorIds = (current.moderatorIds || []).filter(
+            (value: string) => value !== uid,
+          );
+          return {
+            moderatorIds,
+            needsModerator: moderatorIds.length === 0,
+            ...(current.creatorId === uid
+              ? { creatorId: "deleted-member" }
+              : {}),
+          };
+        });
+    }
+    for (;;) {
+      const page = await db
+        .collection("conferences")
+        .where("organizerIds", "array-contains", uid)
+        .limit(100)
+        .get();
+      if (page.empty) break;
+      for (const doc of page.docs)
+        await patchLatest(doc.ref, (current) => ({
+          organizerIds: (current.organizerIds || []).filter(
+            (value: string) => value !== uid,
+          ),
+        }));
+    }
     for (;;) {
       const page = await db
         .collection("communities")
@@ -579,17 +759,17 @@ export const processAccountDeletion = onDocumentCreated(
         .limit(200)
         .get();
       if (page.empty) break;
-      const batch = db.batch();
       for (const doc of page.docs) {
-        const moderators = doc
-          .get("moderatorIds")
-          .filter((value: string) => value !== uid);
-        batch.update(doc.ref, {
-          moderatorIds: moderators,
-          needsModerator: moderators.length === 0,
+        await patchLatest(doc.ref, (current) => {
+          const moderators = (current.moderatorIds || []).filter(
+            (value: string) => value !== uid,
+          );
+          return {
+            moderatorIds: moderators,
+            needsModerator: moderators.length === 0,
+          };
         });
       }
-      await batch.commit();
     }
     for (const field of ["followingIds", "blockedIds"]) {
       for (;;) {
@@ -599,14 +779,12 @@ export const processAccountDeletion = onDocumentCreated(
           .limit(200)
           .get();
         if (page.empty) break;
-        const batch = db.batch();
         for (const doc of page.docs)
-          batch.update(doc.ref, {
-            [`preferences.${field}`]: doc
-              .get(`preferences.${field}`)
-              .filter((value: string) => value !== uid),
-          });
-        await batch.commit();
+          await patchLatest(doc.ref, (current) => ({
+            [`preferences.${field}`]: (
+              current.preferences?.[field] || []
+            ).filter((value: string) => value !== uid),
+          }));
       }
     }
     // Remove the deleted member's embedded comments and votes from remaining discussions.
@@ -619,33 +797,10 @@ export const processAccountDeletion = onDocumentCreated(
       if (cursor) query = query.startAfter(cursor);
       const page = await query.get();
       if (page.empty) break;
-      const batch = db.batch();
-      let changes = 0;
       for (const doc of page.docs) {
-        const post = doc.data();
-        const comments = (post.comments || []).filter(
-          (comment: Doc) => comment.authorId !== uid,
-        );
-        const votes = { ...post.votes };
-        const hadVote = uid in votes;
-        delete votes[uid];
-        const poll = post.poll
-          ? {
-              ...post.poll,
-              options: post.poll.options.map((option: Doc) => ({
-                ...option,
-                voterIds: option.voterIds.filter(
-                  (value: string) => value !== uid,
-                ),
-              })),
-            }
-          : undefined;
-        if (comments.length !== post.comments?.length || hadVote || poll) {
-          batch.update(doc.ref, { comments, votes, ...(poll ? { poll } : {}) });
-          changes++;
-        }
+        if (scrubPost(doc.data(), uid))
+          await patchLatest(doc.ref, (current) => scrubPost(current, uid));
       }
-      if (changes) await batch.commit();
       cursor = page.docs.at(-1)!.id;
     }
     cursor = undefined;
@@ -657,26 +812,10 @@ export const processAccountDeletion = onDocumentCreated(
       if (cursor) query = query.startAfter(cursor);
       const page = await query.get();
       if (page.empty) break;
-      const batch = db.batch();
-      let changes = 0;
       for (const doc of page.docs) {
-        const reactions: Doc = {};
-        let changed = false;
-        for (const [emoji, voters] of Object.entries(
-          doc.get("reactions") || {},
-        )) {
-          const remaining = (voters as string[]).filter(
-            (value) => value !== uid,
-          );
-          if (remaining.length !== (voters as string[]).length) changed = true;
-          if (remaining.length) reactions[emoji] = remaining;
-        }
-        if (changed) {
-          batch.update(doc.ref, { reactions });
-          changes++;
-        }
+        if (scrubReactions(doc.data(), uid))
+          await patchLatest(doc.ref, (current) => scrubReactions(current, uid));
       }
-      if (changes) await batch.commit();
       cursor = page.docs.at(-1)!.id;
     }
     for (;;) {

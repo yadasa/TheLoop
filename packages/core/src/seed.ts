@@ -133,6 +133,7 @@ export function emptyState(userId = ""): LoopState {
     connections: [],
     notifications: [],
     directMessages: [],
+    follows: [],
     reports: [],
     preferences: defaultPreferences(),
   };
@@ -544,5 +545,22 @@ export function initialState(): LoopState {
     interests: ["Design", "Community", "Technology"],
     onboardingComplete: false,
   };
+  s.follows = [
+    ["me", "maya"],
+    ["me", "nia"],
+    ["jordan", "me"],
+    ["devon", "me"],
+    ["nia", "me"],
+  ].map(([followerId, followingId], index) => ({
+    id: `follow-${index}`,
+    followerId,
+    followingId,
+    participantIds:[followerId,followingId],
+    createdAt: "2026-10-26T09:00:00Z",
+  }));
+  s.profiles.forEach((p) => {
+    p.followerCount = s.follows.filter((f) => f.followingId === p.id).length;
+    p.followingCount = s.follows.filter((f) => f.followerId === p.id).length;
+  });
   return s;
 }

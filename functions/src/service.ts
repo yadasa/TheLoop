@@ -44,7 +44,14 @@ export async function bootstrap(
     store.get(`trustSignals/${actor.uid}`),
   ]);
   if (existingUser && existingProfile)
-    return { userId: actor.uid, preferences: existingUser.preferences };
+    return {
+      userId: actor.uid,
+      preferences: existingUser.preferences,
+      role:
+        existingUser.role === "admin" || existingUser.role === "moderator"
+          ? existingUser.role
+          : "member",
+    };
   const displayName = text(name || actor.name || "Loop member", "Name", 80);
   const profile: Doc = existingProfile || {
     id: actor.uid,
@@ -67,6 +74,8 @@ export async function bootstrap(
     verified: false,
     visibility: "public",
     openTo: [],
+    followerCount: 0,
+    followingCount: 0,
   };
   const serverSignals = {
     ...(signals || {}),
@@ -85,7 +94,14 @@ export async function bootstrap(
   });
   store.set(profilePath, profile);
   store.set(`trustSignals/${actor.uid}`, serverSignals);
-  return { userId: actor.uid, preferences };
+  return {
+    userId: actor.uid,
+    preferences,
+    role:
+      existingUser?.role === "admin" || existingUser?.role === "moderator"
+        ? existingUser.role
+        : "member",
+  };
 }
 
 export async function execute(
@@ -167,6 +183,17 @@ export async function execute(
     );
     return community;
   }
+  async function canManageChannel(channel: Doc): Promise<boolean> {
+    if (
+      user?.role === "admin" ||
+      user?.role === "moderator" ||
+      channel.moderatorIds?.includes(actor.uid)
+    )
+      return true;
+    if (!channel.communityId) return false;
+    const community = await requireDoc("communities", channel.communityId);
+    return community.moderatorIds?.includes(actor.uid) === true;
+  }
   async function requirePeer(
     peerId: unknown,
   ): Promise<{ userId: string; user: Doc; profile: Doc }> {
@@ -215,6 +242,7 @@ export async function execute(
       targetId,
       createdAt: now,
       read: false,
+      unreadUserId: userId,
     });
   }
   function savePreferences(): void {
@@ -222,6 +250,198 @@ export async function execute(
   }
 
   switch (commandType) {
+    case "conference.create": {
+      assert(
+        user.role === "admin",
+        "permission-denied",
+        "Only a community administrator can create a conference hub.",
+      );
+      const input = command.conference;
+      assert(
+        input && typeof input === "object",
+        "invalid-argument",
+        "Provide conference details.",
+      );
+      const startDate = text(input.startDate, "Start date", 10);
+      const endDate = text(input.endDate, "End date", 10);
+      assert(
+        /^\d{4}-\d{2}-\d{2}$/.test(startDate) &&
+          /^\d{4}-\d{2}-\d{2}$/.test(endDate) &&
+          Number.isFinite(Date.parse(startDate)) &&
+          Number.isFinite(Date.parse(endDate)) &&
+          endDate >= startDate,
+        "invalid-argument",
+        "Choose a valid conference date range.",
+      );
+      store.set(`conferences/${entityId}`, {
+        id: entityId,
+        name: text(input.name, "Conference name", 100),
+        shortName: text(input.shortName, "Short name", 4),
+        city: text(input.city, "City", 120),
+        startDate,
+        endDate,
+        description: text(input.description, "Description", 3000),
+        members: 0,
+        tagline: text(input.tagline || "", "Tagline", 140, 0),
+        organizerIds: [actor.uid],
+        createdAt: now,
+      });
+      break;
+    }
+    case "channel.create": {
+      const input = command.channel;
+      assert(
+        input && typeof input === "object",
+        "invalid-argument",
+        "Provide channel details.",
+      );
+      const conference = await requireDoc("conferences", input.conferenceId);
+      let community: Doc | undefined;
+      if (input.communityId)
+        community = await requireDoc("communities", input.communityId);
+      assert(
+        user.role === "admin" || user.role === "moderator",
+        "permission-denied",
+        "Channel creation requires an administrator or global moderator.",
+      );
+      const ownedChannels = await store.find(
+        "channels",
+        "creatorId",
+        actor.uid,
+        1001,
+      );
+      assert(
+        ownedChannels.length < (user.role === "admin" ? 1000 : 100),
+        "resource-exhausted",
+        "Channel creation limit reached.",
+      );
+      const name = text(input.name, "Channel name", 50).toLowerCase();
+      assert(
+        /^[a-z0-9][a-z0-9-]{0,49}$/.test(name),
+        "invalid-argument",
+        "Use a channel name with letters, numbers and dashes.",
+      );
+      assert(
+        input.visibility === "public" || input.visibility === "private",
+        "invalid-argument",
+        "Choose public or private visibility.",
+      );
+      const topics = input.topics
+        ? list(input.topics, "Topics", 30, 80)
+        : ["General"];
+      assert(topics.length > 0, "invalid-argument", "Add at least one topic.");
+      const memberIds =
+        input.visibility === "private"
+          ? [
+              ...new Set([
+                actor.uid,
+                ...list(input.memberIds || [], "Members", 250, 128).map(
+                  (value) => id(value),
+                ),
+              ]),
+            ]
+          : [];
+      for (const memberId of memberIds) await requireDoc("users", memberId);
+      store.set(`channels/${entityId}`, {
+        id: entityId,
+        conferenceId: conference.id,
+        name,
+        description: text(input.description, "Description", 1000),
+        icon: text(input.icon || "#", "Icon", 8),
+        members: input.visibility === "private" ? memberIds.length : 1,
+        topics,
+        visibility: input.visibility,
+        ...(input.visibility === "private" ? { memberIds } : {}),
+        ...(community ? { communityId: community.id } : {}),
+        moderatorIds: [actor.uid],
+        creatorId: actor.uid,
+        createdAt: now,
+      });
+      prefs.subscriptions = { ...prefs.subscriptions, [entityId]: "following" };
+      savePreferences();
+      break;
+    }
+    case "topic.create": {
+      const channel = await channelAccess(command.channelId);
+      const moderator = await canManageChannel(channel);
+      const following =
+        prefs.subscriptions[channel.id] === "following" ||
+        prefs.subscriptions[channel.conferenceId] === "following";
+      assert(
+        moderator ||
+          channel.memberIds?.includes(actor.uid) ||
+          (channel.visibility === "public" && following),
+        "permission-denied",
+        "Follow this channel before starting a topic.",
+      );
+      const name = text(command.name, "Topic name", 80);
+      const topics = channel.topics || [];
+      assert(
+        topics.length < 30,
+        "resource-exhausted",
+        "This channel has reached its topic limit.",
+      );
+      assert(
+        !topics.some(
+          (topic: string) =>
+            topic.toLocaleLowerCase() === name.toLocaleLowerCase(),
+        ),
+        "already-exists",
+        "This topic already exists.",
+      );
+      store.set(`channels/${channel.id}`, {
+        ...channel,
+        topics: [...topics, name],
+      });
+      result.id = channel.id;
+      break;
+    }
+    case "channel.member": {
+      const channel = await requireDoc("channels", command.channelId);
+      assert(
+        channel.visibility === "private",
+        "failed-precondition",
+        "Public channels use subscriptions. Manage membership only for private channels.",
+      );
+      assert(
+        await canManageChannel(channel),
+        "permission-denied",
+        "Only this channel’s moderators can change membership.",
+      );
+      const targetId = id(command.userId);
+      assert(
+        typeof command.add === "boolean",
+        "invalid-argument",
+        "Choose add or remove.",
+      );
+      const target = await requireDoc("users", targetId);
+      assert(
+        !target.disabled && !target.deletionPending,
+        "failed-precondition",
+        "This account is unavailable.",
+      );
+      const members: string[] = channel.memberIds || [];
+      assert(
+        command.add || !channel.moderatorIds?.includes(targetId),
+        "failed-precondition",
+        "A channel moderator must transfer their role before removal.",
+      );
+      assert(
+        !command.add || members.length < 250 || members.includes(targetId),
+        "resource-exhausted",
+        "Private channel membership limit reached.",
+      );
+      const updated = command.add
+        ? [...new Set([...members, targetId])]
+        : members.filter((uid) => uid !== targetId);
+      store.set(`channels/${channel.id}`, {
+        ...channel,
+        memberIds: updated,
+        members: updated.length,
+      });
+      result.id = channel.id;
+      break;
+    }
     case "subscription.set": {
       const targetId = text(command.targetId, "Subscription target", 230);
       const value = command.value;
@@ -250,6 +470,22 @@ export async function execute(
         "resource-exhausted",
         "Subscription limit reached.",
       );
+      if (
+        !targetId.includes(":") &&
+        ((channel && channel.visibility === "public") || conference)
+      ) {
+        const target = channel || conference!;
+        const wasFollowing = prefs.subscriptions[targetId] === "following";
+        const nowFollowing = value === "following";
+        if (wasFollowing !== nowFollowing)
+          store.set(`${channel ? "channels" : "conferences"}/${target.id}`, {
+            ...target,
+            members: Math.max(
+              0,
+              Number(target.members || 0) + (nowFollowing ? 1 : -1),
+            ),
+          });
+      }
       prefs.subscriptions = { ...prefs.subscriptions, [targetId]: value };
       savePreferences();
       break;
@@ -257,7 +493,17 @@ export async function execute(
     case "onboarding.complete": {
       const interests = list(command.interests, "Interests", 30);
       const channelIds = list(command.channelIds, "Channels", 80, 128);
-      for (const channelId of channelIds) await channelAccess(channelId);
+      for (const channelId of channelIds) {
+        const channel = await channelAccess(channelId);
+        if (
+          channel.visibility === "public" &&
+          prefs.subscriptions[channelId] !== "following"
+        )
+          store.set(`channels/${channel.id}`, {
+            ...channel,
+            members: Number(channel.members || 0) + 1,
+          });
+      }
       prefs.interests = interests;
       prefs.onboardingComplete = true;
       prefs.subscriptions = {
@@ -353,6 +599,11 @@ export async function execute(
       const channel = await channelAccess(command.channelId);
       const body = text(command.body, "Message", 4000);
       const topic = text(command.topic, "Topic", 80);
+      assert(
+        !channel.topics || channel.topics.includes(topic),
+        "failed-precondition",
+        "Create this topic before posting in it.",
+      );
       const message: Doc = {
         id: entityId,
         channelId: channel.id,
@@ -764,13 +1015,51 @@ export async function execute(
     }
     case "profile.follow": {
       const peer = await requirePeer(command.userId);
+      const followId = `${actor.uid}~${peer.userId}`;
+      const edge = await store.get(`follows/${followId}`);
+      const wasFollowing = !!edge || prefs.followingIds.includes(peer.userId);
       assert(
         prefs.followingIds.length < 1000 ||
           prefs.followingIds.includes(peer.userId),
         "resource-exhausted",
         "Following limit reached.",
       );
-      prefs.followingIds = toggle(prefs.followingIds, peer.userId);
+      prefs.followingIds = wasFollowing
+        ? prefs.followingIds.filter((uid: string) => uid !== peer.userId)
+        : [...prefs.followingIds, peer.userId];
+      profile.followingCount = prefs.followingIds.length;
+      profileChanged = true;
+      if (wasFollowing) {
+        store.remove(`follows/${followId}`);
+        if (edge)
+          store.set(`profiles/${peer.userId}`, {
+            ...peer.profile,
+            followerCount: Math.max(
+              0,
+              Number(peer.profile.followerCount || 0) - 1,
+            ),
+          });
+      } else {
+        store.set(`follows/${followId}`, {
+          id: followId,
+          followerId: actor.uid,
+          followingId: peer.userId,
+          participantIds: [actor.uid, peer.userId],
+          createdAt: now,
+        });
+        store.set(`profiles/${peer.userId}`, {
+          ...peer.profile,
+          followerCount: Number(peer.profile.followerCount || 0) + 1,
+        });
+        await notify(
+          peer.userId,
+          `${profile.name} is following you`,
+          "Your community keeps growing.",
+          "community",
+          actor.uid,
+          "follow",
+        );
+      }
       savePreferences();
       break;
     }
@@ -795,6 +1084,52 @@ export async function execute(
         (uid: string) => uid !== peerId,
       );
       savePreferences();
+      if (blocking) {
+        const [outgoing, incoming, peerProfile, peerUser] = await Promise.all([
+          store.get(`follows/${actor.uid}~${peerId}`),
+          store.get(`follows/${peerId}~${actor.uid}`),
+          store.get(`profiles/${peerId}`),
+          store.get(`users/${peerId}`),
+        ]);
+        if (outgoing) {
+          store.remove(`follows/${actor.uid}~${peerId}`);
+          if (peerProfile)
+            peerProfile.followerCount = Math.max(
+              0,
+              Number(peerProfile.followerCount || 0) - 1,
+            );
+        }
+        if (incoming) {
+          store.remove(`follows/${peerId}~${actor.uid}`);
+          profile.followerCount = Math.max(
+            0,
+            Number(profile.followerCount || 0) - 1,
+          );
+          if (peerProfile)
+            peerProfile.followingCount = Math.max(
+              0,
+              Number(peerProfile.followingCount || 0) - 1,
+            );
+        }
+        profile.followingCount = prefs.followingIds.length;
+        profileChanged = true;
+        if (peerProfile && (incoming || outgoing))
+          store.set(`profiles/${peerId}`, peerProfile);
+        if (
+          peerUser &&
+          (incoming || peerUser.preferences?.followingIds?.includes(actor.uid))
+        )
+          store.set(`users/${peerId}`, {
+            ...peerUser,
+            preferences: {
+              ...peerUser.preferences,
+              followingIds: (peerUser.preferences?.followingIds || []).filter(
+                (uid: string) => uid !== actor.uid,
+              ),
+            },
+            updatedAt: now,
+          });
+      }
       if (blocking && connection) {
         store.remove(`connections/${connection.id}`);
         store.remove(`profileAccess/${actor.uid}/members/${peerId}`);
@@ -894,11 +1229,12 @@ export async function execute(
         store.set(`notifications/${notification.id}`, {
           ...notification,
           read: true,
+          unreadUserId: "",
         });
       } else {
         const notifications = await store.find(
           "notifications",
-          "userId",
+          "unreadUserId",
           actor.uid,
           100,
         );
@@ -906,7 +1242,9 @@ export async function execute(
           store.set(`notifications/${notification.id}`, {
             ...notification,
             read: true,
+            unreadUserId: "",
           });
+        result = { ...result, hasMore: notifications.length === 100 };
       }
       break;
     }
@@ -950,6 +1288,11 @@ export async function execute(
         "invalid-argument",
         "Choose dismiss or remove.",
       );
+      assert(
+        report.targetType !== "profile" || command.outcome !== "remove",
+        "failed-precondition",
+        "Profile reports require an account review; this action only removes messages or posts.",
+      );
       if (command.outcome === "remove" && report.targetType !== "profile")
         store.remove(
           `${report.targetType === "message" ? "messages" : "posts"}/${report.targetId}`,
@@ -967,10 +1310,14 @@ export async function execute(
     case "event.checkin": {
       const event = await requireDoc("events", command.eventId);
       const targetId = id(command.userId);
+      const conference = await requireDoc("conferences", event.conferenceId);
       assert(
-        event.hostId === actor.uid || user.role === "admin",
+        user.role === "admin" ||
+          user.role === "moderator" ||
+          (event.hostId === actor.uid &&
+            conference.organizerIds?.includes(actor.uid)),
         "permission-denied",
-        "Only the organizer can confirm attendance.",
+        "Only an approved conference organizer hosting this event or a global moderator can confirm trust-bearing attendance.",
       );
       assert(
         event.attendeeIds?.includes(targetId),

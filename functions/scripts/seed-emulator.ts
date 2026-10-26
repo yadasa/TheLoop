@@ -67,6 +67,8 @@ async function main() {
       const data: any = { ...row };
       if (collection === "connections" || collection === "directMessages")
         data.participantIds = [data.fromId, data.toId];
+      if (collection === "notifications" && !data.read)
+        data.unreadUserId = data.userId;
       batch.set(db.doc(`${collection}/${row.id}`), data);
     }
   await batch.commit();

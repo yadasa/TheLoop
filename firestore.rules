@@ -39,6 +39,7 @@ service cloud.firestore {
       match /checkins/{uid} { allow read: if owner(uid) || moderator(); allow write: if false; }
     }
     match /connections/{connectionId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
+    match /follows/{followId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
     match /directMessages/{messageId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
     match /notifications/{notificationId} { allow read: if active() && resource.data.userId == request.auth.uid; allow write: if false; }
     match /reports/{reportId} { allow read: if active() && (resource.data.reporterId == request.auth.uid || moderator()); allow write: if false; }

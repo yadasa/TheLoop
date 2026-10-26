@@ -54,7 +54,15 @@ test("DM policy requires accepted connection and rejects blocks in either direct
   assert.equal(canMessage("a", "b", sender, receiver, undefined), false);
 });
 test("profile input cannot forge verification, founding-year badges, or trust", () => {
-  for (const field of ["verified", "trust", "foundingYear", "role", "id"])
+  for (const field of [
+    "verified",
+    "trust",
+    "foundingYear",
+    "role",
+    "id",
+    "followerCount",
+    "followingCount",
+  ])
     assert.throws(() => validateProfile({ [field]: true }), DomainError);
   assert.throws(
     () =>

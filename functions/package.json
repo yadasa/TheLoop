@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test test/policy.test.ts test/service.test.ts test/notifications.test.ts",
+    "test": "tsx --test test/policy.test.ts test/service.test.ts test/notifications.test.ts test/cleanup.test.ts",
     "test:rules": "tsx --test test/rules.test.ts",
     "seed:emulator": "tsx scripts/seed-emulator.ts",
     "seed:live": "tsx scripts/seed-live.ts"

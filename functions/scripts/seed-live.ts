@@ -34,6 +34,7 @@ const catalog: Record<string, Record<string, unknown>> = {
       "An independent community hub for the conversations before, during, and after AfroTech. Not an official conference schedule or affiliation.",
     members: 0,
     tagline: "Same energy. A better space.",
+    organizerIds: [ownerId],
   },
   "conferences/everyday": {
     id: "everyday",
@@ -45,6 +46,7 @@ const catalog: Record<string, Record<string, unknown>> = {
     description: "Keep the connections going all year.",
     members: 0,
     tagline: "Keep the connection going.",
+    organizerIds: [ownerId],
   },
   "channels/the-lobby": {
     id: "the-lobby",

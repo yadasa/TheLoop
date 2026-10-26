@@ -33,7 +33,7 @@ Region: `us-central1`. Every callable requires Firebase Authentication. `bootstr
 
 | Function            | Input                      | Result                                                                                         |
 | ------------------- | -------------------------- | ---------------------------------------------------------------------------------------------- |
-| `bootstrap`         | `{name?: string}`          | `{userId, preferences}`; creates only the signed-in member's empty profile                     |
+| `bootstrap`         | `{name?: string}`          | `{userId, preferences, role}`; creates only the signed-in member's empty profile               |
 | `executeCommand`    | `{requestId, command}`     | `{ok:true,id,...}`; duplicate retries return `duplicate:true`                                  |
 | `getTrust`          | `{userId?: string}`        | Authoritative trust score, reasons, verification flag, explanation                             |
 | `appealTrust`       | `{reason}`                 | Opens one private appeal per member per UTC day                                                |
@@ -46,9 +46,13 @@ Region: `us-central1`. Every callable requires Firebase Authentication. `bootstr
 Commands follow the union in `packages/core/src/types.ts`. Additional backend operations:
 
 - `report.review` takes `reportId`, `outcome:'dismiss'|'remove'`, optional `note`; requires server-owned `users/{uid}.role` equal to `admin` or `moderator`.
-- `event.checkin` takes `eventId`, `userId`; only the event host or an admin can confirm an existing RSVP, within six hours before the event or later. An organizer cannot confirm their own attendance.
+- `event.checkin` takes `eventId`, `userId`; only a global admin/moderator or an event host explicitly approved in the conference's server-owned `organizerIds` can confirm an existing RSVP, within six hours before the event or later. Creating an event does not confer this authority. An organizer cannot confirm their own attendance. New conferences approve their admin creator; the live catalog initializer approves the actual owner UID.
+- `conference.create` takes a `conference` metadata object and requires a global admin role. `channel.create` takes a `channel` object and requires a global admin or moderator (creation limits: 1,000 per admin / 100 per moderator).
+- `topic.create` takes `channelId`, `name` and requires a private-channel membership, a public-channel follow, or scoped moderation authority. Topic names are unique without case sensitivity, capped at 30 per channel; messages can only use existing topics.
+- `channel.member` takes `channelId`, `userId`, `add`; only a global/channel moderator or the linked community's moderator can change private membership. Public channels use subscriptions instead. Channel creator/moderator IDs are server-owned.
+- `dm.read` takes `userId` and marks up to 200 received unread messages from that peer. Repeat if `hasMore` is true. `notification.read` without an ID similarly advances through unread notices rather than reprocessing already-read records.
 
-Subscription targets are a channel ID, conference ID, or `${channelId}:${topic}`. Posting never changes subscription preferences. `preferences.update` allows only quiet-hour, digest, DM-policy, visibility-of-unsubscribed, and event-reminder settings. Relationship, membership, saved-post and subscription arrays require their dedicated validated command.
+Subscription targets are a channel ID, conference ID, or `${channelId}:${topic}`. Posting never changes subscription preferences. `preferences.update` allows only quiet-hour, IANA-timezone, digest, DM-policy, visibility-of-unsubscribed, and event-reminder settings. The default timezone is explicitly UTC until a member sets theirs. Relationship, membership, saved-post and subscription arrays require their dedicated validated command. Public channel/conference counters track explicit channel/conference follows; private channel counters track access members.
 
 ## Reader queries
 
@@ -59,6 +63,7 @@ Subscription targets are a channel ID, conference ID, or `${channelId}:${topic}`
 | `channels`                                      | `where('visibility','==','public')`; separately query `memberIds array-contains uid` for private memberships                  |
 | `messages`                                      | `where('channelId','==',channelId)`; authorization reads that channel's membership                                            |
 | `connections`, `directMessages`                 | `where('participantIds','array-contains',uid)`                                                                                |
+| `follows`                                       | `where('participantIds','array-contains',uid)`; directional follow edges are private to their two participants                |
 | `notifications`                                 | `where('userId','==',uid)`                                                                                                    |
 | `reports`                                       | Own `reporterId`, or moderator-only queue                                                                                     |
 | `users/{uid}`                                   | Signed-in owner only; contains private preferences and server-owned role                                                      |
@@ -67,13 +72,17 @@ Rules are authorization checks, not result filters. A collection-wide messages o
 
 Blocking prevents new connection requests/DMs, removes the accepted-connection grant, and removes the blocker's follow. Historical participant-owned DM records remain readable until account deletion; the client hides blocked people and content. Public posts are not private secrets merely because their author is blocked.
 
+Following and connecting are separate actions. Each follow creates a directional server-owned edge and updates public follower/following counts atomically; followers never gain DM or private-profile access. Follow counts do not affect trust. Blocking removes follow edges in both directions and their counts. Deletion removes edges/counts idempotently, preserving unrelated followers.
+
 ## Trust and privacy
 
 Trust uses account standing (10), verified email (20), completed profile (10), account tenure (up to 20), accepted connections (up to 10), and organizer-confirmed attendance (up to 20). Repeated low-effort posting and unreviewed reports add no points or penalties. A server-only reviewed moderation penalty can reduce the score. Trust never verifies a professional credential, personal safety, or identity. The `verified` badge and historical founding year are not client editable and are never automatically inferred from this score.
 
-Private roles, trust inputs, rate counters, idempotency receipts, Expo tokens, deletion jobs and profile-access grants are denied to all direct client reads/writes. Moderators can read reports and appeals. Push notifications use generic lock-screen text for DMs, respect quiet hours and event-reminder settings, and remove unregistered Expo devices. Production push requires a physical-device development build and Expo push credentials. Digest preference is stored for the future digest worker; no email/SMS messages are sent by this implementation.
+Trust inputs, rate counters, idempotency receipts, Expo tokens, deletion jobs and profile-access grants are denied to all direct client reads/writes. Each member can read their own private role through their user document; roles are never client writable. Moderators can read reports and appeals. Push notifications use generic lock-screen text for DMs, respect quiet hours and event-reminder settings, and remove unregistered Expo devices. Production push requires a physical-device development build and Expo push credentials. Unregister the device token before signout/account switching.
 
-Account export is paginated: request the collection names returned by the initial response until each `nextCursor` is null. Account deletion disables authentication, deletes authored messages/posts and private edges, removes RSVPs/waitlists, scrubs embedded post comments/votes, anonymizes hosted events/community ownership, removes the user's private document tree/profile/trust data, and deletes Firebase Auth. A small completed deletion-job marker retains the UID and completion timestamp for operational idempotency; no content is retained there. Audit external integrations separately before enabling them.
+Two real scheduled workers generate in-app notices: `sendCommunityDigests` runs hourly and sends daily highlights at 9am in the saved timezone, or weekly highlights Monday at 9am. It honors channel/topic follows, mutes, blocks, read markers and private membership. Highlights use the latest 1,000 messages/posts from the last seven days; these are bounded recent highlights rather than a guaranteed complete archive. `sendEventReminders` runs every five minutes and notifies opted-in RSVP attendees about events starting within 30 minutes. Stable notification IDs make worker retries idempotent. Quiet hours suppress push delivery while retaining the in-app notice. No email/SMS messages are sent.
+
+Account export is paginated: request the collection names returned by the initial response until each `nextCursor` is null. Account deletion disables authentication, deletes authored messages/posts and private edges, removes private memberships, follows/blocks/access grants, corrects membership and accepted-connection signals, releases RSVP capacity to the waitlist, scrubs embedded post comments/votes/polls and message reactions, anonymizes hosted events/community/channel ownership, removes the user's private document tree/profile/trust data, and deletes Firebase Auth. Mutable shared arrays are reread and changed in transactions so cleanup cannot overwrite another member's concurrent activity. A small completed deletion-job marker retains the UID and completion timestamp for operational idempotency; no content is retained there. Audit external integrations separately before enabling them.
 
 Untrusted file uploads remain disabled in `storage.rules` until malware scanning, upload completion checks, image metadata stripping and retention policies are provisioned. HTTPS link sharing works without an upload bucket.
 

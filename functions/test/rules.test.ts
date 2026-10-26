@@ -1,4 +1,4 @@
-import test, { after, before, beforeEach } from "node:test";
+import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -38,7 +38,8 @@ before(async () => {
 after(async () => {
   await env?.cleanup();
 });
-beforeEach(async () => {
+// These cases only read records or assert rejected writes, so the fixture is immutable.
+before(async () => {
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
@@ -101,6 +102,12 @@ beforeEach(async () => {
         toId: "bob",
         participantIds: ["alice", "bob"],
         body: "Private DM",
+      },
+      "follows/alice~bob": {
+        id: "alice~bob",
+        followerId: "alice",
+        followingId: "bob",
+        participantIds: ["alice", "bob"],
       },
       "notifications/alice-notice": {
         id: "alice-notice",
@@ -238,6 +245,26 @@ test("notifications require the recipient filter and cannot be marked read direc
   await assertFails(getDoc(doc(alice, "notifications/bob-notice")));
   await assertFails(
     updateDoc(doc(alice, "notifications/alice-notice"), { read: true }),
+  );
+});
+test("follow relations are participant-private and cannot be forged", async () => {
+  const alice = env.authenticatedContext("alice").firestore();
+  const eve = env.authenticatedContext("eve").firestore();
+  await assertSucceeds(
+    getDocs(
+      query(
+        collection(alice, "follows"),
+        where("participantIds", "array-contains", "alice"),
+      ),
+    ),
+  );
+  await assertFails(getDoc(doc(eve, "follows/alice~bob")));
+  await assertFails(
+    setDoc(doc(alice, "follows/alice~eve"), {
+      followerId: "alice",
+      followingId: "eve",
+      participantIds: ["alice", "eve"],
+    }),
   );
 });
 test("all client content writes are denied, including votes and RSVP capacity", async () => {

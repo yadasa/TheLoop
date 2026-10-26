@@ -299,6 +299,18 @@ export function applyCommand(
       )
         ? s.preferences.followingIds.filter((x) => x !== cmd.userId)
         : [...s.preferences.followingIds, cmd.userId];
+      if (s.preferences.followingIds.includes(cmd.userId))
+        s.follows.push({
+          id: ctx.id,
+          followerId: uid,
+          followingId: cmd.userId,
+          participantIds:[uid,cmd.userId],
+          createdAt: ctx.now,
+        });
+      else
+        s.follows = s.follows.filter(
+          (f) => !(f.followerId === uid && f.followingId === cmd.userId),
+        );
       break;
     case "profile.block":
       person(cmd.userId);
@@ -310,6 +322,13 @@ export function applyCommand(
         s.preferences.blockedIds.push(cmd.userId);
         s.preferences.followingIds = s.preferences.followingIds.filter(
           (x) => x !== cmd.userId,
+        );
+        s.follows = s.follows.filter(
+          (f) =>
+            !(
+              (f.followerId === uid && f.followingId === cmd.userId) ||
+              (f.followerId === cmd.userId && f.followingId === uid)
+            ),
         );
         s.connections = s.connections.filter(
           (c) =>
@@ -419,5 +438,9 @@ export function applyCommand(
         "This moderation action is available in the connected live app.",
       );
   }
+  s.profiles.forEach((p) => {
+    p.followerCount = s.follows.filter((f) => f.followingId === p.id).length;
+    p.followingCount = s.follows.filter((f) => f.followerId === p.id).length;
+  });
   return s;
 }
