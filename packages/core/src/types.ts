@@ -1,7 +1,7 @@
 export type Subscription = 'following' | 'muted' | 'hidden';
 export type Profile = { id: string; name: string; handle: string; headline: string; company: string; location: string; bio: string; initials: string; skills: string[]; interests: string[]; links: { label: string; url: string }[]; joinedAt: string; verified: boolean; foundingYear?: number; trust: { score: number; reasons: string[] }; visibility: 'public' | 'connections'; openTo: string[] };
 export type Conference = { id: string; name: string; shortName: string; city: string; startDate: string; endDate: string; description: string; members: number; tagline: string };
-export type Channel = { id: string; conferenceId: string; name: string; description: string; icon: string; members: number; topics: string[]; visibility: 'public' | 'private'; memberIds?: string[] };
+export type Channel = { id: string; conferenceId: string; name: string; description: string; icon: string; members: number; topics: string[]; visibility: 'public' | 'private'; memberIds?: string[]; communityId?: string; moderatorIds?: string[]; creatorId?: string };
 export type Message = { id: string; channelId: string; topic: string; authorId: string; body: string; createdAt: string; replyTo?: string; reactions: Record<string, string[]>; editedAt?: string; attachment?: { name: string; url: string; type: string; size: number } };
 export type Community = { id: string; slug: string; name: string; description: string; members: number; icon: string; rules: string[]; moderatorIds: string[] };
 export type Poll = { options: { id: string; label: string; voterIds: string[] }[]; closesAt: string };
@@ -11,10 +11,14 @@ export type LoopEvent = { id: string; conferenceId: string; title: string; descr
 export type Connection = { id: string; fromId: string; toId: string; status: 'pending' | 'accepted'; createdAt: string };
 export type Notification = { id: string; userId: string; title: string; body: string; kind: 'message' | 'connection' | 'event' | 'community'; targetId: string; createdAt: string; read: boolean };
 export type Report = { id: string; reporterId: string; targetId: string; targetType: 'message' | 'post' | 'profile'; reason: string; createdAt: string; status: 'open' | 'reviewed' };
-export type Preferences = { subscriptions: Record<string, Subscription>; joinedCommunityIds: string[]; followingIds: string[]; blockedIds: string[]; savedPostIds: string[]; readChannels: Record<string, string>; interests: string[]; onboardingComplete: boolean; quietHours: boolean; quietStart: string; quietEnd: string; digest: 'off' | 'daily' | 'weekly'; dmPolicy: 'connections' | 'everyone' | 'nobody'; hideUnsubscribed: boolean; eventReminders: boolean };
+export type Preferences = { subscriptions: Record<string, Subscription>; joinedCommunityIds: string[]; followingIds: string[]; blockedIds: string[]; savedPostIds: string[]; readChannels: Record<string, string>; interests: string[]; onboardingComplete: boolean; quietHours: boolean; quietStart: string; quietEnd: string; timezone: string; digest: 'off' | 'daily' | 'weekly'; dmPolicy: 'connections' | 'everyone' | 'nobody'; hideUnsubscribed: boolean; eventReminders: boolean };
 export type DirectMessage = { id: string; fromId: string; toId: string; body: string; createdAt: string; read: boolean };
 export type LoopState = { version: number; currentUserId: string; profiles: Profile[]; conferences: Conference[]; channels: Channel[]; messages: Message[]; communities: Community[]; posts: Post[]; events: LoopEvent[]; connections: Connection[]; notifications: Notification[]; directMessages: DirectMessage[]; reports: Report[]; preferences: Preferences };
 export type Command =
+  | { type: 'conference.create'; conference: Omit<Conference, 'id' | 'members'> }
+  | { type: 'channel.create'; channel: Omit<Channel, 'id' | 'members' | 'moderatorIds' | 'creatorId'> }
+  | { type: 'topic.create'; channelId: string; name: string }
+  | { type: 'channel.member'; channelId: string; userId: string; add: boolean }
   | { type: 'subscription.set'; targetId: string; value: Subscription }
   | { type: 'community.join'; communityId: string }
   | { type: 'community.create'; name: string; description: string }
@@ -37,6 +41,7 @@ export type Command =
   | { type: 'profile.block'; userId: string }
   | { type: 'profile.update'; profile: Partial<Pick<Profile, 'name' | 'headline' | 'company' | 'location' | 'bio' | 'skills' | 'interests' | 'links' | 'visibility' | 'openTo'>> }
   | { type: 'dm.send'; userId: string; body: string }
+  | { type: 'dm.read'; userId: string }
   | { type: 'notification.read'; notificationId?: string }
   | { type: 'preferences.update'; preferences: Partial<Preferences> }
   | { type: 'onboarding.complete'; interests: string[]; channelIds: string[] }
