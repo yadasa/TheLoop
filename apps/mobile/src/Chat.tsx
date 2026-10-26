@@ -29,6 +29,7 @@ import {
   useReducedMotion,
 } from "./ui";
 import type { Nav } from "./navigation";
+import { SquadSummary } from "./Squads";
 
 export function Chats({ nav }: { nav: Nav }) {
   const { state } = useLoop();
@@ -71,6 +72,7 @@ export function Chats({ nav }: { nav: Nav }) {
           Big conference energy. Only the conversations you want.
         </Text>
       </View>
+      <SquadSummary nav={nav} />
       <Field
         value={search}
         onChangeText={setSearch}
@@ -272,11 +274,13 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
   const scroll = useRef<ScrollViewInstance>(null);
   const stickToBottom = useRef(true);
   const firstLayout = useRef(true);
+  const loadingOlder = useRef(false);
   const [showJump, setShowJump] = useState(false);
   const reducedMotion = useReducedMotion();
   useEffect(() => {
     stickToBottom.current = true;
     firstLayout.current = true;
+    loadingOlder.current = false;
     setShowJump(false);
     watchConversation(id, topic === "all" ? undefined : topic);
     return () => watchConversation(null);
@@ -334,6 +338,7 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
     );
   const send = () => {
     if (!body.trim()) return;
+    loadingOlder.current = false;
     stickToBottom.current = true;
     setShowJump(false);
     const sendTopic = topic === "all" ? topicNames[0] || "General" : topic;
@@ -485,14 +490,16 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
         contentContainerStyle={{ padding: 20, gap: 24, paddingBottom: 35 }}
         scrollEventThrottle={64}
         onScroll={(event) => {
+          if (loadingOlder.current) return;
           const { layoutMeasurement, contentOffset, contentSize } =
             event.nativeEvent;
           stickToBottom.current =
             contentOffset.y + layoutMeasurement.height >=
             contentSize.height - 90;
-          if (stickToBottom.current) setShowJump(false);
+          setShowJump(!stickToBottom.current);
         }}
         onContentSizeChange={() => {
+          if (loadingOlder.current) return;
           if (stickToBottom.current)
             scroll.current?.scrollToEnd({
               animated: !firstLayout.current && !reducedMotion,
@@ -520,9 +527,21 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
             disabled={history.loading}
             onPress={() => {
               stickToBottom.current = false;
-              void loadOlderMessages().catch(() =>
-                nav.toast("Could not load earlier messages. Please try again."),
-              );
+              loadingOlder.current = true;
+              setShowJump(true);
+              void loadOlderMessages()
+                .catch(() =>
+                  nav.toast(
+                    "Could not load earlier messages. Please try again.",
+                  ),
+                )
+                .finally(() =>
+                  requestAnimationFrame(() =>
+                    requestAnimationFrame(() => {
+                      loadingOlder.current = false;
+                    }),
+                  ),
+                );
             }}
           />
         )}
@@ -759,6 +778,7 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
             small
             title="Jump to latest ↓"
             onPress={() => {
+              loadingOlder.current = false;
               stickToBottom.current = true;
               setShowJump(false);
               scroll.current?.scrollToEnd({ animated: !reducedMotion });

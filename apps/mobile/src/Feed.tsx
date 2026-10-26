@@ -73,7 +73,9 @@ export function Feed({ nav }: { nav: Nav }) {
   const upcoming = state.events
     .filter((e) => new Date(e.endAt) > new Date())
     .sort((a, b) => a.startAt.localeCompare(b.startAt))[0];
-  const unread = state.notifications.filter((n) => !n.read).length;
+  const unread = state.notifications.filter(
+    (n) => n.userId === state.currentUserId && !n.read,
+  ).length;
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}

@@ -210,12 +210,25 @@ export function NativePushBridge({ nav }: { nav: Nav }) {
   }, [mode, state.currentUserId]);
   return null;
 }
-function routeNotification(
+export function routeNotification(
   state: LoopState,
   kind: string,
   id: string,
   nav: Nav,
 ) {
+  if (kind === "squad") {
+    if (
+      state.squads?.some(
+        (squad) =>
+          squad.id === id &&
+          squad.memberIds.includes(state.currentUserId) &&
+          !squad.archived,
+      )
+    )
+      nav.open({ kind: "squad", id });
+    else nav.open({ kind: "squads" });
+    return;
+  }
   if (kind === "event") {
     nav.open({ kind: "event", id });
     return;

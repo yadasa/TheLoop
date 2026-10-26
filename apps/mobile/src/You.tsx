@@ -17,7 +17,11 @@ import {
   Touch,
 } from "./ui";
 import type { Nav } from "./navigation";
-import { DevicePushSettings, unlinkDevicePush } from "./devicePush";
+import {
+  DevicePushSettings,
+  unlinkDevicePush,
+  routeNotification,
+} from "./devicePush";
 import { shareExport } from "./shareExport";
 
 export function You({ nav }: { nav: Nav }) {
@@ -30,6 +34,7 @@ export function You({ nav }: { nav: Nav }) {
     emailVerified,
     registerPushToken,
   } = useLoop();
+  const [resetRequested, setResetRequested] = useState(false);
   const me = state.profiles.find((p) => p.id === state.currentUserId);
   if (!me)
     return (
@@ -188,27 +193,33 @@ export function You({ nav }: { nav: Nav }) {
             People, messages, events, and reputation here are fictional. Your
             changes stay on this device.
           </Text>
-          <Button
-            secondary
-            title="Reset sample data"
-            onPress={() =>
-              Alert.alert(
-                "Start fresh?",
-                "Your local preview changes will be cleared.",
-                [
-                  { text: "Keep exploring", style: "cancel" },
-                  {
-                    text: "Reset preview",
-                    style: "destructive",
-                    onPress: () => {
-                      resetDemo();
-                      nav.toast("A fresh loop is ready");
-                    },
-                  },
-                ],
-              )
-            }
-          />
+          {resetRequested ? (
+            <>
+              <Text style={s.h3}>Start the sample loop over?</Text>
+              <Text style={s.small}>
+                Your local fictional preview changes will be cleared.
+              </Text>
+              <Button
+                title="Reset preview"
+                onPress={() => {
+                  setResetRequested(false);
+                  resetDemo();
+                  nav.toast("A fresh loop is ready");
+                }}
+              />
+              <Button
+                secondary
+                title="Keep exploring"
+                onPress={() => setResetRequested(false)}
+              />
+            </>
+          ) : (
+            <Button
+              secondary
+              title="Reset sample data"
+              onPress={() => setResetRequested(true)}
+            />
+          )}
         </View>
       ) : (
         <Button
@@ -855,27 +866,7 @@ export function Notifications({ nav }: { nav: Nav }) {
           label={n.title}
           onPress={() => {
             void nav.run({ type: "notification.read", notificationId: n.id });
-            if (n.kind === "event") nav.open({ kind: "event", id: n.targetId });
-            else if (n.kind === "connection") {
-              const connection = state.connections.find(
-                (c) => c.id === n.targetId,
-              );
-              const peer = connection
-                ? connection.fromId === state.currentUserId
-                  ? connection.toId
-                  : connection.fromId
-                : n.targetId;
-              nav.open({ kind: "profile", id: peer });
-            } else if (n.kind === "message")
-              nav.open({
-                kind: state.channels.some((c) => c.id === n.targetId)
-                  ? "channel"
-                  : "dm",
-                id: n.targetId,
-              });
-            else if (state.posts.some((p) => p.id === n.targetId))
-              nav.open({ kind: "post", id: n.targetId });
-            else nav.navigate("Home");
+            routeNotification(state, n.kind, n.targetId, nav);
           }}
           style={[
             s.card,

@@ -636,7 +636,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
           stickToBottom.current =
             contentOffset.y + layoutMeasurement.height >=
             contentSize.height - 90;
-          if (stickToBottom.current) setShowJump(false);
+          setShowJump(!stickToBottom.current);
         }}
         onContentSizeChange={() => {
           if (stickToBottom.current)

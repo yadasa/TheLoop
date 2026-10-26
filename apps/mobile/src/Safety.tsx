@@ -58,9 +58,11 @@ function ReportCard({
           ? state.posts
               .find((p) => p.id === r.postId)
               ?.comments.find((c) => c.id === r.targetId)?.body
-          : r.targetType === "directMessage"
-            ? state.directMessages.find((m) => m.id === r.targetId)?.body
-            : state.profiles.find((p) => p.id === r.targetId)?.name;
+          : r.targetType === "squadMessage"
+            ? state.squadMessages.find((m) => m.id === r.targetId)?.body
+            : r.targetType === "directMessage"
+              ? state.directMessages.find((m) => m.id === r.targetId)?.body
+              : state.profiles.find((p) => p.id === r.targetId)?.name;
   const hasContext = !!content || !!r.snapshot?.body;
   const review = (outcome: "dismiss" | "remove") => {
     setBusy(true);
@@ -90,7 +92,8 @@ function ReportCard({
             Captured when reported ·{" "}
             {new Date(r.snapshot.capturedAt).toLocaleString()}
           </Text>
-          {r.targetType === "directMessage" && (
+          {(r.targetType === "directMessage" ||
+            r.targetType === "squadMessage") && (
             <Text style={s.small}>
               Only this reported message is available to moderators. The private
               conversation is not included.
@@ -141,14 +144,17 @@ function ReportCard({
                   disabled={
                     busy ||
                     !hasContext ||
-                    (r.targetType === "directMessage" && !r.snapshot)
+                    ((r.targetType === "directMessage" ||
+                      r.targetType === "squadMessage") &&
+                      !r.snapshot)
                   }
                   onPress={() =>
                     Alert.alert(
                       "Remove this content?",
                       r.targetType === "comment"
                         ? "Only this reply will be removed. The rest of the conversation stays. Your action is recorded."
-                        : r.targetType === "directMessage"
+                        : r.targetType === "directMessage" ||
+                            r.targetType === "squadMessage"
                           ? "Only the message identified by this report will be removed. Your moderation action is recorded."
                           : "The content will be removed and your moderation action recorded.",
                       [

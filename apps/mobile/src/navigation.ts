@@ -2,7 +2,15 @@ import type { Command } from "@theloop/core";
 export type Tab = "Home" | "Chat" | "Events" | "People" | "You";
 export type Route =
   | {
-      kind: "post" | "edit-post" | "channel" | "event" | "profile" | "dm";
+      kind:
+        | "post"
+        | "edit-post"
+        | "channel"
+        | "event"
+        | "profile"
+        | "dm"
+        | "squad"
+        | "squad-members";
       id: string;
     }
   | {
@@ -21,7 +29,9 @@ export type Route =
         | "search"
         | "safety"
         | "spaces"
-        | "import-events";
+        | "import-events"
+        | "squads"
+        | "create-squad";
     };
 export type Nav = {
   open: (route: Route) => void;

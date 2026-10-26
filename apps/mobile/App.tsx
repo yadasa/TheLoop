@@ -36,6 +36,7 @@ import { Search } from "./src/Search";
 import { Safety } from "./src/Safety";
 import { Spaces } from "./src/Spaces";
 import { ImportEvents } from "./src/ImportEvents";
+import { Squads, CreateSquad, SquadDetail, SquadMembers } from "./src/Squads";
 import { NativePushBridge } from "./src/devicePush";
 import {
   Auth,
@@ -223,8 +224,14 @@ function LoopApp() {
       );
       const kind = parts[0];
       const id = parts[1];
-      if (id && ["post", "channel", "event", "profile"].includes(kind || ""))
-        open({ kind: kind as "post", id });
+      if (
+        id &&
+        ["post", "channel", "event", "profile", "squad"].includes(kind || "")
+      )
+        open({
+          kind: kind as "post" | "channel" | "event" | "profile" | "squad",
+          id,
+        });
     };
     void Linking.getInitialURL().then((url) => {
       if (url) handle(url);
@@ -276,6 +283,10 @@ function LoopApp() {
       safety: "Community care",
       spaces: "Community spaces",
       "import-events": "Bring your plans into the loop",
+      squads: "Your squads",
+      "create-squad": "Start a squad",
+      squad: "A room for your people",
+      "squad-members": "Your circle",
     })[route.kind];
   const renderRoute = (route: Route) => {
     switch (route.kind) {
@@ -321,6 +332,14 @@ function LoopApp() {
         return <Spaces nav={nav} />;
       case "import-events":
         return <ImportEvents nav={nav} />;
+      case "squads":
+        return <Squads nav={nav} />;
+      case "create-squad":
+        return <CreateSquad nav={nav} />;
+      case "squad":
+        return <SquadDetail id={route.id} nav={nav} />;
+      case "squad-members":
+        return <SquadMembers id={route.id} nav={nav} />;
     }
   };
   const active = stack[stack.length - 1];
@@ -520,7 +539,7 @@ function LoopApp() {
                 style={{ flex: 1 }}
                 behavior={
                   Platform.OS === "ios" &&
-                  !["channel", "dm"].includes(active.kind)
+                  !["channel", "dm", "squad"].includes(active.kind)
                     ? "padding"
                     : undefined
                 }
