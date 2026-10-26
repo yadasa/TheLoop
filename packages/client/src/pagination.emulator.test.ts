@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
-import { collection, connectFirestoreEmulator, getFirestore, getDocs, onSnapshot, query, where, type Firestore } from "firebase/firestore";
+import { collection, connectFirestoreEmulator, doc, getFirestore, getDoc, getDocs, onSnapshot, query, where, type Firestore } from "firebase/firestore";
 import type { Message } from "@theloop/core";
 import { directoryFields } from "../../../functions/src/directory";
 import { messageCursor } from "./data";
-import { directoryPageQuery, messagePageQuery, type DirectoryCursor } from "./queries";
+import { directoryPageQuery, messagePageQuery, squadIncomingInvitesQuery, squadMembershipQuery, squadMessagePageQuery, squadOwnerInvitesQuery, squadParticipantInvitesQuery, type DirectoryCursor } from "./queries";
 
 // Explicit opt-in emulator suite; it never points at the deployed TheLoop project.
 const requireBackend = createRequire(new URL("../../../functions/package.json", import.meta.url));
@@ -19,8 +19,10 @@ type TestContext = { firestore(): Firestore };
 let env: { authenticatedContext(uid: string): TestContext; withSecurityRulesDisabled(work: (context: TestContext) => Promise<void>): Promise<void>; cleanup(): Promise<void> };
 const nonce = Math.random().toString(36).slice(2, 9), uid = `pagination-${nonce}`, room = `${uid}-room-34`, privateRoom = `${uid}-private`;
 const name = `Élodie ${nonce}`, paths: string[] = [];
+const squadId = `${uid}-crew`, friendId = `${uid}-friend`, recipientId = `${uid}-recipient`, ownerInviteId = `${uid}-owner-invite`;
 let db: Firestore;
-let app: FirebaseApp | undefined;
+let recipientDb: Firestore;
+const apps: FirebaseApp[] = [];
 
 before(async () => {
   const address = process.env.FIRESTORE_EMULATOR_HOST;
@@ -31,6 +33,13 @@ before(async () => {
   env = await initializeTestEnvironment({ projectId: "demo-theloop-pagination", firestore: { host, port, rules: readFileSync(new URL("../../../firestore.rules", import.meta.url), "utf8") } });
   await env.withSecurityRulesDisabled(async context => {
     const fixture: [string, Record<string, unknown>][] = [[`users/${uid}`, { id: uid, preferences: {} }], [`channels/${privateRoom}`, { visibility: "private", memberIds: [uid] }], [`messages/${uid}-private`, { channelId: privateRoom, topic: "private", createdAt: "2026-10-26T00:00:00.000Z" }]];
+    fixture.push([`users/${friendId}`, { id: friendId, preferences: {} }], [`users/${recipientId}`, { id: recipientId, preferences: {} }]);
+    fixture.push([`squads/${squadId}`, { id: squadId, name: "Private crew", ownerId: uid, memberIds: [uid, friendId], archived: false, updatedAt: "2026-10-26T00:00:00.000Z" }]);
+    fixture.push([`squads/${uid}-other-crew`, { id: `${uid}-other-crew`, name: "Other private crew", ownerId: friendId, memberIds: [friendId], archived: false, updatedAt: "2026-10-26T00:00:00.000Z" }]);
+    fixture.push([`squadInvites/${ownerInviteId}`, { squadId, fromId: friendId, toId: recipientId, participantIds: [friendId, recipientId], status: "pending", createdAt: "2026-10-26T00:00:00.000Z", expiresAt: "2026-11-02T00:00:00.000Z" }]);
+    fixture.push([`squadInvites/${uid}-incoming`, { squadId: `${uid}-other-crew`, fromId: friendId, toId: uid, participantIds: [friendId, uid], status: "pending", createdAt: "2026-10-26T00:00:00.000Z", expiresAt: "2026-11-02T00:00:00.000Z" }]);
+    for (let index = 0; index < 301; index++) fixture.push([`squadMessages/${uid}-visible-${index.toString().padStart(4, "0")}`, { squadId, audienceIds: [uid, friendId], createdAt: "2020-01-01T00:00:00.000Z", body: `Visible ${index}` }]);
+    for (let index = 0; index < 110; index++) fixture.push([`squadMessages/${uid}-before-join-${index.toString().padStart(4, "0")}`, { squadId, audienceIds: [friendId], createdAt: "2026-10-26T00:00:00.000Z", body: `Before joining ${index}` }]);
     for (let index = 0; index < 35; index++) fixture.push([`channels/${uid}-room-${index}`, { visibility: "public", memberIds: [] }]);
     for (let index = 0; index < 301; index++) fixture.push([`messages/${uid}-archive-${index.toString().padStart(4, "0")}`, { channelId: room, topic: "archive", createdAt: "2020-01-01T00:00:00.000Z", body: `Archive ${index}` }]);
     for (let index = 0; index < 110; index++) fixture.push([`messages/${uid}-new-${index.toString().padStart(4, "0")}`, { channelId: room, topic: "new", createdAt: "2026-10-26T00:00:00.000Z" }]);
@@ -43,9 +52,15 @@ before(async () => {
       await batch.commit();
     }
   });
-  app = initializeApp({ projectId: "demo-theloop-pagination", apiKey: "fake-emulator-key", appId: "pagination-emulator" }, uid);
-  db = getFirestore(app);
-  connectFirestoreEmulator(db, host, port, { mockUserToken: { sub: uid, user_id: uid } });
+  const client = (id: string) => {
+    const app = initializeApp({ projectId: "demo-theloop-pagination", apiKey: "fake-emulator-key", appId: "pagination-emulator" }, id);
+    apps.push(app);
+    const db = getFirestore(app);
+    connectFirestoreEmulator(db, host, port, { mockUserToken: { sub: id, user_id: id } });
+    return db;
+  };
+  db = client(uid);
+  recipientDb = client(recipientId);
 });
 
 after(async () => {
@@ -58,7 +73,7 @@ after(async () => {
     }
   });
   await env.cleanup();
-  if (app) await deleteApp(app);
+  await Promise.all(apps.map(app => deleteApp(app)));
 });
 
 test("actual active/topic query reaches old records beyond preview rooms and last100", async () => {
@@ -117,4 +132,47 @@ test("private room pagination is denied after membership revocation", async () =
   await env.withSecurityRulesDisabled(async context => { await adminSdk.updateDoc(adminSdk.doc(context.firestore(), "channels", privateRoom), { memberIds: [] }); });
   await assert.rejects(getDocs(messagePageQuery(db, privateRoom, "private")), error => (error as { code?: string }).code === "permission-denied");
   assert.equal((await getDocs(query(collection(db, "channels"), where("visibility", "==", "public")))).docs.filter(record => record.id.startsWith(uid)).length, 35);
+});
+
+test("Squad history pages301 equal-time records while excluding pre-join audiences", async () => {
+  assert.ok((await getDocs(squadMembershipQuery(db, uid))).docs.some(record => record.id === squadId));
+  const ids: string[] = [];
+  let cursor: ReturnType<typeof messageCursor>;
+  do {
+    const page = await getDocs(squadMessagePageQuery(db, squadId, uid, cursor));
+    const rows = page.docs.map(record => ({ ...record.data(), id: record.id }) as Message);
+    ids.push(...rows.map(row => row.id));
+    cursor = page.size === 100 ? messageCursor(rows) : undefined;
+  } while (cursor);
+  assert.equal(ids.length, 301);
+  assert.equal(new Set(ids).size, 301);
+  assert.ok(ids.every(id => id.includes("-visible-")));
+});
+
+test("pending invitation consent does not grant private Squad or history access", async () => {
+  assert.ok((await getDocs(squadIncomingInvitesQuery(recipientDb, recipientId))).docs.some(record => record.id === ownerInviteId));
+  assert.ok((await getDocs(squadParticipantInvitesQuery(db, uid))).docs.some(record => record.id === `${uid}-incoming`));
+  assert.ok((await getDocs(squadOwnerInvitesQuery(db, squadId))).docs.some(record => record.id === ownerInviteId));
+  await assert.rejects(getDoc(doc(recipientDb, "squads", squadId)), error => (error as { code?: string }).code === "permission-denied");
+  await assert.rejects(getDocs(squadMessagePageQuery(recipientDb, squadId, recipientId)), error => (error as { code?: string }).code === "permission-denied");
+  const path = `squadMessages/${uid}-after-consent`;
+  paths.push(path);
+  await env.withSecurityRulesDisabled(async context => {
+    await adminSdk.updateDoc(adminSdk.doc(context.firestore(), "squads", squadId), { memberIds: [uid, friendId, recipientId] });
+    await adminSdk.setDoc(adminSdk.doc(context.firestore(), path), { squadId, audienceIds: [uid, friendId, recipientId], createdAt: "2026-10-26T01:00:00.000Z", body: "After consent" });
+  });
+  const afterJoin = await getDocs(squadMessagePageQuery(recipientDb, squadId, recipientId));
+  assert.deepEqual(afterJoin.docs.map(record => record.id), [`${uid}-after-consent`]);
+});
+
+test("transferred ownership revokes nonparticipant pending invite access", async () => {
+  await env.withSecurityRulesDisabled(async context => { await adminSdk.updateDoc(adminSdk.doc(context.firestore(), "squads", squadId), { ownerId: friendId }); });
+  await assert.rejects(getDocs(squadOwnerInvitesQuery(db, squadId)), error => (error as { code?: string }).code === "permission-denied");
+  assert.equal((await getDocs(squadIncomingInvitesQuery(db, uid))).size, 1);
+});
+
+test("removing Squad membership denies captured-audience history and removes catalog entry", async () => {
+  await env.withSecurityRulesDisabled(async context => { await adminSdk.updateDoc(adminSdk.doc(context.firestore(), "squads", squadId), { memberIds: [friendId, recipientId] }); });
+  await assert.rejects(getDocs(squadMessagePageQuery(db, squadId, uid)), error => (error as { code?: string }).code === "permission-denied");
+  assert.ok(!(await getDocs(squadMembershipQuery(db, uid))).docs.some(record => record.id === squadId));
 });

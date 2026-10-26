@@ -54,9 +54,13 @@ import {
   type Message,
   type Profile,
   type Connection,
+  type Squad,
+  type SquadInvite,
+  type SquadMessage,
 } from "@theloop/core";
-import { documentIdBatches, matchesDirectory, mergeMessages, messageCursor, normalizeDirectoryQuery, previewChannelIds, type MessageCursor } from "./data";
-import { directoryPageQuery, messagePageQuery } from "./queries";
+import { documentIdBatches, matchesDirectory, mergeMessages, mergeSquadInvites, normalizeDirectoryQuery, previewChannelIds, revokePrivateProfiles, visibleSquadMessages } from "./data";
+import { directoryPageQuery, messagePageQuery, squadMessagePageQuery, squadMembershipQuery, squadParticipantInvitesQuery, squadIncomingInvitesQuery, squadOwnerInvitesQuery } from "./queries";
+import { MessagePages } from "./messagePages";
 export type StorageDriver = {
   load(): Promise<LoopState | null>;
   save(state: LoopState): Promise<void>;
@@ -104,6 +108,9 @@ type LoopContextValue = {
   loadMoreDirectory(): void;
   loadSavedPosts(): Promise<void>;
   loadProfile(userId: string): Promise<void>;
+  watchSquad(squadId: string | null): void;
+  loadOlderSquadMessages(): Promise<void>;
+  squadHistory: { loading: boolean; hasMore: boolean };
 };
 const Context = createContext<LoopContextValue | null>(null);
 let cloud: { auth: Auth; db: Firestore; functions: Functions } | undefined;
@@ -148,25 +155,31 @@ const readableError = (e: unknown) => {
 };
 const requestId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-function restorePreview(saved: LoopState): LoopState {
+export function restorePreview(saved: LoopState): LoopState {
   const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
   const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === "string");
   if (!object(saved) || saved.version !== 1 || typeof saved.currentUserId !== "string") throw new Error("Unsupported saved preview.");
   const arrays = ["profiles", "conferences", "channels", "messages", "communities", "posts", "events", "connections", "notifications", "directMessages", "reports"] as const;
   for (const key of arrays) if (!Array.isArray(saved[key]) || !saved[key].every(item => object(item) && typeof item.id === "string")) throw new Error("Invalid saved preview records.");
   if (saved.follows !== undefined && (!Array.isArray(saved.follows) || !saved.follows.every(item => object(item) && typeof item.id === "string"))) throw new Error("Invalid saved follow records.");
+  for (const key of ["squads", "squadInvites", "squadMessages"] as const) if (saved[key] !== undefined && (!Array.isArray(saved[key]) || !saved[key].every(item => object(item) && typeof item.id === "string"))) throw new Error("Invalid saved squad records.");
   if (saved.preferences !== undefined && !object(saved.preferences)) throw new Error("Invalid saved preferences.");
   const preferences = { ...defaultPreferences(), ...saved.preferences };
   for (const key of ["joinedCommunityIds", "followingIds", "blockedIds", "savedPostIds", "interests"] as const) if (!strings(preferences[key])) throw new Error("Invalid saved preference list.");
   if (!object(preferences.subscriptions) || Object.values(preferences.subscriptions).some(value => !["following", "muted", "hidden"].includes(value))) throw new Error("Invalid saved subscriptions.");
   if (!object(preferences.readChannels) || Object.values(preferences.readChannels).some(value => typeof value !== "string")) throw new Error("Invalid saved read markers.");
+  if (preferences.squadReadAt !== undefined && (!object(preferences.squadReadAt) || Object.values(preferences.squadReadAt).some(value => typeof value !== "string"))) throw new Error("Invalid saved squad read markers.");
+  if (preferences.squadMutedIds !== undefined && !strings(preferences.squadMutedIds)) throw new Error("Invalid saved squad mutes.");
   for (const profile of saved.profiles) if (typeof profile.name !== "string" || typeof profile.initials !== "string" || !strings(profile.skills) || !strings(profile.interests) || !strings(profile.openTo) || !Array.isArray(profile.links) || !object(profile.trust) || !Number.isFinite(profile.trust.score) || !strings(profile.trust.reasons)) throw new Error("Invalid saved profile.");
   for (const channel of saved.channels) if (typeof channel.name !== "string" || !strings(channel.topics)) throw new Error("Invalid saved channel.");
   for (const message of saved.messages) if (typeof message.body !== "string" || !Number.isFinite(Date.parse(message.createdAt)) || !object(message.reactions) || Object.values(message.reactions).some(value => !strings(value))) throw new Error("Invalid saved message.");
   for (const community of saved.communities) if (typeof community.name !== "string" || !Number.isFinite(community.members) || !strings(community.rules)) throw new Error("Invalid saved community.");
   for (const post of saved.posts) if (typeof post.title !== "string" || typeof post.body !== "string" || !Array.isArray(post.comments) || !strings(post.tags) || !object(post.votes) || (post.poll && (!Array.isArray(post.poll.options) || post.poll.options.some(option => !strings(option.voterIds))))) throw new Error("Invalid saved post.");
   for (const event of saved.events) if (typeof event.title !== "string" || !Number.isFinite(Date.parse(event.startAt)) || !Number.isFinite(Date.parse(event.endAt)) || !strings(event.attendeeIds) || !strings(event.waitlistIds) || !strings(event.tags)) throw new Error("Invalid saved event.");
-  return { ...saved, follows: saved.follows ?? [], preferences };
+  for (const squad of saved.squads ?? []) if (typeof squad.name !== "string" || !strings(squad.memberIds) || !strings(squad.pendingInviteeIds) || !object(squad.memberProfiles)) throw new Error("Invalid saved squad.");
+  for (const invite of saved.squadInvites ?? []) if (typeof invite.squadId !== "string" || !strings(invite.participantIds) || !Number.isFinite(Date.parse(invite.expiresAt))) throw new Error("Invalid saved squad invitation.");
+  for (const message of saved.squadMessages ?? []) if (typeof message.body !== "string" || !strings(message.audienceIds) || !Number.isFinite(Date.parse(message.createdAt)) || !object(message.reactions)) throw new Error("Invalid saved squad message.");
+  return { ...saved, follows: saved.follows ?? [], squads: saved.squads ?? [], squadInvites: saved.squadInvites ?? [], squadMessages: saved.squadMessages ?? [], preferences: { ...preferences, squadReadAt: preferences.squadReadAt ?? {}, squadMutedIds: preferences.squadMutedIds ?? [] } };
 }
 export function LoopProvider({
   children,
@@ -194,12 +207,15 @@ export function LoopProvider({
     [pending, setPending] = useState(0);
   const storageRef = useRef(storage);
   storageRef.current = storage;
+  const previewReady = useRef(false);
   const [hasMore, setHasMore] = useState({ posts: false, events: false });
   const [history, setHistory] = useState({ loading: false, hasMore: false });
+  const [squadHistory, setSquadHistory] = useState({ loading: false, hasMore: false });
   const [directory, setDirectory] = useState<{ results: Profile[]; loading: boolean; hasMore: boolean }>({ results: [], loading: false, hasMore: false });
   const [directoryQuery, updateDirectoryQuery] = useState("");
   const directoryQueryRef = useRef("");
   const conversationRef = useRef<{ channelId: string | null; topic?: string }>({ channelId: null });
+  const squadRef = useRef<string | null>(null);
   const liveActions = useRef<Partial<{
     watchConversation(channelId: string | null, topic?: string): void;
     loadOlderMessages(): Promise<void>;
@@ -207,6 +223,8 @@ export function LoopProvider({
     loadMoreDirectory(): void;
     loadSavedPosts(): Promise<void>;
     loadProfile(userId: string): Promise<void>;
+    watchSquad(squadId: string | null): void;
+    loadOlderSquadMessages(): Promise<void>;
   }>>({});
   const watchConversation = useCallback((channelId: string | null, topic?: string) => {
     const previous = conversationRef.current;
@@ -216,6 +234,13 @@ export function LoopProvider({
     else setHistory({ loading: false, hasMore: false });
   }, []);
   const loadOlderMessages = useCallback(async () => { await liveActions.current.loadOlderMessages?.(); }, []);
+  const watchSquad = useCallback((squadId: string | null) => {
+    if (squadRef.current === squadId) return;
+    squadRef.current = squadId;
+    if (liveActions.current.watchSquad) liveActions.current.watchSquad(squadId);
+    else setSquadHistory({ loading: false, hasMore: false });
+  }, []);
+  const loadOlderSquadMessages = useCallback(async () => { await liveActions.current.loadOlderSquadMessages?.(); }, []);
   const setDirectoryQuery = useCallback((value: string) => {
     const normalized = normalizeDirectoryQuery(value);
     if (directoryQueryRef.current === normalized) return;
@@ -245,23 +270,31 @@ export function LoopProvider({
   }, [mode, state.profiles, directoryQuery]);
   useEffect(() => {
     let active = true;
+    liveActions.current = {};
+    catalogLoaders.current = {};
+    previewReady.current = false;
+    setReady(false);
+    setHistory({ loading: false, hasMore: false });
+    setSquadHistory({ loading: false, hasMore: false });
     if (mode === "demo") {
+      setState(initialState());
       storageRef.current
         ?.load()
         .then((saved) => {
           if (active && saved) setState(restorePreview(saved));
         })
-        .catch(() =>
-          setError(
+        .catch(() => {
+          if (active) setError(
             "Your saved preview could not be loaded. A fresh sample is ready.",
-          ),
-        )
+          );
+        })
         .finally(() => {
-          if (active) setReady(true);
+          if (active) { previewReady.current = true; setReady(true); }
         });
-      if (!storageRef.current) setReady(true);
+      if (!storageRef.current) { previewReady.current = true; setReady(true); }
       return () => {
         active = false;
+        previewReady.current = false;
       };
     }
     let c: ReturnType<typeof setup>;
@@ -284,6 +317,7 @@ export function LoopProvider({
       liveActions.current = {};
       setHasMore({ posts: false, events: false });
       setHistory({ loading: false, hasMore: false });
+      setSquadHistory({ loading: false, hasMore: false });
       setDirectory({ results: [], loading: false, hasMore: false });
       setRole("member");
       setEmailVerified(user?.emailVerified ?? false);
@@ -298,8 +332,8 @@ export function LoopProvider({
           c.functions,
           "bootstrap",
         )({ name: user.displayName ?? "" });
-        if (!active || turn !== generation) return;
-        const current = () => active && turn === generation;
+        if (!active || turn !== generation || c.auth.currentUser?.uid !== user.uid) return;
+        const current = () => active && turn === generation && c.auth.currentUser?.uid === user.uid;
         const waiting = new Set([
           "preferences",
           "owner",
@@ -316,6 +350,9 @@ export function LoopProvider({
           "publicChannels",
           "privateChannels",
           "reports",
+          "squads",
+          "squadInvites",
+          "squadIncomingInvites",
         ]);
         const loaded = (key: string) => {
           waiting.delete(key);
@@ -501,12 +538,7 @@ export function LoopProvider({
               .filter((id) => !blockedIds.includes(id)),
           );
           allowedPeerIds = wanted;
-          targetedProfiles.forEach((profile, id) => {
-            if (profile.visibility !== "public" && !wanted.has(id)) {
-              targetedProfiles.delete(id);
-              revokedProfileIds.add(id);
-            }
-          });
+          revokePrivateProfiles([peerProfiles, targetedProfiles], wanted, revokedProfileIds);
           peerListeners.forEach((unsubscribe, id) => {
             if (!wanted.has(id)) {
               unsubscribe();
@@ -710,6 +742,165 @@ export function LoopProvider({
           ),
         );
 
+        let memberSquads: Squad[] = [], activeSquad: Squad | undefined;
+        let participantInvites: SquadInvite[] = [], incomingInvites: SquadInvite[] = [], ownerInvites: SquadInvite[] = [];
+        let squadRows: SquadMessage[] = [], squadGeneration = 0;
+        let offSquad: (() => void) | undefined, offOwnerInvites: (() => void) | undefined;
+        let ownerInviteScope: string | undefined, squadWindow: MessagePages<SquadMessage> | undefined;
+        const revokedSquadIds = new Set<string>();
+        const squadMember = (squad: Squad) => !squad.archived && squad.memberIds.includes(user.uid);
+        const accessibleSquads = () => {
+          const squads = new Map(memberSquads.filter(squad => squadMember(squad) && !revokedSquadIds.has(squad.id)).map(squad => [squad.id, squad]));
+          if (activeSquad && squadMember(activeSquad) && !revokedSquadIds.has(activeSquad.id)) squads.set(activeSquad.id, activeSquad);
+          return [...squads.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+        };
+        const publishSquads = () => {
+          if (!current()) return;
+          const squads = accessibleSquads();
+          const ownerScope = activeSquad?.ownerId === user.uid && squadMember(activeSquad) && !revokedSquadIds.has(activeSquad.id) ? activeSquad.id : undefined;
+          const invites = mergeSquadInvites([participantInvites, incomingInvites, ownerInvites], user.uid, ownerScope);
+          setState(s => ({ ...s, squads, squadInvites: invites, squadMessages: visibleSquadMessages(squadRows, squads, user.uid) }));
+        };
+        const stopOwnerInvites = () => {
+          offOwnerInvites?.();
+          offOwnerInvites = undefined;
+          ownerInviteScope = undefined;
+          ownerInvites = [];
+        };
+        const watchOwnerInvites = () => {
+          const id = activeSquad?.ownerId === user.uid && squadMember(activeSquad) ? activeSquad.id : undefined;
+          if (id === ownerInviteScope) return;
+          stopOwnerInvites();
+          if (!id) return;
+          ownerInviteScope = id;
+          const requestGeneration = squadGeneration;
+          offOwnerInvites = onSnapshot(squadOwnerInvitesQuery(c.db, id), snap => {
+            if (!current() || requestGeneration !== squadGeneration || ownerInviteScope !== id || activeSquad?.ownerId !== user.uid) return;
+            ownerInvites = snap.docs.map(record => ({ ...record.data(), id: record.id }) as SquadInvite);
+            publishSquads();
+          }, error => {
+            if (!current() || requestGeneration !== squadGeneration || ownerInviteScope !== id) return;
+            stopOwnerInvites();
+            publishSquads();
+            if ((error as { code?: string }).code !== "permission-denied") failure(error);
+          });
+        };
+        liveActions.current.watchSquad = id => {
+          if (!current()) return;
+          const requestGeneration = ++squadGeneration;
+          offSquad?.();
+          offSquad = undefined;
+          squadWindow?.stop();
+          squadWindow = undefined;
+          squadRows = [];
+          activeSquad = undefined;
+          stopOwnerInvites();
+          setSquadHistory({ loading: false, hasMore: false });
+          publishSquads();
+          if (!id || id.includes("/")) return;
+          setSquadHistory({ loading: true, hasMore: false });
+          offSquad = onSnapshot(doc(c.db, "squads", id), snap => {
+            if (!current() || requestGeneration !== squadGeneration) return;
+            const squad = snap.exists() ? { ...snap.data(), id: snap.id } as Squad : undefined;
+            if (!squad || !squadMember(squad)) {
+              revokedSquadIds.add(id);
+              activeSquad = undefined;
+              squadWindow?.stop();
+              squadWindow = undefined;
+              squadRows = [];
+              stopOwnerInvites();
+              setSquadHistory({ loading: false, hasMore: false });
+            } else {
+              revokedSquadIds.delete(id);
+              activeSquad = squad;
+              watchOwnerInvites();
+              if (!squadWindow) {
+                squadWindow = new MessagePages<SquadMessage>({
+                  subscribe: (cursor, success, failure) => onSnapshot(squadMessagePageQuery(c.db, id, user.uid, cursor), page => success(page.docs.map(record => ({ ...record.data(), id: record.id }) as SquadMessage)), failure),
+                  publish: (rows, history) => {
+                    if (!current() || requestGeneration !== squadGeneration) return;
+                    squadRows = rows;
+                    setSquadHistory(history);
+                    publishSquads();
+                  },
+                  failure: error => {
+                    if (!current() || requestGeneration !== squadGeneration) return;
+                    if ((error as { code?: string }).code === "permission-denied") {
+                      revokedSquadIds.add(id);
+                      activeSquad = undefined;
+                      squadWindow?.stop();
+                      squadWindow = undefined;
+                      squadRows = [];
+                      stopOwnerInvites();
+                      publishSquads();
+                    } else failure(error);
+                  },
+                });
+                squadWindow.start();
+              }
+            }
+            publishSquads();
+          }, error => {
+            if (!current() || requestGeneration !== squadGeneration) return;
+            revokedSquadIds.add(id);
+            activeSquad = undefined;
+            squadWindow?.stop();
+            squadWindow = undefined;
+            squadRows = [];
+            stopOwnerInvites();
+            setSquadHistory({ loading: false, hasMore: false });
+            publishSquads();
+            if ((error as { code?: string }).code !== "permission-denied") failure(error);
+          });
+        };
+        liveActions.current.loadOlderSquadMessages = () => current() ? squadWindow?.loadMore() ?? Promise.resolve() : Promise.resolve();
+        dispose.push(onSnapshot(squadMembershipQuery(c.db, user.uid), snap => {
+          if (!current()) return;
+          const previousIds = new Set(memberSquads.map(squad => squad.id));
+          memberSquads = snap.docs.map(record => ({ ...record.data(), id: record.id }) as Squad).filter(squadMember);
+          memberSquads.forEach(squad => { previousIds.delete(squad.id); revokedSquadIds.delete(squad.id); });
+          previousIds.forEach(id => revokedSquadIds.add(id));
+          const selected = squadRef.current;
+          if (activeSquad) {
+            const updated = memberSquads.find(squad => squad.id === activeSquad?.id);
+            if (updated) { activeSquad = updated; watchOwnerInvites(); }
+          }
+          if (selected && (previousIds.has(selected) || (!activeSquad && memberSquads.some(squad => squad.id === selected)))) liveActions.current.watchSquad?.(selected);
+          publishSquads();
+          loaded("squads");
+        }, error => {
+          if (!current()) return;
+          memberSquads = [];
+          squadRows = [];
+          activeSquad = undefined;
+          squadWindow?.stop();
+          stopOwnerInvites();
+          publishSquads();
+          failure(error, "squads");
+        }));
+        const watchInvites = (incoming: boolean) => onSnapshot(incoming ? squadIncomingInvitesQuery(c.db, user.uid) : squadParticipantInvitesQuery(c.db, user.uid), snap => {
+          if (!current()) return;
+          const invites = snap.docs.map(record => ({ ...record.data(), id: record.id }) as SquadInvite);
+          if (incoming) incomingInvites = invites; else participantInvites = invites;
+          publishSquads();
+          loaded(incoming ? "squadIncomingInvites" : "squadInvites");
+        }, error => {
+          if (!current()) return;
+          if (incoming) incomingInvites = []; else participantInvites = [];
+          publishSquads();
+          failure(error, incoming ? "squadIncomingInvites" : "squadInvites");
+        });
+        dispose.push(watchInvites(false), watchInvites(true), () => {
+          squadGeneration++;
+          offSquad?.();
+          squadWindow?.stop();
+          squadWindow = undefined;
+          squadRows = [];
+          activeSquad = undefined;
+          stopOwnerInvites();
+        });
+        liveActions.current.watchSquad(squadRef.current);
+
         // Bounded expanding windows keep recent posts live. UI can explicitly request more history.
         let postLimit = 100,
           offPosts: (() => void) | undefined;
@@ -853,12 +1044,11 @@ export function LoopProvider({
         let publicChannels: LoopState["channels"] = [], privateChannels: LoopState["channels"] = [];
         const previewListeners = new Map<string, () => void>(), previewBuckets = new Map<string, Message[]>();
         const revokedChannelIds = new Set<string>();
-        const activePages = new Map<number, { rows: Message[]; cursor?: MessageCursor; full: boolean }>(), activePageListeners = new Map<number, () => void>();
-        const pendingMessagePages = new Set<number>();
-        const historyRequests = new Map<number, { resolve(): void; reject(error: unknown): void }>();
+        let activeRows: Message[] = [], activeWindow: MessagePages<Message> | undefined;
         let activeChannel: LoopState["channels"][number] | undefined;
         let offActiveChannel: (() => void) | undefined;
-        let conversationGeneration = 0, desiredHistoryPages = 1, historyLoading = false;
+        let conversationGeneration = 0;
+        let roomHistory = { loading: false, hasMore: false };
         const accessible = (channel: LoopState["channels"][number]) => channel.visibility === "public" || Boolean(channel.memberIds?.includes(user.uid));
         const allChannels = () => {
           const channels = new Map([...publicChannels, ...privateChannels].filter(channel => accessible(channel) && !revokedChannelIds.has(channel.id)).map(channel => [channel.id, channel]));
@@ -868,68 +1058,42 @@ export function LoopProvider({
         const publishMessages = () => {
           if (!current()) return;
           const allowed = new Set(allChannels().map(channel => channel.id));
-          const pages = [...activePages.entries()].sort(([a], [b]) => b - a);
-          // The latest active page wins if its IDs overlap an older page or preview.
-          const messages = mergeMessages([...previewBuckets.values(), ...pages.map(([, page]) => page.rows)], allowed);
+          const messages = mergeMessages([...previewBuckets.values(), activeRows], allowed);
           setState(s => ({ ...s, messages }));
-          const last = [...activePages.entries()].sort(([a], [b]) => a - b).at(-1);
-          setHistory({ loading: historyLoading, hasMore: last?.[1].full ?? false });
+          setHistory(roomHistory);
         };
         const stopActivePages = () => {
           conversationGeneration++;
-          activePageListeners.forEach(unsubscribe => unsubscribe());
-          activePageListeners.clear();
-          activePages.clear();
-          pendingMessagePages.clear();
-          historyRequests.forEach(request => request.resolve());
-          historyRequests.clear();
-          historyLoading = false;
+          activeWindow?.stop();
+          activeWindow = undefined;
+          activeRows = [];
+          roomHistory = { loading: false, hasMore: false };
         };
-        const subscribeMessagePage = (pageNumber: number, cursor?: MessageCursor) => {
+        const startActiveMessages = () => {
           const selected = conversationRef.current;
-          if (!current() || !selected.channelId || !activeChannel || !accessible(activeChannel) || activePageListeners.has(pageNumber)) return;
-          const requestGeneration = conversationGeneration;
-          const channelId = selected.channelId;
-          pendingMessagePages.add(pageNumber);
-          historyLoading = true;
-          publishMessages();
-          activePageListeners.set(pageNumber, onSnapshot(messagePageQuery(c.db, channelId, selected.topic, cursor), snap => {
-            if (!current() || requestGeneration !== conversationGeneration || !activeChannel || !accessible(activeChannel)) return;
-            const rows = snap.docs.map(record => ({ ...record.data(), id: record.id }) as Message);
-            const nextCursor = messageCursor(rows) ?? cursor;
-            const previous = activePages.get(pageNumber)?.cursor;
-            if (previous && (previous.createdAt !== nextCursor?.createdAt || previous.id !== nextCursor?.id)) {
-              for (const [number, unsubscribe] of activePageListeners) if (number > pageNumber) {
-                unsubscribe();
-                activePageListeners.delete(number);
-                activePages.delete(number);
-                pendingMessagePages.delete(number);
+          if (!current() || !selected.channelId || !activeChannel || !accessible(activeChannel) || activeWindow) return;
+          const requestGeneration = conversationGeneration, channelId = selected.channelId;
+          activeWindow = new MessagePages<Message>({
+            subscribe: (cursor, success, failure) => onSnapshot(messagePageQuery(c.db, channelId, selected.topic, cursor), page => success(page.docs.map(record => ({ ...record.data(), id: record.id }) as Message)), failure),
+            publish: (rows, history) => {
+              if (!current() || requestGeneration !== conversationGeneration) return;
+              activeRows = rows;
+              roomHistory = history;
+              publishMessages();
+            },
+            failure: error => {
+              if (!current() || requestGeneration !== conversationGeneration) return;
+              if ((error as { code?: string }).code === "permission-denied") {
+                revokedChannelIds.add(channelId);
+                activeChannel = undefined;
+                previewBuckets.delete(channelId);
+                stopActivePages();
               }
-            }
-            activePages.set(pageNumber, { rows, cursor: nextCursor, full: snap.size === 100 });
-            pendingMessagePages.delete(pageNumber);
-            historyLoading = pendingMessagePages.size > 0;
-            publishMessages();
-            historyRequests.get(pageNumber)?.resolve();
-            historyRequests.delete(pageNumber);
-            if (snap.size === 100 && nextCursor && pageNumber + 1 < desiredHistoryPages) subscribeMessagePage(pageNumber + 1, nextCursor);
-          }, error => {
-            if (!current() || requestGeneration !== conversationGeneration) return;
-            activePages.delete(pageNumber);
-            activePageListeners.delete(pageNumber);
-            pendingMessagePages.delete(pageNumber);
-            historyLoading = pendingMessagePages.size > 0;
-            if ((error as { code?: string }).code === "permission-denied") {
-              revokedChannelIds.add(channelId);
-              activeChannel = undefined;
-              previewBuckets.delete(channelId);
-              stopActivePages();
-            }
-            publishMessages();
-            historyRequests.get(pageNumber)?.reject(error);
-            historyRequests.delete(pageNumber);
-            failure(error);
-          }));
+              publishMessages();
+              failure(error);
+            },
+          });
+          activeWindow.start();
         };
         refreshMessageSubscriptions = () => {
           if (!current()) return;
@@ -964,15 +1128,15 @@ export function LoopProvider({
           publishMessages();
         };
         liveActions.current.watchConversation = (id: string | null) => {
+          if (!current()) return;
           offActiveChannel?.();
           offActiveChannel = undefined;
           stopActivePages();
           activeChannel = undefined;
-          desiredHistoryPages = 1;
           refreshMessageSubscriptions();
           if (!id || id.includes("/")) return;
           const requestGeneration = conversationGeneration;
-          historyLoading = true;
+          roomHistory = { loading: true, hasMore: false };
           publishMessages();
           offActiveChannel = onSnapshot(doc(c.db, "channels", id), snap => {
             if (!current() || requestGeneration !== conversationGeneration) return;
@@ -985,7 +1149,7 @@ export function LoopProvider({
             } else {
               revokedChannelIds.delete(id);
               activeChannel = channel;
-              subscribeMessagePage(0);
+              startActiveMessages();
             }
             refreshMessageSubscriptions();
           }, error => {
@@ -998,17 +1162,7 @@ export function LoopProvider({
             failure(error);
           });
         };
-        liveActions.current.loadOlderMessages = () => {
-          if (historyLoading || !current()) return Promise.resolve();
-          const last = [...activePages.entries()].sort(([a], [b]) => a - b).at(-1);
-          if (!last?.[1].full || !last[1].cursor) return Promise.resolve();
-          const pageNumber = last[0] + 1;
-          desiredHistoryPages = pageNumber + 1;
-          return new Promise<void>((resolve, reject) => {
-            historyRequests.set(pageNumber, { resolve, reject });
-            subscribeMessagePage(pageNumber, last[1].cursor);
-          });
-        };
+        liveActions.current.loadOlderMessages = () => current() ? activeWindow?.loadMore() ?? Promise.resolve() : Promise.resolve();
         const refresh = refreshMessageSubscriptions;
         const selected = conversationRef.current;
         liveActions.current.watchConversation(selected.channelId, selected.topic);
@@ -1085,20 +1239,25 @@ export function LoopProvider({
     }
     return () => {
       active = false;
+      previewReady.current = false;
       generation++;
       off();
       dispose.forEach((fn) => fn());
+      liveActions.current = {};
+      catalogLoaders.current = {};
     };
   }, [mode, firebaseConfig?.projectId, useEmulators, emulators?.host, emulators?.authPort, emulators?.firestorePort, emulators?.functionsPort]);
   useEffect(() => {
-    if (mode === "demo" && ready)
+    let active = true;
+    if (mode === "demo" && ready && previewReady.current)
       storageRef.current
         ?.save(state)
-        .catch(() =>
-          setError(
+        .catch(() => {
+          if (active) setError(
             "Your changes are available for this session, but could not be saved on this device.",
-          ),
-        );
+          );
+        });
+    return () => { active = false; };
   }, [state, ready, mode]);
   const dispatch = useCallback(
     async (command: Command) => {
@@ -1260,6 +1419,9 @@ export function LoopProvider({
         loadMoreDirectory,
         loadSavedPosts,
         loadProfile,
+        watchSquad,
+        loadOlderSquadMessages,
+        squadHistory,
         clearError: () => setError(null),
         resetDemo: () => {
           setState(initialState());
