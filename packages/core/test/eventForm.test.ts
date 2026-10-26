@@ -74,3 +74,27 @@ test("manual entries cannot bypass duplicate, capacity, or link validation", () 
       undefined,
     );
 });
+test("manual entry works without browser encoding globals", () => {
+  const encoder = globalThis.TextEncoder;
+  try {
+    Object.defineProperty(globalThis, "TextEncoder", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
+    assert.ok(previewEventDraft(values, options).event);
+    assert.match(
+      previewEventDraft(
+        { ...values, description: "好".repeat(700_000) },
+        options,
+      ).errors.join(" "),
+      /too large/,
+    );
+  } finally {
+    Object.defineProperty(globalThis, "TextEncoder", {
+      value: encoder,
+      writable: true,
+      configurable: true,
+    });
+  }
+});

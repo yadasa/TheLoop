@@ -1,5 +1,6 @@
 import type { Conference, LoopEvent } from './types';
 import { safeURL } from './selectors';
+import { exceedsUTF8Bytes } from './text';
 
 export type EventDraft = Omit<LoopEvent, 'id' | 'hostId' | 'attendeeIds' | 'waitlistIds'>;
 export type EventCSVRow = { row: number; event?: EventDraft; errors: string[]; duplicate: boolean };
@@ -104,7 +105,7 @@ function parseInstant(value: string, timezone: string): string {
 /** Preview before import. Invalid and duplicate rows never appear in `events`. */
 export function previewEventCSV(input: string, options: EventCSVOptions): EventCSVPreview {
   const preview: EventCSVPreview = { columns: [], rows: [], events: [], errors: [] };
-  if (input.length > 2_000_000 || new TextEncoder().encode(input).length > 2_000_000) { preview.errors.push('CSV is too large. Import a file smaller than 2 MB.'); return preview; }
+  if (exceedsUTF8Bytes(input, 2_000_000)) { preview.errors.push('CSV is too large. Import a file smaller than 2 MB.'); return preview; }
   const parsed = parseCSV(input);
   const header = parsed.records.shift();
   if (!header) { preview.errors.push('Add a header row and at least one event.'); return preview; }
