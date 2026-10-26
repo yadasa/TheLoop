@@ -58,6 +58,8 @@ import {
 import Squads from "./Squads";
 import GuideDialog from "./GuideDialog";
 import DirectInbox from "./DirectInbox";
+import { useWebRoute } from "./useWebRoute";
+import type { Page } from "./routes";
 import { ImageComposer, ProtectedImage, useImageDraft } from "./images";
 import {
   channelUnread,
@@ -80,16 +82,9 @@ import {
   type Conference,
   type Community,
   type Report,
+  sharedTargetPath,
+  previewEventDraft,
 } from "@theloop/core";
-type Page =
-  | "home"
-  | "chat"
-  | "communities"
-  | "calendar"
-  | "people"
-  | "saved"
-  | "profile"
-  | "inbox";
 type SquadPage = "squads";
 type Modal =
   | "compose"
@@ -148,15 +143,42 @@ export default function App() {
     loadMoreDirectory,
     loadSavedPosts,
     loadProfile,
+    watchPost,
+    watchEvent,
+    postStatus,
+    eventStatus,
   } = useLoop();
-  const [page, setPage] = useState<Page | SquadPage>("home"),
-    [modal, setModal] = useState<Modal>(null),
-    [channelId, setChannelId] = useState("the-lobby"),
-    [topic, setTopic] = useState("All topics"),
-    [communityId, setCommunityId] = useState("all"),
-    [profileId, setProfileId] = useState(""),
-    [dmId, setDmId] = useState(""),
-    [squadId, setSquadId] = useState(""),
+  const {
+    route,
+    set: setRoute,
+    reset: resetRoute,
+    closeDetail,
+  } = useWebRoute();
+  const {
+    page,
+    channelId,
+    topic,
+    communityId,
+    profileId,
+    dmId,
+    squadId,
+    postDetail,
+    eventDetail,
+  } = route;
+  const setPage = (value: Page) => setRoute("page", value);
+  const setChannelId = (value: string) => {
+    setRoute("channelId", value);
+    setRoute("topic", "All topics");
+  };
+  const setTopic = (value: string) => setRoute("topic", value);
+  const setCommunityId = (value: string) => setRoute("communityId", value);
+  const setProfileId = (value: string) => setRoute("profileId", value);
+  const setDmId = (value: string) => setRoute("dmId", value);
+  const setSquadId = (value: string) => setRoute("squadId", value);
+  const setPostDetail = (value: string | null) => setRoute("postDetail", value);
+  const setEventDetail = (value: string | null) =>
+    setRoute("eventDetail", value);
+  const [modal, setModal] = useState<Modal>(null),
     [query, setQuery] = useState(""),
     [searchOpen, setSearchOpen] = useState(false),
     [feedTab, setFeedTab] = useState("For you"),
@@ -170,9 +192,6 @@ export default function App() {
       id: "",
       type: "post",
     }),
-    [postDetail, setPostDetail] = useState<string | null>(() =>
-      new URLSearchParams(window.location.search).get("post"),
-    ),
     [replyTo, setReplyTo] = useState<string | null>(null),
     [month, setMonth] = useState(new Date(2026, 10, 1)),
     [calendarScope, setCalendarScope] = useState("all"),
@@ -194,8 +213,7 @@ export default function App() {
       verified: false,
     };
   const availableChannels = visibleChannels(s);
-  const activeChannel =
-    availableChannels.find((c) => c.id === channelId) ?? availableChannels[0];
+  const activeChannel = availableChannels.find((c) => c.id === channelId);
   const activeCommunity = s.communities.find((c) => c.id === communityId);
   const chatImage = useImageDraft(
     page === "chat" && activeChannel
@@ -242,6 +260,7 @@ export default function App() {
     setPage(target);
     setModal(null);
     setPostDetail(null);
+    setEventDetail(null);
     setContentTarget(null);
     setMobileNav(false);
     setSearchOpen(false);
@@ -259,20 +278,44 @@ export default function App() {
   const accountId = useRef(s.currentUserId);
   useEffect(() => {
     if (accountId.current === s.currentUserId) return;
+    const hadAccount = !!accountId.current;
     accountId.current = s.currentUserId;
     welcomed.current = false;
     setModal(null);
     setContentTarget(null);
-    setPostDetail(null);
     setReplyTo(null);
-    setDmId("");
-    setSquadId("");
-    setProfileId("");
-    setPage("home");
+    if (hadAccount) resetRoute();
     setQuery("");
     setSearchOpen(false);
     setMobileNav(false);
   }, [s.currentUserId]);
+  useEffect(() => {
+    setModal(null);
+    setContentTarget(null);
+    setSearchOpen(false);
+    setMobileNav(false);
+  }, [
+    page,
+    channelId,
+    communityId,
+    profileId,
+    dmId,
+    squadId,
+    postDetail,
+    eventDetail,
+  ]);
+  useEffect(() => {
+    if (ready && s.currentUserId && page === "profile" && profileId)
+      void loadProfile(profileId).catch(() => {});
+  }, [ready, s.currentUserId, page, profileId, loadProfile]);
+  useEffect(() => {
+    watchPost(postDetail);
+    return () => watchPost(null);
+  }, [postDetail, watchPost]);
+  useEffect(() => {
+    watchEvent(eventDetail);
+    return () => watchEvent(null);
+  }, [eventDetail, watchEvent]);
   useEffect(() => {
     watchConversation(
       page === "chat" ? (activeChannel?.id ?? null) : null,
@@ -307,7 +350,6 @@ export default function App() {
   }, [page, activeChannel?.id]);
   useEffect(() => {
     setReplyTo(null);
-    setTopic("All topics");
   }, [channelId]);
   useEffect(() => {
     if (
@@ -730,7 +772,7 @@ export default function App() {
               void share(
                 post.title,
                 post.body,
-                `${window.location.origin}/?post=${encodeURIComponent(post.id)}`,
+                `${window.location.origin}${window.location.pathname}${sharedTargetPath({ kind: "post", id: post.id })}`,
               )
             }
           >
@@ -777,7 +819,14 @@ export default function App() {
             {s.conferences.find((c) => c.id === event.conferenceId)
               ?.shortName ?? "THE LOOP"}
           </span>
-          <h3>{event.title}</h3>
+          <h3>
+            <button
+              className="event-title"
+              onClick={() => setEventDetail(event.id)}
+            >
+              {event.title}
+            </button>
+          </h3>
           <p>
             <Clock size={12} />
             {displayDate(event.startAt, {
@@ -855,7 +904,13 @@ export default function App() {
                 <button
                   className="icon-button"
                   title="Share event"
-                  onClick={() => void share(event.title, event.description)}
+                  onClick={() =>
+                    void share(
+                      event.title,
+                      event.description,
+                      `${window.location.origin}${window.location.pathname}${sharedTargetPath({ kind: "event", id: event.id })}`,
+                    )
+                  }
                 >
                   <ArrowUpRight size={16} />
                 </button>
@@ -940,7 +995,14 @@ export default function App() {
   );
   return (
     <div className="app-shell">
-      <a href="#main" className="skip-link">
+      <a
+        href="#main"
+        className="skip-link"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("main")?.focus();
+        }}
+      >
         Skip to content
       </a>
       <aside className="space-rail">
@@ -981,10 +1043,18 @@ export default function App() {
           <Plus size={21} />
         </button>
         <div className="space-bottom">
-          <button onClick={() => setModal("interests")} title="Tune your loop">
+          <button
+            onClick={() => setModal("interests")}
+            title="Tune your loop"
+            aria-label="Tune your loop"
+          >
             <SlidersHorizontal size={20} />
           </button>
-          <button onClick={() => setModal("settings")} title="Settings">
+          <button
+            onClick={() => setModal("settings")}
+            title="Settings"
+            aria-label="Settings"
+          >
             <Settings size={20} />
           </button>
         </div>
@@ -1338,8 +1408,16 @@ export default function App() {
               <section className="chat-panel">
                 {!activeChannel ? (
                   <Empty
-                    title="The conversation starts here."
-                    body="Channels will appear when your community is set up."
+                    title="This conversation isn’t in your loop."
+                    body="It may be hidden by your subscriptions or no longer available. Choose what you want to follow."
+                    action={
+                      <button
+                        className="button subtle"
+                        onClick={() => setModal("interests")}
+                      >
+                        Manage subscriptions
+                      </button>
+                    }
                   />
                 ) : (
                   <>
@@ -2015,14 +2093,7 @@ export default function App() {
                           {events.map((e) => (
                             <button
                               key={e.id}
-                              onClick={() =>
-                                document
-                                  .getElementById(`event-${e.id}`)
-                                  ?.scrollIntoView({
-                                    behavior: "smooth",
-                                    block: "center",
-                                  })
-                              }
+                              onClick={() => setEventDetail(e.id)}
                             >
                               <i />
                               {e.title}
@@ -2858,24 +2929,39 @@ export default function App() {
               const f = new FormData(e.currentTarget);
               try {
                 const timezone = String(f.get("timezone"));
-                const result = previewEventCSV(
-                  `title,description,startAt,endAt,timezone,location,conferenceId,kind,capacity\n${[f.get("title"), f.get("description"), f.get("start"), f.get("end"), timezone, f.get("location"), f.get("conference"), f.get("kind"), f.get("capacity")].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")}`,
+                const result = previewEventDraft(
+                  {
+                    title: String(f.get("title")),
+                    description: String(f.get("description")),
+                    startAt: String(f.get("start")),
+                    endAt: String(f.get("end")),
+                    timezone,
+                    location: String(f.get("location")),
+                    conferenceId: String(f.get("conference")),
+                    kind: String(f.get("kind")) as LoopEvent["kind"],
+                    capacity: String(f.get("capacity")),
+                    tags: String(f.get("tags") || "")
+                      .split(",")
+                      .map((tag) => tag.trim())
+                      .filter(Boolean),
+                    url: String(f.get("url") || ""),
+                  },
                   {
                     conferences: s.conferences,
                     existingEvents: s.events,
                     now: new Date().toISOString(),
                   },
                 );
-                if (!result.events.length) {
+                if (!result.event) {
                   toast(
-                    result.rows[0]?.errors.join(" ") ||
+                    result.errors.join(" ") ||
                       "Please check event dates and details.",
                   );
                   return;
                 }
                 if (
                   await act(
-                    { type: "event.create", event: result.events[0] },
+                    { type: "event.create", event: result.event },
                     "A good plan is in the calendar.",
                   )
                 )
@@ -2951,6 +3037,21 @@ export default function App() {
                 />
               </Field>
             </div>
+            <Field label="Event website · optional">
+              <input
+                name="url"
+                type="url"
+                maxLength={2048}
+                placeholder="https://…"
+              />
+            </Field>
+            <Field label="Tags · separated by commas">
+              <input
+                name="tags"
+                maxLength={600}
+                placeholder="Coffee, Community"
+              />
+            </Field>
             <button className="button primary" disabled={pending > 0}>
               Put it on the calendar
               <ArrowUpRight size={16} />
@@ -3116,8 +3217,10 @@ export default function App() {
                   void act({ type: "notification.read", notificationId: n.id });
                   setModal(null);
                   if (n.kind === "connection") navigate("people");
-                  else if (n.kind === "event") navigate("calendar");
-                  else if (n.kind === "squad") {
+                  else if (n.kind === "event") {
+                    navigate("calendar");
+                    setEventDetail(n.targetId);
+                  } else if (n.kind === "squad") {
                     setSquadId(
                       s.squads.some(
                         (g) =>
@@ -3129,9 +3232,7 @@ export default function App() {
                     );
                     navigate("squads");
                   } else if (n.kind === "community") {
-                    const post = s.posts.find((p) => p.id === n.targetId);
-                    if (post) setPostDetail(post.id);
-                    else navigate("home");
+                    setPostDetail(n.targetId);
                   } else if (s.channels.some((c) => c.id === n.targetId)) {
                     setChannelId(n.targetId);
                     setTopic("All topics");
@@ -3932,15 +4033,53 @@ export default function App() {
         !contentTarget &&
         !searchOpen &&
         (() => {
-          const post = s.posts.find((p) => p.id === postDetail);
-          if (!post) return null;
+          const post = s.posts.find(
+            (p) =>
+              p.id === postDetail &&
+              !s.preferences.blockedIds.includes(p.authorId),
+          );
+          if (!post)
+            return (
+              <ModalShell
+                key={postDetail}
+                title="The conversation continues."
+                close={closeDetail}
+              >
+                <DetailState
+                  label="post"
+                  loading={postStatus.loading || postStatus.id !== postDetail}
+                  error={postStatus.error}
+                  missing={
+                    postStatus.notFound ||
+                    s.posts.some(
+                      (p) =>
+                        p.id === postDetail &&
+                        s.preferences.blockedIds.includes(p.authorId),
+                    )
+                  }
+                  retry={() => {
+                    watchPost(null);
+                    watchPost(postDetail);
+                  }}
+                />
+              </ModalShell>
+            );
           return (
             <ModalShell
+              key={postDetail}
               title="The conversation continues."
-              close={() => setPostDetail(null)}
+              close={closeDetail}
               wide
             >
               <div className="post-detail">
+                <DetailConnection
+                  loading={postStatus.loading}
+                  error={postStatus.error}
+                  retry={() => {
+                    watchPost(null);
+                    watchPost(postDetail);
+                  }}
+                />
                 {postCard(post)}
                 <div className="comments">
                   <span className="eyebrow">
@@ -4024,7 +4163,156 @@ export default function App() {
             </ModalShell>
           );
         })()}
+      {eventDetail &&
+        !modal &&
+        !contentTarget &&
+        !searchOpen &&
+        (() => {
+          const event = s.events.find((e) => e.id === eventDetail);
+          return (
+            <ModalShell
+              key={eventDetail}
+              title="Make a little room for this."
+              subtitle="A good plan. Even better company."
+              close={closeDetail}
+              wide
+            >
+              {event ? (
+                <div className="event-detail">
+                  <DetailConnection
+                    loading={eventStatus.loading}
+                    error={eventStatus.error}
+                    retry={() => {
+                      watchEvent(null);
+                      watchEvent(eventDetail);
+                    }}
+                  />
+                  {eventCard(event)}
+                  <div className="event-detail-time">
+                    <Clock size={16} />
+                    <p>
+                      {displayDate(event.startAt, {
+                        weekday: "long",
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                        timeZone: event.timezone,
+                      })}
+                      <br />
+                      {displayDate(event.startAt, {
+                        hour: "numeric",
+                        minute: "2-digit",
+                        timeZone: event.timezone,
+                        timeZoneName: "short",
+                      })}{" "}
+                      –{" "}
+                      {displayDate(event.endAt, {
+                        hour: "numeric",
+                        minute: "2-digit",
+                        timeZone: event.timezone,
+                        timeZoneName: "short",
+                      })}
+                      <small>{event.timezone}</small>
+                    </p>
+                  </div>
+                  {event.url && (
+                    <a
+                      className="button subtle"
+                      href={event.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Organizer details
+                      <ExternalLink size={15} />
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <DetailState
+                  label="event"
+                  loading={
+                    eventStatus.loading || eventStatus.id !== eventDetail
+                  }
+                  error={eventStatus.error}
+                  missing={eventStatus.notFound}
+                  retry={() => {
+                    watchEvent(null);
+                    watchEvent(eventDetail);
+                  }}
+                />
+              )}
+            </ModalShell>
+          );
+        })()}
     </div>
+  );
+}
+function DetailState({
+  label,
+  loading,
+  missing,
+  error,
+  retry,
+}: {
+  label: string;
+  loading: boolean;
+  missing: boolean;
+  error?: string | null;
+  retry: () => void;
+}) {
+  return (
+    <div role={error ? "alert" : "status"}>
+      <Empty
+        title={
+          missing
+            ? `This ${label} isn’t available.`
+            : error
+              ? `We couldn’t load this ${label}.`
+              : `Finding this ${label}…`
+        }
+        body={
+          missing
+            ? "It may have been removed, or you may not have access."
+            : error
+              ? error
+              : loading
+                ? "A little moment while we bring you into the loop."
+                : "Try again to check for the latest details."
+        }
+        action={
+          !missing && (!loading || error) ? (
+            <button className="button subtle" onClick={retry}>
+              Try again
+            </button>
+          ) : undefined
+        }
+      />
+    </div>
+  );
+}
+function DetailConnection({
+  loading,
+  error,
+  retry,
+}: {
+  loading: boolean;
+  error?: string | null;
+  retry: () => void;
+}) {
+  if (!loading && !error) return null;
+  return (
+    <p className="detail-connection" role={error ? "alert" : "status"}>
+      {error ? (
+        <>
+          The latest details couldn’t be confirmed.{" "}
+          <button className="text-button" onClick={retry}>
+            Try again
+          </button>
+        </>
+      ) : (
+        "Checking for the latest details…"
+      )}
+    </p>
   );
 }
 function OrganizerDialog({
