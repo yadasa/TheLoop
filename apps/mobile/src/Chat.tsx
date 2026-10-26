@@ -22,6 +22,7 @@ import {
   Horizontal,
   Label,
   LinkifiedText,
+  MotionScene,
   pickSubscription,
   RelativeTime,
   s,
@@ -44,10 +45,12 @@ export function Chats({ nav }: { nav: Nav }) {
   const [conference, setConference] = useState("all");
   const [search, setSearch] = useState("");
   const [discover, setDiscover] = useState(false);
-  const rooms = state.channels.filter(
+  const availableChannels = state.channels.filter(
     (c) =>
-      (c.visibility === "public" ||
-        !!c.memberIds?.includes(state.currentUserId)) &&
+      c.visibility === "public" || !!c.memberIds?.includes(state.currentUserId),
+  );
+  const rooms = availableChannels.filter(
+    (c) =>
       (conference === "all" || c.conferenceId === conference) &&
       `${c.name} ${c.description} ${c.topics.join(" ")}`
         .toLowerCase()
@@ -139,89 +142,116 @@ export function Chats({ nav }: { nav: Nav }) {
           onPress={() => setDiscover(!discover)}
         />
       </View>
-      {rooms.map((c) => {
-        const pref =
-          state.preferences.subscriptions[c.id] ||
-          state.preferences.subscriptions[c.conferenceId] ||
-          "muted";
-        const unread = channelUnread(state, c.id);
-        const last = state.messages
-          .filter(
-            (m) =>
-              m.channelId === c.id &&
-              state.preferences.subscriptions[`${c.id}:${m.topic}`] !==
-                "hidden" &&
-              state.preferences.subscriptions[`${c.id}:${m.topic}`] !==
-                "muted" &&
-              !state.preferences.blockedIds.includes(m.authorId),
-          )
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-        return (
-          <Touch
-            key={c.id}
-            label={`Open ${c.name}`}
-            onPress={() => nav.open({ kind: "channel", id: c.id })}
-            style={[s.card, { gap: 12 }]}
-          >
-            <View style={s.between}>
-              <View style={[s.row, { flex: 1 }]}>
-                <View
-                  style={{
-                    width: 45,
-                    height: 45,
-                    borderRadius: 14,
-                    backgroundColor: color.soft,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text style={{ fontSize: 24, color: color.ink }}>
-                    {c.icon || "#"}
-                  </Text>
+      <MotionScene identity={`${conference}:${discover}`} style={{ gap: 22 }}>
+        {rooms.map((c) => {
+          const pref =
+            state.preferences.subscriptions[c.id] ||
+            state.preferences.subscriptions[c.conferenceId] ||
+            "muted";
+          const unread = channelUnread(state, c.id);
+          const last = state.messages
+            .filter(
+              (m) =>
+                m.channelId === c.id &&
+                state.preferences.subscriptions[`${c.id}:${m.topic}`] !==
+                  "hidden" &&
+                state.preferences.subscriptions[`${c.id}:${m.topic}`] !==
+                  "muted" &&
+                !state.preferences.blockedIds.includes(m.authorId),
+            )
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+          return (
+            <Touch
+              key={c.id}
+              label={`Open ${c.name}`}
+              onPress={() => nav.open({ kind: "channel", id: c.id })}
+              style={[s.card, { gap: 12 }]}
+            >
+              <View style={s.between}>
+                <View style={[s.row, { flex: 1 }]}>
+                  <View
+                    style={{
+                      width: 45,
+                      height: 45,
+                      borderRadius: 14,
+                      backgroundColor: color.soft,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={{ fontSize: 24, color: color.ink }}>
+                      {c.icon || "#"}
+                    </Text>
+                  </View>
+                  <View style={s.grow}>
+                    <Text style={s.h3}>{c.name}</Text>
+                    <Text style={s.small}>
+                      {
+                        state.conferences.find((f) => f.id === c.conferenceId)
+                          ?.shortName
+                      }{" "}
+                      · {c.members.toLocaleString()} people
+                    </Text>
+                  </View>
                 </View>
-                <View style={s.grow}>
-                  <Text style={s.h3}>{c.name}</Text>
+                {pref === "following" && unread > 0 ? (
+                  <Label dark>{unread}</Label>
+                ) : (
                   <Text style={s.small}>
-                    {
-                      state.conferences.find((f) => f.id === c.conferenceId)
-                        ?.shortName
-                    }{" "}
-                    · {c.members.toLocaleString()} people
+                    {pref === "following"
+                      ? "Following"
+                      : pref === "hidden"
+                        ? "Hidden"
+                        : "Muted"}
                   </Text>
-                </View>
+                )}
               </View>
-              {pref === "following" && unread > 0 ? (
-                <Label dark>{unread}</Label>
-              ) : (
-                <Text style={s.small}>
-                  {pref === "following"
-                    ? "Following"
-                    : pref === "hidden"
-                      ? "Hidden"
-                      : "Muted"}
-                </Text>
-              )}
-            </View>
-            <Text style={s.small} numberOfLines={2}>
-              {last
-                ? `${state.profiles.find((p) => p.id === last.authorId)?.name.split(" ")[0] || "Member"}: ${last.body}`
-                : c.description}
-            </Text>
-            <View style={s.between}>
-              <Text style={s.overline}>{c.topics.length} TOPICS</Text>
-              <Text style={s.small}>Open group chat</Text>
-            </View>
-          </Touch>
-        );
-      })}
-      {rooms.length === 0 && (
-        <Empty
-          title="No group chats in this view"
-          body="Try another conference or search, or use Discover to see chats you have hidden."
-          action="Discover group chats"
-          onPress={() => setDiscover(true)}
-        />
-      )}
+              <Text style={s.small} numberOfLines={2}>
+                {last
+                  ? `${state.profiles.find((p) => p.id === last.authorId)?.name.split(" ")[0] || "Member"}: ${last.body}`
+                  : c.description}
+              </Text>
+              <View style={s.between}>
+                <Text style={s.overline}>{c.topics.length} TOPICS</Text>
+                <Text style={s.small}>Open group chat</Text>
+              </View>
+            </Touch>
+          );
+        })}
+        {rooms.length === 0 && (
+          <Empty
+            title={
+              availableChannels.length === 0
+                ? "No group chats yet"
+                : "No group chats in this view"
+            }
+            body={
+              availableChannels.length === 0
+                ? "Organizers add conference group chats. They will appear here when available to you. Direct messages and Squads are available above."
+                : discover
+                  ? "Try another conference or clear your search."
+                  : "Try another conference or search, or use Discover to see chats you have hidden."
+            }
+            action={
+              availableChannels.length === 0
+                ? undefined
+                : discover
+                  ? "Clear filters"
+                  : "Discover group chats"
+            }
+            onPress={
+              availableChannels.length === 0
+                ? undefined
+                : discover
+                  ? () => {
+                      setConference("all");
+                      setSearch("");
+                    }
+                  : () => setDiscover(true)
+            }
+          />
+        )}
+      </MotionScene>
       <SquadSummary nav={nav} />
       <View style={[s.card, { backgroundColor: color.soft }]}>
         <Text style={s.h3}>Choose your notifications</Text>

@@ -4,6 +4,7 @@ import { useLoop } from "@theloop/client";
 import { safeURL, type Post, type Comment } from "@theloop/core";
 import {
   Avatar,
+  AmbientGradient,
   Button,
   Chip,
   color,
@@ -13,6 +14,7 @@ import {
   Horizontal,
   Label,
   LinkifiedText,
+  MotionScene,
   pickSubscription,
   RelativeTime,
   s,
@@ -108,7 +110,9 @@ export function Feed({ nav }: { nav: Nav }) {
             justifyContent: "center",
           }}
         >
-          <Text style={{ fontSize: 23, color: color.ink }}>♧</Text>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: color.ink }}>
+            Alerts
+          </Text>
           {unread > 0 && (
             <View
               style={{
@@ -156,6 +160,11 @@ export function Feed({ nav }: { nav: Nav }) {
           },
         ]}
       >
+        <AmbientGradient
+          variant="hero"
+          animated={false}
+          style={{ borderRadius: 22 }}
+        />
         <View
           style={{
             position: "absolute",
@@ -286,29 +295,31 @@ export function Feed({ nav }: { nav: Nav }) {
         <Text style={[s.small, { flex: 1 }]}>Create a post…</Text>
         <Text style={{ fontSize: 23, color: color.ink }}>＋</Text>
       </Touch>
-      {posts.map((post) => (
-        <PostCard key={post.id} post={post} nav={nav} />
-      ))}
-      {loadingSaved && <Text style={s.small}>Loading saved posts…</Text>}
-      {filter !== "saved" && hasMore.posts && (
-        <Button
-          secondary
-          title="Load more posts ↓"
-          onPress={() => loadMore("posts")}
-        />
-      )}
-      {posts.length === 0 && !loadingSaved && (
-        <Empty
-          title="No posts in this view"
-          body={
-            filter === "saved"
-              ? "Saved posts will appear here."
-              : "Join a community to see its posts, or create a post."
-          }
-          action="Explore communities"
-          onPress={() => nav.open({ kind: "communities" })}
-        />
-      )}
+      <MotionScene identity={`${filter}:${sort}`} style={{ gap: 22 }}>
+        {posts.map((post) => (
+          <PostCard key={post.id} post={post} nav={nav} />
+        ))}
+        {loadingSaved && <Text style={s.small}>Loading saved posts…</Text>}
+        {filter !== "saved" && hasMore.posts && (
+          <Button
+            secondary
+            title="Load more posts ↓"
+            onPress={() => loadMore("posts")}
+          />
+        )}
+        {posts.length === 0 && !loadingSaved && (
+          <Empty
+            title="No posts in this view"
+            body={
+              filter === "saved"
+                ? "Saved posts will appear here."
+                : "Join a community to see its posts, or create a post."
+            }
+            action="Explore communities"
+            onPress={() => nav.open({ kind: "communities" })}
+          />
+        )}
+      </MotionScene>
       {upcoming && (
         <View style={[s.card, { backgroundColor: color.soft }]}>
           <Text style={s.overline}>UPCOMING EVENT</Text>
@@ -1047,6 +1058,9 @@ export function Compose({
     "Coffee meetup\nDinner\nA panel discussion",
   );
   const [busy, setBusy] = useState(false);
+  const selectedCommunity = state.communities.find(
+    (community) => community.id === communityId,
+  );
   return (
     <ScrollView
       keyboardShouldPersistTaps="handled"
@@ -1054,6 +1068,34 @@ export function Compose({
     >
       <Text style={s.title}>Create post</Text>
       <Text style={s.body}>Choose a community, then write your post.</Text>
+      {!selectedCommunity && (
+        <View style={s.card}>
+          <Text style={s.h3}>
+            {state.communities.length
+              ? "Choose a community"
+              : "No communities available yet"}
+          </Text>
+          <Text style={s.small}>
+            {state.communities.length
+              ? "Choose an available community before publishing. Your draft stays here as the list updates."
+              : "Posts need a community. Create one or browse communities before publishing. You can still draft your post here."}
+          </Text>
+          {!state.communities.length && (
+            <>
+              <Button
+                secondary
+                title="Browse communities"
+                onPress={() => nav.open({ kind: "communities" })}
+              />
+              <Button
+                secondary
+                title="Create community"
+                onPress={() => nav.open({ kind: "create-community" })}
+              />
+            </>
+          )}
+        </View>
+      )}
       <Horizontal>
         {state.communities.map((c) => (
           <Chip
@@ -1127,9 +1169,10 @@ export function Compose({
           attachment.busy ||
           !title.trim() ||
           !body.trim() ||
-          !communityId
+          !selectedCommunity
         }
         onPress={() => {
+          if (!selectedCommunity) return;
           setBusy(true);
           void attachment
             .resolve({ kind: "community", id: communityId })

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, Switch, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Alert, Platform, ScrollView, Switch, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
 import { interests, safeURL, subscriptionFor } from "@theloop/core";
 import {
@@ -33,6 +33,7 @@ export function You({ nav }: { nav: Nav }) {
     resetDemo,
     role,
     emailVerified,
+    accountEmail,
     registerPushToken,
   } = useLoop();
   const [resetRequested, setResetRequested] = useState(false);
@@ -69,7 +70,18 @@ export function You({ nav }: { nav: Nav }) {
           <Text style={{ fontSize: 23, color: color.ink }}>⚙</Text>
         </Touch>
       </View>
-      {mode === "live" && !emailVerified && <VerificationCard nav={nav} />}
+      {mode === "live" && accountEmail && (
+        <View style={s.card}>
+          <Text style={s.label}>Signed in as</Text>
+          <Text selectable style={s.body}>
+            {accountEmail}
+          </Text>
+          <Text style={s.small}>Only you can see this account email.</Text>
+        </View>
+      )}
+      {mode === "live" && !emailVerified && (
+        <VerificationCard key={state.currentUserId} nav={nav} />
+      )}
       <View style={[s.card, { alignItems: "center", padding: 28, gap: 12 }]}>
         <Avatar profile={me} size={85} />
         <Text style={s.h2}>{me.name}</Text>
@@ -255,40 +267,72 @@ export function You({ nav }: { nav: Nav }) {
 }
 
 function VerificationCard({ nav }: { nav: Nav }) {
-  const { sendVerificationEmail, refreshVerification } = useLoop();
-  const [busy, setBusy] = useState(false);
+  const { sendVerificationEmail, refreshVerification, accountEmail } =
+    useLoop();
+  const [busy, setBusy] = useState<"sending" | "checking" | null>(null);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const run = (action: "sending" | "checking") => {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(action);
+    void (async () => {
+      if (action === "sending") {
+        await sendVerificationEmail();
+        if (mounted.current)
+          nav.toast("Verification email sent. Check your inbox.");
+      } else {
+        const verified = await refreshVerification();
+        if (mounted.current)
+          nav.toast(
+            verified
+              ? "Your email is verified."
+              : "Not verified yet. Open the link in your email, then try again.",
+          );
+      }
+    })()
+      .catch((error) => {
+        if (mounted.current)
+          nav.toast(
+            error instanceof Error
+              ? error.message
+              : "Could not check verification. Try again.",
+          );
+      })
+      .finally(() => {
+        pending.current = false;
+        if (mounted.current) setBusy(null);
+      });
+  };
   return (
     <View style={s.card}>
       <Text style={s.h3}>Verify your email</Text>
+      {accountEmail && (
+        <Text selectable style={s.body}>
+          {accountEmail}
+        </Text>
+      )}
       <Text style={s.small}>
-        Confirm that you control this email address before posting or messaging.
+        Confirm that you control your email address. Email verification appears
+        on your profile.
       </Text>
       <Button
         secondary
-        title={busy ? "Sending…" : "Send verification email"}
-        disabled={busy}
-        onPress={() => {
-          setBusy(true);
-          void sendVerificationEmail()
-            .then(() => nav.toast("Verification email sent. Check your inbox."))
-            .catch((e) => nav.toast(e.message))
-            .finally(() => setBusy(false));
-        }}
+        title={busy === "sending" ? "Sending…" : "Send verification email"}
+        disabled={busy !== null}
+        onPress={() => run("sending")}
       />
       <Button
         secondary
-        title="I've verified my email"
-        onPress={() =>
-          void refreshVerification()
-            .then((verified) =>
-              nav.toast(
-                verified
-                  ? "Your email is verified."
-                  : "Not verified yet. Open the link in your email, then try again.",
-              ),
-            )
-            .catch((e) => nav.toast(e.message))
-        }
+        title={busy === "checking" ? "Checking…" : "I've verified my email"}
+        disabled={busy !== null}
+        onPress={() => run("checking")}
       />
     </View>
   );
@@ -459,6 +503,9 @@ function Toggle({
         <Text style={s.small}>{body}</Text>
       </View>
       <Switch
+        {...(Platform.OS === "web"
+          ? { activeThumbColor: color.onInk, activeTrackColor: color.ink }
+          : {})}
         accessibilityLabel={title}
         value={value}
         onValueChange={onChange}
@@ -683,7 +730,7 @@ export function Settings({ nav }: { nav: Nav }) {
         <>
           <Button
             secondary
-            title="Account sign-in"
+            title="Sign in again or switch account"
             onPress={() => nav.open({ kind: "auth" })}
           />
           <DeleteAccount nav={nav} />

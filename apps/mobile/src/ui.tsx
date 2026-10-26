@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -16,6 +17,7 @@ import {
   Alert,
   Linking,
   Animated,
+  Easing,
   Platform,
   Pressable,
   ScrollView,
@@ -28,11 +30,13 @@ import {
   type ViewStyle,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Profile, Subscription } from "@theloop/core";
 import { safeURL } from "@theloop/core";
 
-const MotionContext = createContext(false);
+const MotionContext = createContext(true);
+const MotionActiveContext = createContext(false);
 export function isAppActive() {
   return AppState.currentState === "active";
 }
@@ -48,20 +52,197 @@ export function useAppActive() {
   return active;
 }
 export const useReducedMotion = () => useContext(MotionContext);
+export function useMotionEnabled() {
+  const reduced = useReducedMotion();
+  const active = useContext(MotionActiveContext);
+  return !reduced && active;
+}
 export function MotionProvider({ children }: { children: React.ReactNode }) {
   const [reduced, setReduced] = useState(true);
+  const active = useAppActive();
   useEffect(() => {
+    let mounted = true;
+    let receivedChange = false;
+    const change = (next: boolean) => {
+      receivedChange = true;
+      if (mounted) setReduced(next);
+    };
     void AccessibilityInfo.isReduceMotionEnabled()
-      .then(setReduced)
+      .then((next) => {
+        if (mounted && !receivedChange) setReduced(next);
+      })
       .catch(() => {});
     const listener = AccessibilityInfo.addEventListener(
       "reduceMotionChanged",
-      setReduced,
+      change,
     );
-    return () => listener.remove();
+    return () => {
+      mounted = false;
+      listener.remove();
+    };
   }, []);
   return (
-    <MotionContext.Provider value={reduced}>{children}</MotionContext.Provider>
+    <MotionContext.Provider value={reduced}>
+      <MotionActiveContext.Provider value={active}>
+        {children}
+      </MotionActiveContext.Provider>
+    </MotionContext.Provider>
+  );
+}
+
+/** A presentation boundary: identity animates content without remounting forms. */
+export function MotionScene({
+  identity,
+  children,
+  style,
+  distance = 8,
+  duration = 180,
+}: {
+  identity: string | number;
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  distance?: number;
+  duration?: number;
+}) {
+  const enabled = useMotionEnabled();
+  const progress = useRef(new Animated.Value(1)).current;
+  const previousIdentity = useRef(identity);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    const changed = !mounted.current || previousIdentity.current !== identity;
+    mounted.current = true;
+    previousIdentity.current = identity;
+    progress.stopAnimation();
+    if (!enabled || !changed) {
+      progress.setValue(1);
+      return;
+    }
+    progress.setValue(0);
+    const animation = Animated.timing(progress, {
+      toValue: 1,
+      duration,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: Platform.OS !== "web",
+      isInteraction: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [identity, enabled, duration, progress]);
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          opacity: progress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.55, 1],
+          }),
+          transform: [
+            {
+              translateY: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [distance, 0],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+/** Decorative native gradient; a slow transform loop never blocks touches. */
+export function AmbientGradient({
+  variant = "surface",
+  style,
+  animated = true,
+}: {
+  variant?: "surface" | "hero";
+  style?: StyleProp<ViewStyle>;
+  animated?: boolean;
+}) {
+  const { theme } = useTheme();
+  const enabled = useMotionEnabled() && animated;
+  const phase = useRef(new Animated.Value(0.5)).current;
+  useEffect(() => {
+    phase.stopAnimation();
+    if (!enabled) {
+      phase.setValue(0.5);
+      return;
+    }
+    phase.setValue(0);
+    const timing = (toValue: number) =>
+      Animated.timing(phase, {
+        toValue,
+        duration: 14000,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: Platform.OS !== "web",
+        isInteraction: false,
+      });
+    const animation = Animated.loop(Animated.sequence([timing(1), timing(0)]));
+    animation.start();
+    return () => {
+      animation.stop();
+      phase.stopAnimation();
+    };
+  }, [enabled, phase]);
+  const white = variant === "hero" || theme === "dark";
+  const strength = variant === "hero" ? 0.12 : white ? 0.055 : 0.045;
+  const tint = white ? "255,255,255" : "0,0,0";
+  return (
+    <View
+      pointerEvents="none"
+      accessible={false}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[StyleSheet.absoluteFill, { overflow: "hidden" }, style]}
+    >
+      <Animated.View
+        style={[
+          {
+            position: "absolute",
+            left: "-30%",
+            right: "-30%",
+            top: "-30%",
+            bottom: "-30%",
+          },
+          {
+            opacity: phase.interpolate({
+              inputRange: [0, 0.5, 1],
+              outputRange: [0.65, 1, 0.65],
+            }),
+            transform: [
+              {
+                translateX: phase.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-35, 35],
+                }),
+              },
+              {
+                translateY: phase.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-18, 18],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={[
+            `rgba(${tint},0)`,
+            `rgba(${tint},${strength})`,
+            `rgba(${tint},0)`,
+          ]}
+          locations={[0, 0.48, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+    </View>
   );
 }
 
@@ -328,13 +509,14 @@ export function Touch({
   selected?: boolean;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
-  const reduced = useReducedMotion();
+  const enabled = useMotionEnabled();
   useEffect(() => {
-    if (reduced) {
+    if (!enabled || disabled) {
       scale.stopAnimation();
       scale.setValue(1);
     }
-  }, [reduced, scale]);
+    return () => scale.stopAnimation();
+  }, [enabled, disabled, scale]);
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable
@@ -344,7 +526,7 @@ export function Touch({
         disabled={disabled}
         onPress={onPress}
         onPressIn={() => {
-          if (!reduced)
+          if (enabled)
             Animated.spring(scale, {
               toValue: 0.975,
               useNativeDriver: Platform.OS !== "web",
@@ -354,7 +536,7 @@ export function Touch({
             void Haptics.selectionAsync().catch(() => {});
         }}
         onPressOut={() =>
-          !reduced &&
+          enabled &&
           Animated.spring(scale, {
             toValue: 1,
             useNativeDriver: Platform.OS !== "web",

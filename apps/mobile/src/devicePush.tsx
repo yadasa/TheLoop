@@ -85,11 +85,13 @@ export function DevicePushSettings({ nav }: { nav: Nav }) {
   };
   return (
     <View style={s.card}>
-      <Text style={s.h3}>Important things. On your terms.</Text>
+      <Text style={s.h3}>Device notifications</Text>
       <Text style={s.small}>
-        {mode === "demo"
-          ? "Real push notifications are available for live accounts in an installed development or preview build."
-          : "Opt in to private message, connection, and event updates on this device. Quiet hours and chat notification settings still apply."}
+        {Platform.OS === "web"
+          ? "Push notifications are available in the installed mobile app."
+          : mode === "demo"
+            ? "Real push notifications are available for live accounts in an installed development or preview build."
+            : "Opt in to private message, connection, and event updates on this device. Quiet hours and chat notification settings still apply."}
       </Text>
       <Button
         secondary
@@ -98,7 +100,7 @@ export function DevicePushSettings({ nav }: { nav: Nav }) {
             ? "One moment…"
             : enabled
               ? "Disable push on this device"
-              : "Enable push on this device ↗"
+              : "Enable push on this device"
         }
         disabled={busy || mode !== "live" || Platform.OS === "web"}
         onPress={() => {
