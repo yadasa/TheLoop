@@ -51,6 +51,10 @@ export default function DirectInbox({
     watchDirectConversation,
     loadOlderDirectMessages,
     directHistory,
+    directCatalog,
+    loadMoreDirectConversations,
+    syncDirectConversations,
+    mode,
   } = useLoop();
   const blocked = s.preferences.blockedIds.includes(peerId),
     selected = peerId && !blocked && peerId !== s.currentUserId ? peerId : "";
@@ -58,6 +62,7 @@ export default function DirectInbox({
     selected ? { kind: "directMessage", id: selected } : null,
   );
   const [away, setAway] = useState(false),
+    [readRevision, setReadRevision] = useState(0),
     list = useRef<HTMLDivElement>(null),
     contents = useRef<HTMLDivElement>(null),
     pinned = useRef(true),
@@ -78,8 +83,25 @@ export default function DirectInbox({
     [s.directMessages, s.currentUserId, selected],
   );
   const profile = (id: string) => s.profiles.find((p) => p.id === id);
+  const summaries = new Map(
+    directCatalog.results
+      .filter((conversation) =>
+        conversation.participantIds.includes(s.currentUserId),
+      )
+      .map((conversation) => [
+        conversation.participantIds.find((id) => id !== s.currentUserId) || "",
+        conversation,
+      ]),
+  );
   const identity = (id: string) =>
     profile(id) ??
+    (summaries.get(id)?.memberNames[id]
+      ? {
+          id,
+          name: summaries.get(id)!.memberNames[id],
+          initials: summaries.get(id)!.memberInitials[id] || "?",
+        }
+      : undefined) ??
     directParticipantSnapshot(s.directMessages, s.currentUserId, id) ?? {
       id,
       name: "Community member",
@@ -94,14 +116,15 @@ export default function DirectInbox({
     if (d.fromId === s.currentUserId) peerIds.add(d.toId);
     else if (d.toId === s.currentUserId) peerIds.add(d.fromId);
   }
+  for (const id of summaries.keys()) if (id) peerIds.add(id);
   if (selected) peerIds.add(selected);
   const peers = [...peerIds]
     .filter(
       (id) => id !== s.currentUserId && !s.preferences.blockedIds.includes(id),
     )
-    .map((id) => ({
-      person: identity(id),
-      latest: s.directMessages
+    .map((id) => {
+      const summary = summaries.get(id);
+      const latest = s.directMessages
         .filter(
           (d) =>
             (d.fromId === id && d.toId === s.currentUserId) ||
@@ -110,14 +133,23 @@ export default function DirectInbox({
         .sort(
           (a, b) =>
             b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id),
-        )[0],
-      unread: s.directMessages.filter(
-        (d) => d.fromId === id && d.toId === s.currentUserId && !d.read,
-      ).length,
-    }))
+        )[0];
+      return {
+        person: identity(id),
+        preview: summary
+          ? summary.lastMessage?.body || "A private conversation."
+          : latest?.body || "Say a little hello.",
+        lastAt: summary?.lastAt || latest?.createdAt || "",
+        unread: summary
+          ? Number(summary.unreadCounts[s.currentUserId] || 0)
+          : s.directMessages.filter(
+              (d) => d.fromId === id && d.toId === s.currentUserId && !d.read,
+            ).length,
+      };
+    })
     .sort(
       (a, b) =>
-        (b.latest?.createdAt ?? "").localeCompare(a.latest?.createdAt ?? "") ||
+        b.lastAt.localeCompare(a.lastAt) ||
         a.person.name.localeCompare(b.person.name),
     );
   useEffect(() => {
@@ -128,14 +160,23 @@ export default function DirectInbox({
     if (blocked) select("");
   }, [blocked]);
   const lastRead = useRef({ peer: "", first: "" }),
+    attemptedRead = useRef(""),
     reading = useRef<string | null>(null),
     unreadKey = messages
       .filter((d) => d.fromId === selected && !d.read)
       .map((d) => d.id)
       .join("|");
   useEffect(() => {
-    if (!selected || reading.current === selected) return;
+    if (
+      !selected ||
+      directHistory.loading ||
+      !messages.length ||
+      reading.current === selected
+    )
+      return;
     const first = messages[0]?.id ?? "";
+    const attempt = `${selected}:${first}:${unreadKey}`;
+    if (attemptedRead.current === attempt) return;
     if (
       lastRead.current.peer === selected &&
       lastRead.current.first === first &&
@@ -143,11 +184,19 @@ export default function DirectInbox({
     )
       return;
     lastRead.current = { peer: selected, first };
+    attemptedRead.current = attempt;
     reading.current = selected;
-    void run({ type: "dm.read", userId: selected }).finally(() => {
+    void run({ type: "dm.read", userId: selected }).then((ok) => {
       if (reading.current === selected) reading.current = null;
+      if (ok) setReadRevision((value) => value + 1);
     });
-  }, [selected, unreadKey, messages[0]?.id]);
+  }, [
+    selected,
+    unreadKey,
+    messages[0]?.id,
+    directHistory.loading,
+    readRevision,
+  ]);
   useLayoutEffect(() => {
     const el = list.current;
     if (!el) return;
@@ -198,7 +247,7 @@ export default function DirectInbox({
             <span>YOUR CONVERSATIONS</span>
             <Mail size={14} />
           </div>
-          {peers.map(({ person, latest, unread }) => (
+          {peers.map(({ person, preview, unread }) => (
             <button
               className={selected === person.id ? "active" : ""}
               key={person.id}
@@ -207,10 +256,15 @@ export default function DirectInbox({
               <Avatar person={person} />
               <span>
                 <strong>{person.name}</strong>
-                <small>{latest?.body ?? "Say a little hello."}</small>
+                <small>{preview}</small>
               </span>
               {unread > 0 ? (
-                <b className="direct-unread">{unread}</b>
+                <b className="direct-unread">
+                  {unread}
+                  {mode === "live" && !directCatalog.progress?.complete
+                    ? "+"
+                    : ""}
+                </b>
               ) : s.preferences.dmMutedIds?.includes(person.id) ? (
                 <VolumeX size={13} />
               ) : (
@@ -222,6 +276,49 @@ export default function DirectInbox({
             <p className="squad-note">
               A new connection can become a good conversation.
             </p>
+          )}
+          {directCatalog.loading && (
+            <p role="status" className="squad-note">
+              Bringing your conversations closer…
+            </p>
+          )}
+          {directCatalog.hasMore && (
+            <button
+              className="direct-more"
+              disabled={directCatalog.loading}
+              onClick={loadMoreDirectConversations}
+            >
+              More conversations
+              <ChevronRight size={14} />
+            </button>
+          )}
+          {directCatalog.error && (
+            <div className="direct-catalog-note" role="alert">
+              <p>{directCatalog.error}</p>
+              <button
+                className="text-button"
+                onClick={loadMoreDirectConversations}
+              >
+                Try loading again
+              </button>
+            </div>
+          )}
+          {mode === "live" && !directCatalog.progress?.complete && (
+            <div className="direct-catalog-note">
+              <p>
+                Earlier conversations are still being gathered. Unread counts
+                may change as they arrive.
+              </p>
+              <button
+                className="text-button"
+                disabled={directCatalog.syncing}
+                onClick={() => void syncDirectConversations().catch(() => {})}
+              >
+                {directCatalog.syncing
+                  ? "Finding your earlier conversations…"
+                  : "Find earlier conversations"}
+              </button>
+            </div>
           )}
         </aside>
         <section>
@@ -385,7 +482,7 @@ export default function DirectInbox({
                   const form = e.currentTarget,
                     body = String(new FormData(form).get("body"));
                   const uploaded = await photo.prepare();
-                  if (!uploaded.ok) return;
+                  if (!uploaded.ok || !form.isConnected) return;
                   if (
                     await run({
                       type: "dm.send",
@@ -396,8 +493,12 @@ export default function DirectInbox({
                         : {}),
                     })
                   ) {
+                    if (!form.isConnected) return;
                     pinned.current = true;
-                    form.reset();
+                    const field = form.elements.namedItem(
+                      "body",
+                    ) as HTMLInputElement;
+                    if (field.value === body) field.value = "";
                     photo.clear();
                   }
                 }}

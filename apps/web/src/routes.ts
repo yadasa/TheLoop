@@ -67,6 +67,7 @@ export function readRoute(href: string): WebRoute {
       if (target.kind === "channel") {
         route.page = "chat";
         route.channelId = target.id;
+        if (target.topic) route.topic = target.topic;
       }
       if (target.kind === "community") {
         route.page = "communities";

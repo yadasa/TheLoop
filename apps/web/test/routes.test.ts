@@ -23,6 +23,10 @@ test("shared destinations survive refresh with their selected record", () => {
 test("older shared query URLs and invalid destinations have predictable screens", () => {
   assert.equal(readRoute(origin + "?post=older").postDetail, "older");
   assert.equal(readRoute(origin + "?event=coffee").eventDetail, "coffee");
+  assert.equal(
+    readRoute(origin + "?channel=career-moves&topic=Warm%20intros").topic,
+    "Warm intros",
+  );
   assert.equal(readRoute(origin + "#/inbox/%2Fprivate").dmId, "");
   assert.equal(
     readRoute(origin + "#/conversations/career-moves?topic=%00bad").topic,

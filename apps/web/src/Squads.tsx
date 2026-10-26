@@ -510,7 +510,7 @@ export default function Squads({
                   const form = e.currentTarget;
                   const body = String(new FormData(form).get("body"));
                   const uploaded = await photo.prepare();
-                  if (!uploaded.ok) return;
+                  if (!uploaded.ok || !form.isConnected) return;
                   if (
                     await run({
                       type: "squad.message.send",
@@ -522,10 +522,16 @@ export default function Squads({
                       ...(replyId ? { replyTo: replyId } : {}),
                     })
                   ) {
+                    if (!form.isConnected) return;
                     pinned.current = true;
-                    form.reset();
+                    const field = form.elements.namedItem(
+                      "body",
+                    ) as HTMLTextAreaElement;
+                    if (field.value === body) field.value = "";
                     photo.clear();
-                    setReplyId("");
+                    setReplyId((current) =>
+                      current === replyId ? "" : current,
+                    );
                   }
                 }}
               >

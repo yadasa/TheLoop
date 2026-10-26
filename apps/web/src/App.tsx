@@ -147,6 +147,7 @@ export default function App() {
     watchEvent,
     postStatus,
     eventStatus,
+    directCatalog,
   } = useLoop();
   const {
     route,
@@ -1083,10 +1084,27 @@ export default function App() {
                     ""}
                 </b>
               )}
-              {id === "inbox" &&
+              {id === "people" &&
                 s.connections.some(
                   (c) => c.toId === s.currentUserId && c.status === "pending",
                 ) && <i className="nav-dot" />}
+              {id === "inbox" &&
+                (directCatalog.results.some(
+                  (conversation) =>
+                    Number(conversation.unreadCounts[s.currentUserId] || 0) >
+                      0 &&
+                    conversation.participantIds.every(
+                      (uid) => !s.preferences.blockedIds.includes(uid),
+                    ),
+                ) ||
+                  s.directMessages.some(
+                    (message) =>
+                      message.toId === s.currentUserId &&
+                      !message.read &&
+                      !s.preferences.blockedIds.includes(message.fromId),
+                  )) && (
+                  <i className="nav-dot" title="Unread private messages" />
+                )}
             </button>
           ))}
         </div>
@@ -1648,6 +1666,7 @@ export default function App() {
                       ))}
                     </div>
                     <form
+                      key={`${s.currentUserId}:${activeChannel.id}`}
                       className="chat-composer"
                       onSubmit={async (e) => {
                         e.preventDefault();
@@ -1655,7 +1674,7 @@ export default function App() {
                         const form = e.currentTarget;
                         const f = new FormData(form);
                         const uploaded = await chatImage.prepare();
-                        if (!uploaded.ok) return;
+                        if (!uploaded.ok || !form.isConnected) return;
                         if (
                           await act({
                             type: "message.send",
@@ -1668,9 +1687,16 @@ export default function App() {
                             ...(replyTo ? { replyTo } : {}),
                           })
                         ) {
-                          form.reset();
+                          if (!form.isConnected) return;
+                          const field = form.elements.namedItem(
+                            "body",
+                          ) as HTMLTextAreaElement;
+                          if (field.value === String(f.get("body")))
+                            field.value = "";
                           chatImage.clear();
-                          setReplyTo(null);
+                          setReplyTo((current) =>
+                            current === replyTo ? null : current,
+                          );
                         }
                       }}
                     >
@@ -2547,6 +2573,7 @@ export default function App() {
             })()}
           {page === "squads" && (
             <Squads
+              key={`${s.currentUserId}:${squadId}`}
               selectedId={squadId}
               select={setSquadId}
               openProfile={openProfile}
@@ -2559,6 +2586,7 @@ export default function App() {
           )}
           {page === "inbox" && (
             <DirectInbox
+              key={`${s.currentUserId}:${dmId}`}
               peerId={dmId}
               select={setDmId}
               openProfile={openProfile}
