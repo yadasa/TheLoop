@@ -59,13 +59,16 @@ import {
   You,
 } from "./src/You";
 import {
+  AmbientGradient,
   Button,
   color,
   Loading,
   Logo,
   MotionProvider,
+  MotionScene,
   s,
   Touch,
+  useMotionEnabled,
   useReducedMotion,
   ThemeProvider,
   ThemeSwitcher,
@@ -142,6 +145,48 @@ function ThemeStatusBar() {
   return <StatusBar style={theme === "dark" ? "light" : "dark"} />;
 }
 
+function TabIcon({ selected, symbol }: { selected: boolean; symbol: string }) {
+  const enabled = useMotionEnabled();
+  const progress = useRef(new Animated.Value(selected ? 1 : 0)).current;
+  useEffect(() => {
+    progress.stopAnimation();
+    if (!enabled) progress.setValue(selected ? 1 : 0);
+    else {
+      const animation = Animated.spring(progress, {
+        toValue: selected ? 1 : 0,
+        speed: 24,
+        bounciness: 0,
+        useNativeDriver: Platform.OS !== "web",
+      });
+      animation.start();
+      return () => animation.stop();
+    }
+  }, [selected, enabled, progress]);
+  return (
+    <View
+      style={{ width: 45, height: 26, alignItems: "center", justifyContent: "center" }}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          width: 45,
+          height: 26,
+          borderRadius: 15,
+          backgroundColor: color.ink,
+          opacity: progress,
+          transform: [{
+            scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }),
+          }],
+        }}
+      />
+      <Text style={{ fontSize: 21, lineHeight: 25, color: selected ? color.onInk : color.muted }}>
+        {symbol}
+      </Text>
+    </View>
+  );
+}
+
 function StartupUnavailable() {
   useTheme();
   const { startupError, retryStartup, signOut, state, pending } = useLoop();
@@ -163,6 +208,7 @@ function StartupUnavailable() {
   };
   return (
     <SafeAreaView style={[s.grow, { backgroundColor: color.paper }]}>
+      <AmbientGradient variant="surface" />
       <ScrollView
         contentContainerStyle={[
           s.content,
@@ -219,6 +265,7 @@ function LoopApp() {
   const [toast, setToast] = useState("");
   const fade = useRef(new Animated.Value(1)).current;
   const transition = useRef(0);
+  const requestedTab = useRef<Tab>("Home");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onboarded = useRef(false);
   const tutorialChecked = useRef<string | null>(null);
@@ -239,6 +286,7 @@ function LoopApp() {
   );
   const navigate = useCallback(
     (target: Tab) => {
+      requestedTab.current = target;
       setStack([]);
       const token = ++transition.current;
       fade.stopAnimation();
@@ -263,6 +311,13 @@ function LoopApp() {
     },
     [fade, reducedMotion],
   );
+  useEffect(() => {
+    if (!reducedMotion) return;
+    transition.current++;
+    fade.stopAnimation();
+    fade.setValue(1);
+    setTab(requestedTab.current);
+  }, [reducedMotion, fade]);
   const run = useCallback(
     async (command: Command, success?: string) => {
       try {
@@ -286,6 +341,7 @@ function LoopApp() {
     transition.current++;
     fade.stopAnimation();
     fade.setValue(1);
+    requestedTab.current = "Home";
     setTab("Home");
     setStack([]);
     setToast("");
@@ -558,6 +614,7 @@ function LoopApp() {
   ];
   return (
     <SafeAreaView style={s.page} edges={["top", "left", "right"]}>
+      <AmbientGradient variant="surface" animated={!active} />
       <NativePushBridge nav={nav} />
       <View
         style={{
@@ -622,20 +679,21 @@ function LoopApp() {
         </View>
       </View>
       {!!error && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss error"
-          onPress={clearError}
-          style={{
-            paddingHorizontal: 22,
-            paddingVertical: 12,
-            backgroundColor: color.soft,
-          }}
-        >
-          <Text style={{ fontSize: 12, color: color.ink, lineHeight: 18 }}>
-            {error} ×
-          </Text>
-        </Pressable>
+        <MotionScene identity={error} distance={4}>
+          <Touch
+            label="Dismiss error"
+            onPress={clearError}
+            style={{
+              paddingHorizontal: 22,
+              paddingVertical: 12,
+              backgroundColor: color.soft,
+            }}
+          >
+            <Text style={{ fontSize: 12, color: color.ink, lineHeight: 18 }}>
+              {error} ×
+            </Text>
+          </Touch>
+        </MotionScene>
       )}
       {mode === "live" && !state.currentUserId ? (
         <View style={{ flex: 1 }}>
@@ -690,28 +748,10 @@ function LoopApp() {
             <Touch
               label={`${t.name === "Chat" ? "Group chats" : t.name} tab${tab === t.name ? ", selected" : ""}`}
               onPress={() => navigate(t.name)}
+              selected={tab === t.name}
               style={{ alignItems: "center", paddingVertical: 7, gap: 4 }}
             >
-              <View
-                style={{
-                  width: 45,
-                  height: 26,
-                  borderRadius: 15,
-                  backgroundColor: tab === t.name ? color.ink : "transparent",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 21,
-                    lineHeight: 25,
-                    color: tab === t.name ? color.onInk : color.muted,
-                  }}
-                >
-                  {t.symbol}
-                </Text>
-              </View>
+              <TabIcon selected={tab === t.name} symbol={t.symbol} />
               <Text
                 style={{
                   fontSize: 10,
@@ -732,6 +772,7 @@ function LoopApp() {
         onRequestClose={close}
       >
         <SafeAreaView style={s.page} edges={["top", "left", "right", "bottom"]}>
+          <AmbientGradient variant="surface" />
           <StatusBar style={theme === "dark" ? "light" : "dark"} />
           {active && (
             <>
@@ -772,7 +813,13 @@ function LoopApp() {
                     : undefined
                 }
               >
-                {renderRoute(active)}
+                <MotionScene
+                  identity={JSON.stringify(active)}
+                  style={{ flex: 1 }}
+                  distance={8}
+                >
+                  {renderRoute(active)}
+                </MotionScene>
               </KeyboardAvoidingView>
             </>
           )}
@@ -787,26 +834,33 @@ function LoopApp() {
 }
 function Toast({ text, dismiss }: { text: string; dismiss: () => void }) {
   return (
-    <Pressable
-      accessibilityRole="alert"
-      onPress={dismiss}
+    <MotionScene
+      identity={text}
+      distance={8}
       style={{
         position: "absolute",
         bottom: 95,
         left: 18,
         right: 18,
-        padding: 16,
-        backgroundColor: color.ink,
-        borderRadius: 16,
-        shadowColor: "#000",
-        shadowOpacity: 0.16,
-        shadowRadius: 10,
-        elevation: 5,
       }}
     >
-      <Text style={{ fontSize: 13, lineHeight: 20, color: color.onInk }}>
-        {text}
-      </Text>
-    </Pressable>
+      <Pressable
+        accessibilityRole="alert"
+        onPress={dismiss}
+        style={{
+          padding: 16,
+          backgroundColor: color.ink,
+          borderRadius: 16,
+          shadowColor: "#000",
+          shadowOpacity: 0.16,
+          shadowRadius: 10,
+          elevation: 5,
+        }}
+      >
+        <Text style={{ fontSize: 13, lineHeight: 20, color: color.onInk }}>
+          {text}
+        </Text>
+      </Pressable>
+    </MotionScene>
   );
 }

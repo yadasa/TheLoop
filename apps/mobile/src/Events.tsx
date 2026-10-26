@@ -20,6 +20,7 @@ import {
   Field,
   Horizontal,
   Label,
+  MotionScene,
   s,
   Section,
   Touch,
@@ -168,6 +169,11 @@ export function Events({ nav }: { nav: Nav }) {
           ))}
         </View>
       </View>
+      <MotionScene
+        identity={`${scope}:${kind}:${mode}:${month.getTime()}:${selected}`}
+        style={{ gap: 20 }}
+        distance={5}
+      >
       {mode === "calendar" && (
         <View style={s.card}>
           <View style={s.between}>
@@ -302,6 +308,7 @@ export function Events({ nav }: { nav: Nav }) {
           onPress={() => nav.open({ kind: "create-event" })}
         />
       )}
+      </MotionScene>
       <Button
         small
         secondary
