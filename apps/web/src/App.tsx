@@ -122,6 +122,8 @@ export default function App() {
     dispatch,
     mode,
     ready,
+    startupError,
+    retryStartup,
     error,
     clearError,
     pending,
@@ -528,6 +530,28 @@ export default function App() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+  if (startupError)
+    return (
+      <main className="loading">
+        <Empty
+          title={s.currentUserId ? "We couldn’t load your account" : "TheLoop couldn’t connect"}
+          body={startupError}
+          action={
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
+              <button className="button primary" disabled={pending > 0} onClick={retryStartup}>
+                Try again
+              </button>
+              {s.currentUserId && (
+                <button className="button" disabled={pending > 0} onClick={() => void signOut().catch(() => {})}>
+                  Sign out
+                </button>
+              )}
+            </div>
+          }
+        />
+        {error && error !== startupError && <p role="alert" className="form-error">{error}</p>}
+      </main>
+    );
   if (!ready)
     return (
       <div className="loading">

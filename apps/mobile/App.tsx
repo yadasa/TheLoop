@@ -6,6 +6,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   View,
 } from "react-native";
@@ -58,6 +59,7 @@ import {
   You,
 } from "./src/You";
 import {
+  Button,
   color,
   Loading,
   Logo,
@@ -121,14 +123,16 @@ function ConfigurationUnavailable() {
   useTheme();
   return (
     <SafeAreaView style={[s.grow, { backgroundColor: color.paper }]}>
-      <View style={[s.content, { flex: 1, justifyContent: "center" }]}>
+      <ScrollView
+        contentContainerStyle={[s.content, { flexGrow: 1, justifyContent: "center" }]}
+      >
         <Logo size={48} />
-        <Text style={s.title}>This version couldn’t start</Text>
+        <Text style={s.title} accessibilityRole="header">This version couldn’t start</Text>
         <Text style={s.body}>
           The app setup is incomplete. Install the latest TheLoop preview and
           try again.
         </Text>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -138,9 +142,74 @@ function ThemeStatusBar() {
   return <StatusBar style={theme === "dark" ? "light" : "dark"} />;
 }
 
+function StartupUnavailable() {
+  useTheme();
+  const { startupError, retryStartup, signOut, state, pending } = useLoop();
+  const [leaving, setLeaving] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const signedIn = Boolean(state.currentUserId);
+  const leave = async () => {
+    setActionError("");
+    setLeaving(true);
+    try {
+      await signOut();
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Could not sign out. Try again.",
+      );
+    } finally {
+      setLeaving(false);
+    }
+  };
+  return (
+    <SafeAreaView style={[s.grow, { backgroundColor: color.paper }]}>
+      <ScrollView
+        contentContainerStyle={[
+          s.content,
+          { flexGrow: 1, justifyContent: "center", gap: 20 },
+        ]}
+      >
+        <View style={s.between}>
+          <Logo size={48} />
+          <ThemeSwitcher />
+        </View>
+        <Text style={s.title} accessibilityRole="header">
+          {signedIn ? "We couldn’t load your account" : "TheLoop couldn’t connect"}
+        </Text>
+        <Text style={s.body} accessibilityLiveRegion="polite">
+          {startupError}
+        </Text>
+        {signedIn && (
+          <Text style={s.small}>
+            You’re still signed in. Try again to finish opening TheLoop.
+          </Text>
+        )}
+        {actionError ? (
+          <Text style={s.body} accessibilityRole="alert">
+            {actionError}
+          </Text>
+        ) : null}
+        <Button
+          title="Try again"
+          disabled={leaving || pending > 0}
+          onPress={retryStartup}
+        />
+        {signedIn && (
+          <Button
+            title={leaving ? "Signing out…" : "Sign out"}
+            secondary
+            disabled={leaving || pending > 0}
+            onPress={() => void leave()}
+          />
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 function LoopApp() {
   const { theme } = useTheme();
-  const { state, dispatch, mode, ready, error, clearError, pending } =
+  const { state, dispatch, mode, ready, startupError, error, clearError, pending } =
     useLoop();
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
@@ -337,6 +406,7 @@ function LoopApp() {
     },
     [],
   );
+  if (startupError) return <StartupUnavailable />;
   if (!ready) return <Loading />;
   const title = (route: Route) =>
     ({
