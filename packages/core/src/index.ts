@@ -6,3 +6,4 @@ export * from './import';
 export * from './guide';
 export * from './previewImages';
 export * from './links';
+export * from './eventForm';
