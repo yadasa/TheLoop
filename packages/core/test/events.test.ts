@@ -193,6 +193,13 @@ test("full waitlists never block existing members from leaving", () => {
   assert.equal(left.attendeeIds.length, 1000);
   assert.equal(left.waitlistIds.length, 499);
   assert.ok(left.attendeeIds.includes("waiting-0"));
+  assert.ok(
+    run(state, { type: "event.rsvp", eventId: "plan" }).notifications.some(
+      (notice) =>
+        notice.userId === "waiting-0" &&
+        notice.title === "You’re off the waitlist",
+    ),
+  );
   state.currentUserId = "waiting-3";
   assert.equal(
     run(state, { type: "event.rsvp", eventId: "plan" }).events.find(

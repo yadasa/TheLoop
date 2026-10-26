@@ -128,8 +128,21 @@ export function applyEventCommand(
     if (going || waiting) {
       event.attendeeIds = event.attendeeIds.filter((id) => id !== uid);
       event.waitlistIds = event.waitlistIds.filter((id) => id !== uid);
-      if (going && active(event, context.now) && event.waitlistIds.length)
-        event.attendeeIds.push(event.waitlistIds.shift()!);
+      if (going && active(event, context.now) && event.waitlistIds.length) {
+        const promoted = event.waitlistIds.shift()!;
+        event.attendeeIds.push(promoted);
+        if (!state.preferences.blockedIds.includes(promoted))
+          state.notifications.push({
+            id: `event-promotion-${context.id}-${promoted}`,
+            userId: promoted,
+            title: "You’re off the waitlist",
+            body: `A spot opened for ${event.title}. You’re now going.`,
+            kind: "event",
+            targetId: event.id,
+            createdAt: context.now,
+            read: false,
+          });
+      }
       return;
     }
     if (!active(event, context.now))
