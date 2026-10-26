@@ -1,0 +1,1045 @@
+import {
+  assert,
+  calculateTrust,
+  canMessage,
+  defaultPreferences,
+  Doc,
+  DomainError,
+  httpsUrl,
+  id,
+  list,
+  pairId,
+  rsvp,
+  text,
+  toggle,
+  validatePreferences,
+  validateProfile,
+} from "./policy";
+
+export interface TransactionStore {
+  get(path: string): Promise<Doc | undefined>;
+  find(
+    collection: string,
+    field: string,
+    value: unknown,
+    limit: number,
+  ): Promise<Doc[]>;
+  set(path: string, value: Doc): void;
+  remove(path: string): void;
+}
+export type Actor = { uid: string; emailVerified: boolean; name?: string };
+export type Request = { requestId: string; command: Doc };
+
+export async function bootstrap(
+  store: TransactionStore,
+  actor: Actor,
+  now: string,
+  name?: unknown,
+): Promise<Doc> {
+  const userPath = `users/${actor.uid}`;
+  const profilePath = `profiles/${actor.uid}`;
+  const [existingUser, existingProfile, signals] = await Promise.all([
+    store.get(userPath),
+    store.get(profilePath),
+    store.get(`trustSignals/${actor.uid}`),
+  ]);
+  if (existingUser && existingProfile)
+    return { userId: actor.uid, preferences: existingUser.preferences };
+  const displayName = text(name || actor.name || "Loop member", "Name", 80);
+  const profile: Doc = existingProfile || {
+    id: actor.uid,
+    name: displayName,
+    handle: `loop-${actor.uid.slice(0, 12).toLowerCase()}`,
+    headline: "",
+    company: "",
+    location: "",
+    bio: "",
+    initials: displayName
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((p: string) => p[0])
+      .join("")
+      .toUpperCase(),
+    skills: [],
+    interests: [],
+    links: [],
+    joinedAt: now,
+    verified: false,
+    visibility: "public",
+    openTo: [],
+  };
+  const serverSignals = {
+    ...(signals || {}),
+    emailVerified: actor.emailVerified,
+    acceptedConnections: signals?.acceptedConnections || 0,
+    verifiedAttendance: signals?.verifiedAttendance || 0,
+  };
+  profile.trust = calculateTrust(profile, serverSignals, now);
+  const preferences = existingUser?.preferences || defaultPreferences();
+  store.set(userPath, {
+    ...(existingUser || {}),
+    id: actor.uid,
+    preferences,
+    createdAt: existingUser?.createdAt || now,
+    updatedAt: now,
+  });
+  store.set(profilePath, profile);
+  store.set(`trustSignals/${actor.uid}`, serverSignals);
+  return { userId: actor.uid, preferences };
+}
+
+export async function execute(
+  store: TransactionStore,
+  actor: Actor,
+  request: Request,
+  now: string,
+): Promise<Doc> {
+  const requestId = id(request.requestId);
+  const command = request.command;
+  assert(
+    command && typeof command === "object" && !Array.isArray(command),
+    "invalid-argument",
+    "Provide a command.",
+  );
+  const commandType = text(command.type, "Command", 60);
+  const receiptPath = `users/${actor.uid}/requests/${requestId}`;
+  const receipt = await store.get(receiptPath);
+  if (receipt) return { ...receipt.result, duplicate: true };
+  const [user, profile, rate, signals] = await Promise.all([
+    store.get(`users/${actor.uid}`),
+    store.get(`profiles/${actor.uid}`),
+    store.get(`users/${actor.uid}/system/rate`),
+    store.get(`trustSignals/${actor.uid}`),
+  ]);
+  assert(
+    user && profile && !user.disabled && !user.deletionPending,
+    "failed-precondition",
+    "Complete account setup before continuing.",
+  );
+  const prefs = { ...defaultPreferences(), ...user.preferences };
+  const bucket = Math.floor(Date.parse(now) / 60000);
+  const count = rate?.bucket === bucket ? Number(rate.count || 0) : 0;
+  assert(
+    count < 45,
+    "resource-exhausted",
+    "Take a breath. Please try again in a minute.",
+  );
+  const day = now.slice(0, 10);
+  const dailyCount = rate?.day === day ? Number(rate.dailyCount || 0) : 0;
+  assert(
+    dailyCount < 2000,
+    "resource-exhausted",
+    "Daily activity limit reached. Please try again tomorrow.",
+  );
+  const entityId = requestId;
+  let result: Doc = { ok: true, id: entityId };
+  let prefsChanged = false;
+  let profileChanged = false;
+  let signalsChanged = false;
+  const serverSignals: Doc = {
+    ...(signals || {}),
+    emailVerified: actor.emailVerified,
+  };
+
+  async function requireDoc(
+    collection: string,
+    resourceId: unknown,
+  ): Promise<Doc> {
+    const resource = await store.get(`${collection}/${id(resourceId)}`);
+    assert(resource, "not-found", "That item is no longer available.");
+    return resource;
+  }
+  async function channelAccess(channelId: unknown): Promise<Doc> {
+    const channel = await requireDoc("channels", channelId);
+    assert(
+      channel.visibility === "public" || channel.memberIds?.includes(actor.uid),
+      "permission-denied",
+      "Join this private channel before participating.",
+    );
+    return channel;
+  }
+  async function communityAccess(communityId: unknown): Promise<Doc> {
+    const community = await requireDoc("communities", communityId);
+    assert(
+      prefs.joinedCommunityIds.includes(community.id),
+      "permission-denied",
+      "Join this community before participating.",
+    );
+    return community;
+  }
+  async function requirePeer(
+    peerId: unknown,
+  ): Promise<{ userId: string; user: Doc; profile: Doc }> {
+    const userId = id(peerId);
+    assert(
+      userId !== actor.uid,
+      "invalid-argument",
+      "Choose another community member.",
+    );
+    const [peer, peerProfile] = await Promise.all([
+      store.get(`users/${userId}`),
+      store.get(`profiles/${userId}`),
+    ]);
+    assert(
+      peer && peerProfile && !peer.disabled && !peer.deletionPending,
+      "not-found",
+      "This member is unavailable.",
+    );
+    assert(
+      !prefs.blockedIds.includes(userId) &&
+        !peer.preferences?.blockedIds?.includes(actor.uid),
+      "permission-denied",
+      "This interaction is unavailable.",
+    );
+    return { userId, user: peer, profile: peerProfile };
+  }
+  async function notify(
+    userId: string,
+    title: string,
+    body: string,
+    kind: string,
+    targetId: string,
+    suffix: string,
+  ): Promise<void> {
+    if (userId === actor.uid) return;
+    const recipient = await store.get(`users/${userId}`);
+    if (!recipient || recipient.preferences?.blockedIds?.includes(actor.uid))
+      return;
+    const notificationId = `${requestId}_${suffix}`;
+    store.set(`notifications/${notificationId}`, {
+      id: notificationId,
+      userId,
+      title,
+      body,
+      kind,
+      targetId,
+      createdAt: now,
+      read: false,
+    });
+  }
+  function savePreferences(): void {
+    prefsChanged = true;
+  }
+
+  switch (commandType) {
+    case "subscription.set": {
+      const targetId = text(command.targetId, "Subscription target", 230);
+      const value = command.value;
+      assert(
+        ["following", "muted", "hidden"].includes(value),
+        "invalid-argument",
+        "Choose following, muted or hidden.",
+      );
+      // Topic names are preference-map keys, never interpolated into document paths.
+      const channelId = id(targetId.split(":")[0]);
+      if (targetId.includes(":"))
+        text(targetId.slice(targetId.indexOf(":") + 1), "Topic", 80);
+      const channel = await store.get(`channels/${channelId}`);
+      const conference = channel
+        ? undefined
+        : await store.get(`conferences/${targetId}`);
+      assert(
+        channel || conference,
+        "not-found",
+        "Subscription target not found.",
+      );
+      if (channel) await channelAccess(channel.id);
+      assert(
+        Object.keys(prefs.subscriptions).length < 1000 ||
+          targetId in prefs.subscriptions,
+        "resource-exhausted",
+        "Subscription limit reached.",
+      );
+      prefs.subscriptions = { ...prefs.subscriptions, [targetId]: value };
+      savePreferences();
+      break;
+    }
+    case "onboarding.complete": {
+      const interests = list(command.interests, "Interests", 30);
+      const channelIds = list(command.channelIds, "Channels", 80, 128);
+      for (const channelId of channelIds) await channelAccess(channelId);
+      prefs.interests = interests;
+      prefs.onboardingComplete = true;
+      prefs.subscriptions = {
+        ...prefs.subscriptions,
+        ...Object.fromEntries(
+          channelIds.map((channelId) => [channelId, "following"]),
+        ),
+      };
+      profile.interests = interests;
+      profileChanged = true;
+      savePreferences();
+      break;
+    }
+    case "preferences.update": {
+      Object.assign(prefs, validatePreferences(command.preferences));
+      savePreferences();
+      break;
+    }
+    case "community.join": {
+      const community = await requireDoc("communities", command.communityId);
+      assert(
+        prefs.joinedCommunityIds.length < 200 ||
+          prefs.joinedCommunityIds.includes(community.id),
+        "resource-exhausted",
+        "Community membership limit reached.",
+      );
+      const wasJoined = prefs.joinedCommunityIds.includes(community.id);
+      assert(
+        !(
+          wasJoined &&
+          community.moderatorIds?.includes(actor.uid) &&
+          community.moderatorIds.length === 1
+        ),
+        "failed-precondition",
+        "Assign another moderator before leaving your community.",
+      );
+      prefs.joinedCommunityIds = toggle(prefs.joinedCommunityIds, community.id);
+      savePreferences();
+      store.set(`communities/${community.id}`, {
+        ...community,
+        members: Math.max(
+          0,
+          Number(community.members || 0) + (wasJoined ? -1 : 1),
+        ),
+      });
+      break;
+    }
+    case "community.create": {
+      assert(
+        prefs.joinedCommunityIds.length < 200,
+        "resource-exhausted",
+        "Community membership limit reached.",
+      );
+      const created = await store.find(
+        "communities",
+        "creatorId",
+        actor.uid,
+        11,
+      );
+      assert(
+        created.length < 10,
+        "resource-exhausted",
+        "Community creation limit reached.",
+      );
+      const name = text(command.name, "Community name", 70);
+      const description = text(command.description, "Description", 1000);
+      const slug = `${name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 48)}-${requestId.slice(-6)}`;
+      store.set(`communities/${entityId}`, {
+        id: entityId,
+        name,
+        slug,
+        description,
+        members: 1,
+        icon: name[0].toUpperCase(),
+        rules: [
+          "Be respectful. No spam or harassment.",
+          "Protect members’ personal information.",
+          "Make space for useful, relevant conversations.",
+        ],
+        moderatorIds: [actor.uid],
+        creatorId: actor.uid,
+        createdAt: now,
+      });
+      prefs.joinedCommunityIds = [...prefs.joinedCommunityIds, entityId];
+      savePreferences();
+      break;
+    }
+    case "message.send": {
+      const channel = await channelAccess(command.channelId);
+      const body = text(command.body, "Message", 4000);
+      const topic = text(command.topic, "Topic", 80);
+      const message: Doc = {
+        id: entityId,
+        channelId: channel.id,
+        topic,
+        authorId: actor.uid,
+        body,
+        createdAt: now,
+        reactions: {},
+      };
+      if (command.replyTo) {
+        const parent = await requireDoc("messages", command.replyTo);
+        assert(
+          parent.channelId === channel.id,
+          "invalid-argument",
+          "Replies must stay in the same channel.",
+        );
+        message.replyTo = parent.id;
+        await notify(
+          parent.authorId,
+          `${profile.name} replied`,
+          body.slice(0, 180),
+          "message",
+          channel.id,
+          "reply",
+        );
+      }
+      store.set(`messages/${entityId}`, message);
+      // Sending a message deliberately does not subscribe a muted/hidden channel or topic.
+      break;
+    }
+    case "message.edit":
+    case "message.delete":
+    case "message.react": {
+      const message = await requireDoc("messages", command.messageId);
+      await channelAccess(message.channelId);
+      if (commandType === "message.edit") {
+        assert(
+          message.authorId === actor.uid,
+          "permission-denied",
+          "Only the author can edit this message.",
+        );
+        store.set(`messages/${message.id}`, {
+          ...message,
+          body: text(command.body, "Message", 4000),
+          editedAt: now,
+        });
+      } else if (commandType === "message.delete") {
+        assert(
+          message.authorId === actor.uid ||
+            user.role === "moderator" ||
+            user.role === "admin",
+          "permission-denied",
+          "Only the author or a moderator can remove this message.",
+        );
+        store.remove(`messages/${message.id}`);
+      } else {
+        const emoji = text(command.emoji, "Reaction", 16);
+        assert(
+          [
+            "♥",
+            "❤️",
+            "🔥",
+            "👏",
+            "🙌",
+            "😂",
+            "💯",
+            "👍",
+            "🎉",
+            "🤝",
+            "🖤",
+            "👀",
+            "☕",
+            "🍽️",
+            "✨",
+            "✅",
+          ].includes(emoji),
+          "invalid-argument",
+          "Choose a supported reaction.",
+        );
+        const reactions: Doc = { ...message.reactions };
+        const people = reactions[emoji] || [];
+        assert(
+          people.length < 500 || people.includes(actor.uid),
+          "resource-exhausted",
+          "Reaction limit reached.",
+        );
+        reactions[emoji] = toggle(people, actor.uid);
+        store.set(`messages/${message.id}`, { ...message, reactions });
+      }
+      break;
+    }
+    case "channel.read": {
+      const channel = await channelAccess(command.channelId);
+      prefs.readChannels = { ...prefs.readChannels, [channel.id]: now };
+      savePreferences();
+      break;
+    }
+    case "post.create": {
+      const community = await communityAccess(command.communityId);
+      const kind = command.kind;
+      assert(
+        ["discussion", "win", "opportunity", "poll", "link"].includes(kind),
+        "invalid-argument",
+        "Invalid post type.",
+      );
+      const post: Doc = {
+        id: entityId,
+        communityId: community.id,
+        authorId: actor.uid,
+        title: text(command.title, "Title", 180),
+        body: text(command.body, "Post", 10000, kind === "poll" ? 0 : 1),
+        kind,
+        createdAt: now,
+        votes: {},
+        comments: [],
+        tags: command.tags ? list(command.tags, "Tags", 6, 30) : [],
+      };
+      if (kind === "poll") {
+        const options = list(command.options, "Poll options", 6, 120);
+        assert(
+          options.length >= 2,
+          "invalid-argument",
+          "A poll needs at least two distinct options.",
+        );
+        post.poll = {
+          options: options.map((label, index) => ({
+            id: `option-${index}`,
+            label,
+            voterIds: [],
+          })),
+          closesAt: new Date(Date.parse(now) + 7 * 86_400_000).toISOString(),
+        };
+      }
+      if (command.url) post.url = httpsUrl(command.url);
+      if (kind === "link")
+        assert(post.url, "invalid-argument", "Add a link for this post.");
+      store.set(`posts/${entityId}`, post);
+      break;
+    }
+    case "post.vote":
+    case "post.save":
+    case "post.comment":
+    case "poll.vote": {
+      const post = await requireDoc("posts", command.postId);
+      if (commandType !== "post.save") await communityAccess(post.communityId);
+      if (commandType === "post.save") {
+        assert(
+          prefs.savedPostIds.length < 1000 ||
+            prefs.savedPostIds.includes(post.id),
+          "resource-exhausted",
+          "Saved post limit reached.",
+        );
+        prefs.savedPostIds = toggle(prefs.savedPostIds, post.id);
+        savePreferences();
+      } else if (commandType === "post.vote") {
+        assert(
+          command.value === 1 || command.value === -1,
+          "invalid-argument",
+          "Invalid vote.",
+        );
+        const votes = { ...post.votes };
+        if (votes[actor.uid] === command.value) delete votes[actor.uid];
+        else votes[actor.uid] = command.value;
+        assert(
+          Object.keys(votes).length <= 3000,
+          "resource-exhausted",
+          "Vote limit reached.",
+        );
+        store.set(`posts/${post.id}`, { ...post, votes });
+      } else if (commandType === "post.comment") {
+        assert(
+          post.comments?.length < 200,
+          "resource-exhausted",
+          "This discussion has reached its reply limit. Start a related discussion.",
+        );
+        const body = text(command.body, "Comment", 3000);
+        store.set(`posts/${post.id}`, {
+          ...post,
+          comments: [
+            ...post.comments,
+            { id: entityId, authorId: actor.uid, body, createdAt: now },
+          ],
+        });
+        await notify(
+          post.authorId,
+          `${profile.name} joined your discussion`,
+          body.slice(0, 180),
+          "community",
+          post.id,
+          "comment",
+        );
+      } else {
+        assert(
+          post.poll && Date.parse(post.poll.closesAt) > Date.parse(now),
+          "failed-precondition",
+          "This poll is closed.",
+        );
+        assert(
+          post.poll.options.some((o: Doc) => o.id === command.optionId),
+          "invalid-argument",
+          "Poll option not found.",
+        );
+        const options = post.poll.options.map((option: Doc) => ({
+          ...option,
+          voterIds: [
+            ...option.voterIds.filter((uid: string) => uid !== actor.uid),
+            ...(option.id === command.optionId ? [actor.uid] : []),
+          ],
+        }));
+        assert(
+          options.every((o: Doc) => o.voterIds.length < 3000),
+          "resource-exhausted",
+          "Poll response limit reached.",
+        );
+        store.set(`posts/${post.id}`, {
+          ...post,
+          poll: { ...post.poll, options },
+        });
+      }
+      break;
+    }
+    case "event.create": {
+      const event = command.event;
+      assert(
+        event && typeof event === "object",
+        "invalid-argument",
+        "Provide event details.",
+      );
+      const conference = await requireDoc("conferences", event.conferenceId);
+      const startAt = text(event.startAt, "Start time", 40);
+      const endAt = text(event.endAt, "End time", 40);
+      assert(
+        Number.isFinite(Date.parse(startAt)) &&
+          Number.isFinite(Date.parse(endAt)) &&
+          Date.parse(endAt) > Date.parse(startAt),
+        "invalid-argument",
+        "Choose a valid event time range.",
+      );
+      assert(
+        Date.parse(endAt) > Date.parse(now),
+        "invalid-argument",
+        "Events must finish in the future.",
+      );
+      assert(
+        Number.isInteger(event.capacity) &&
+          event.capacity >= 0 &&
+          event.capacity <= 1000,
+        "invalid-argument",
+        "Capacity must be 0 (open) through 1,000.",
+      );
+      assert(
+        ["conference", "meetup", "workshop", "social"].includes(event.kind),
+        "invalid-argument",
+        "Invalid event type.",
+      );
+      const timezone = text(event.timezone, "Timezone", 80);
+      try {
+        new Intl.DateTimeFormat("en", { timeZone: timezone });
+      } catch {
+        throw new DomainError("invalid-argument", "Use a valid timezone.");
+      }
+      const safe: Doc = {
+        id: entityId,
+        conferenceId: conference.id,
+        title: text(event.title, "Title", 160),
+        description: text(event.description, "Description", 5000),
+        startAt: new Date(startAt).toISOString(),
+        endAt: new Date(endAt).toISOString(),
+        timezone,
+        location: text(event.location, "Location", 240),
+        kind: event.kind,
+        hostId: actor.uid,
+        capacity: event.capacity,
+        attendeeIds: [actor.uid],
+        waitlistIds: [],
+        tags: event.tags ? list(event.tags, "Tags", 6, 30) : [],
+        createdAt: now,
+      };
+      if (event.url) safe.url = httpsUrl(event.url);
+      store.set(`events/${entityId}`, safe);
+      break;
+    }
+    case "event.rsvp": {
+      const event = await requireDoc("events", command.eventId);
+      assert(
+        Date.parse(event.endAt) > Date.parse(now),
+        "failed-precondition",
+        "This event has finished.",
+      );
+      assert(
+        (event.attendeeIds?.length || 0) < 1000 ||
+          event.attendeeIds.includes(actor.uid),
+        "resource-exhausted",
+        "This event has reached its RSVP limit.",
+      );
+      assert(
+        (event.waitlistIds?.length || 0) < 500 ||
+          event.waitlistIds.includes(actor.uid),
+        "resource-exhausted",
+        "This event’s waitlist is full.",
+      );
+      const update = rsvp(event, actor.uid);
+      const { promotedId, ...participants } = update;
+      store.set(`events/${event.id}`, { ...event, ...participants });
+      if (promotedId)
+        await notify(
+          promotedId,
+          "You’re off the waitlist",
+          `A spot opened for ${event.title}. You’re now going.`,
+          "event",
+          event.id,
+          "promoted",
+        );
+      result = {
+        ...result,
+        status: participants.attendeeIds.includes(actor.uid)
+          ? "going"
+          : participants.waitlistIds.includes(actor.uid)
+            ? "waitlisted"
+            : "none",
+      };
+      break;
+    }
+    case "connection.request": {
+      const peer = await requirePeer(command.userId);
+      const connectionId = pairId(actor.uid, peer.userId);
+      const existing = await store.get(`connections/${connectionId}`);
+      assert(
+        !existing,
+        "already-exists",
+        "A connection or request already exists.",
+      );
+      store.set(`connections/${connectionId}`, {
+        id: connectionId,
+        fromId: actor.uid,
+        toId: peer.userId,
+        participantIds: [actor.uid, peer.userId],
+        status: "pending",
+        createdAt: now,
+      });
+      await notify(
+        peer.userId,
+        `${profile.name} wants to connect`,
+        profile.headline || "Build your community together.",
+        "connection",
+        connectionId,
+        "connect",
+      );
+      result.id = connectionId;
+      break;
+    }
+    case "connection.respond": {
+      const connectionId = text(command.connectionId, "Connection ID", 260);
+      assert(
+        /^[A-Za-z0-9_~-]+$/.test(connectionId),
+        "invalid-argument",
+        "Invalid connection ID.",
+      );
+      const connection = await store.get(`connections/${connectionId}`);
+      assert(
+        connection &&
+          connection.toId === actor.uid &&
+          connection.status === "pending",
+        "permission-denied",
+        "Only the recipient can respond to this request.",
+      );
+      assert(
+        typeof command.accept === "boolean",
+        "invalid-argument",
+        "Choose accept or decline.",
+      );
+      const peer = await requirePeer(connection.fromId);
+      if (command.accept) {
+        const peerSignals =
+          (await store.get(`trustSignals/${peer.userId}`)) || {};
+        store.set(`connections/${connectionId}`, {
+          ...connection,
+          status: "accepted",
+          acceptedAt: now,
+        });
+        store.set(`profileAccess/${actor.uid}/members/${peer.userId}`, {
+          userId: peer.userId,
+          createdAt: now,
+        });
+        store.set(`profileAccess/${peer.userId}/members/${actor.uid}`, {
+          userId: actor.uid,
+          createdAt: now,
+        });
+        serverSignals.acceptedConnections =
+          Number(serverSignals.acceptedConnections || 0) + 1;
+        signalsChanged = true;
+        peerSignals.acceptedConnections =
+          Number(peerSignals.acceptedConnections || 0) + 1;
+        store.set(`trustSignals/${peer.userId}`, peerSignals);
+        store.set(`profiles/${peer.userId}`, {
+          ...peer.profile,
+          trust: calculateTrust(peer.profile, peerSignals, now),
+        });
+        await notify(
+          peer.userId,
+          `${profile.name} accepted your connection`,
+          "Say hello and keep the conversation going.",
+          "connection",
+          connectionId,
+          "accepted",
+        );
+      } else store.remove(`connections/${connectionId}`);
+      break;
+    }
+    case "profile.follow": {
+      const peer = await requirePeer(command.userId);
+      assert(
+        prefs.followingIds.length < 1000 ||
+          prefs.followingIds.includes(peer.userId),
+        "resource-exhausted",
+        "Following limit reached.",
+      );
+      prefs.followingIds = toggle(prefs.followingIds, peer.userId);
+      savePreferences();
+      break;
+    }
+    case "profile.block": {
+      const peerId = id(command.userId);
+      assert(
+        peerId !== actor.uid,
+        "invalid-argument",
+        "You cannot block yourself.",
+      );
+      const connection = await store.get(
+        `connections/${pairId(actor.uid, peerId)}`,
+      );
+      const blocking = !prefs.blockedIds.includes(peerId);
+      assert(
+        prefs.blockedIds.length < 500 || !blocking,
+        "resource-exhausted",
+        "Block list limit reached.",
+      );
+      prefs.blockedIds = toggle(prefs.blockedIds, peerId);
+      prefs.followingIds = prefs.followingIds.filter(
+        (uid: string) => uid !== peerId,
+      );
+      savePreferences();
+      if (blocking && connection) {
+        store.remove(`connections/${connection.id}`);
+        store.remove(`profileAccess/${actor.uid}/members/${peerId}`);
+        store.remove(`profileAccess/${peerId}/members/${actor.uid}`);
+        if (connection.status === "accepted") {
+          serverSignals.acceptedConnections = Math.max(
+            0,
+            Number(serverSignals.acceptedConnections || 0) - 1,
+          );
+          signalsChanged = true;
+          const peerSignals = await store.get(`trustSignals/${peerId}`);
+          const peerProfile = await store.get(`profiles/${peerId}`);
+          if (peerSignals && peerProfile) {
+            peerSignals.acceptedConnections = Math.max(
+              0,
+              Number(peerSignals.acceptedConnections || 0) - 1,
+            );
+            store.set(`trustSignals/${peerId}`, peerSignals);
+            store.set(`profiles/${peerId}`, {
+              ...peerProfile,
+              trust: calculateTrust(peerProfile, peerSignals, now),
+            });
+          }
+        }
+      }
+      break;
+    }
+    case "profile.update": {
+      Object.assign(profile, validateProfile(command.profile));
+      profileChanged = true;
+      break;
+    }
+    case "dm.send": {
+      const peer = await requirePeer(command.userId);
+      const connection = await store.get(
+        `connections/${pairId(actor.uid, peer.userId)}`,
+      );
+      assert(
+        canMessage(actor.uid, peer.userId, user, peer.user, connection),
+        "permission-denied",
+        "This member only accepts messages according to their privacy settings.",
+      );
+      const body = text(command.body, "Message", 4000);
+      store.set(`directMessages/${entityId}`, {
+        id: entityId,
+        fromId: actor.uid,
+        toId: peer.userId,
+        participantIds: [actor.uid, peer.userId],
+        conversationId: pairId(actor.uid, peer.userId),
+        unreadRecipientId: peer.userId,
+        body,
+        createdAt: now,
+        read: false,
+      });
+      await notify(
+        peer.userId,
+        `${profile.name} sent you a message`,
+        body.slice(0, 180),
+        "message",
+        actor.uid,
+        "dm",
+      );
+      break;
+    }
+    case "dm.read": {
+      const peer = await requirePeer(command.userId);
+      const unread = await store.find(
+        "directMessages",
+        "unreadRecipientId",
+        actor.uid,
+        200,
+      );
+      let marked = 0;
+      for (const message of unread)
+        if (message.fromId === peer.userId) {
+          store.set(`directMessages/${message.id}`, {
+            ...message,
+            read: true,
+            unreadRecipientId: "",
+          });
+          marked++;
+        }
+      result = { ...result, marked, hasMore: unread.length === 200 };
+      break;
+    }
+    case "notification.read": {
+      if (command.notificationId) {
+        const notification = await requireDoc(
+          "notifications",
+          command.notificationId,
+        );
+        assert(
+          notification.userId === actor.uid,
+          "permission-denied",
+          "This notification is private.",
+        );
+        store.set(`notifications/${notification.id}`, {
+          ...notification,
+          read: true,
+        });
+      } else {
+        const notifications = await store.find(
+          "notifications",
+          "userId",
+          actor.uid,
+          100,
+        );
+        for (const notification of notifications)
+          store.set(`notifications/${notification.id}`, {
+            ...notification,
+            read: true,
+          });
+      }
+      break;
+    }
+    case "report.create": {
+      const targetType = command.targetType;
+      assert(
+        ["message", "post", "profile"].includes(targetType),
+        "invalid-argument",
+        "Invalid report target.",
+      );
+      const targetId = id(command.targetId);
+      const target = await requireDoc(
+        targetType === "message"
+          ? "messages"
+          : targetType === "post"
+            ? "posts"
+            : "profiles",
+        targetId,
+      );
+      if (targetType === "message") await channelAccess(target.channelId);
+      store.set(`reports/${entityId}`, {
+        id: entityId,
+        reporterId: actor.uid,
+        targetId,
+        targetType,
+        reason: text(command.reason, "Reason", 2000),
+        createdAt: now,
+        status: "open",
+      });
+      break;
+    }
+    case "report.review": {
+      assert(
+        user.role === "admin" || user.role === "moderator",
+        "permission-denied",
+        "Moderation access required.",
+      );
+      const report = await requireDoc("reports", command.reportId);
+      assert(
+        ["dismiss", "remove"].includes(command.outcome),
+        "invalid-argument",
+        "Choose dismiss or remove.",
+      );
+      if (command.outcome === "remove" && report.targetType !== "profile")
+        store.remove(
+          `${report.targetType === "message" ? "messages" : "posts"}/${report.targetId}`,
+        );
+      store.set(`reports/${report.id}`, {
+        ...report,
+        status: "reviewed",
+        reviewerId: actor.uid,
+        reviewedAt: now,
+        outcome: command.outcome,
+        note: text(command.note || "", "Moderator note", 1000, 0),
+      });
+      break;
+    }
+    case "event.checkin": {
+      const event = await requireDoc("events", command.eventId);
+      const targetId = id(command.userId);
+      assert(
+        event.hostId === actor.uid || user.role === "admin",
+        "permission-denied",
+        "Only the organizer can confirm attendance.",
+      );
+      assert(
+        event.attendeeIds?.includes(targetId),
+        "failed-precondition",
+        "The member must RSVP before checking in.",
+      );
+      assert(
+        Date.parse(event.startAt) - Date.parse(now) <= 6 * 3_600_000,
+        "failed-precondition",
+        "Attendance opens six hours before the event.",
+      );
+      assert(
+        targetId !== actor.uid,
+        "permission-denied",
+        "An organizer cannot confirm their own attendance.",
+      );
+      const checkinPath = `events/${event.id}/checkins/${targetId}`;
+      const checkin = await store.get(checkinPath);
+      assert(!checkin, "already-exists", "Attendance is already confirmed.");
+      const [targetSignals, targetProfile] = await Promise.all([
+        store.get(`trustSignals/${targetId}`),
+        store.get(`profiles/${targetId}`),
+      ]);
+      assert(targetProfile, "not-found", "Profile not found.");
+      const updated = {
+        ...(targetSignals || {}),
+        verifiedAttendance: Number(targetSignals?.verifiedAttendance || 0) + 1,
+      };
+      store.set(checkinPath, {
+        userId: targetId,
+        confirmedBy: actor.uid,
+        createdAt: now,
+      });
+      store.set(`trustSignals/${targetId}`, updated);
+      store.set(`profiles/${targetId}`, {
+        ...targetProfile,
+        trust: calculateTrust(targetProfile, updated, now),
+      });
+      break;
+    }
+    default:
+      throw new DomainError("invalid-argument", "Unknown command.");
+  }
+  if (prefsChanged)
+    store.set(`users/${actor.uid}`, {
+      ...user,
+      preferences: prefs,
+      updatedAt: now,
+    });
+  if (
+    profileChanged ||
+    signalsChanged ||
+    signals?.emailVerified !== actor.emailVerified
+  ) {
+    profile.trust = calculateTrust(profile, serverSignals, now);
+    store.set(`profiles/${actor.uid}`, profile);
+    store.set(`trustSignals/${actor.uid}`, serverSignals);
+  }
+  store.set(`users/${actor.uid}/system/rate`, {
+    bucket,
+    count: count + 1,
+    day,
+    dailyCount: dailyCount + 1,
+  });
+  store.set(receiptPath, {
+    type: commandType,
+    result,
+    createdAt: now,
+    expiresAt: new Date(Date.parse(now) + 7 * 86_400_000),
+  });
+  return result;
+}

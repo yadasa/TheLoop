@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function active() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('disabled', false)
+        && !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('deletionPending', false);
+    }
+    function moderator() {
+      return active() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['moderator', 'admin'];
+    }
+    function channelMember(channelId) {
+      let channel = get(/databases/$(database)/documents/channels/$(channelId));
+      return active() && (channel.data.visibility == 'public' || request.auth.uid in channel.data.get('memberIds', []));
+    }
+    function profileVisible(uid) {
+      return owner(uid) || resource.data.visibility == 'public'
+        || exists(/databases/$(database)/documents/profileAccess/$(uid)/members/$(request.auth.uid));
+    }
+    match /users/{uid} {
+      allow read: if owner(uid);
+      allow write: if false;
+      match /{privateCollection}/{documentId} { allow read, write: if false; }
+    }
+    match /profiles/{uid} { allow read: if active() && profileVisible(uid); allow write: if false; }
+    match /conferences/{conferenceId} { allow read: if active(); allow write: if false; }
+    match /channels/{channelId} {
+      allow read: if active() && (resource.data.visibility == 'public' || request.auth.uid in resource.data.get('memberIds', []));
+      allow write: if false;
+    }
+    match /messages/{messageId} { allow read: if channelMember(resource.data.channelId); allow write: if false; }
+    match /communities/{communityId} { allow read: if active(); allow write: if false; }
+    match /posts/{postId} { allow read: if active(); allow write: if false; }
+    match /events/{eventId} {
+      allow read: if active(); allow write: if false;
+      match /checkins/{uid} { allow read: if owner(uid) || moderator(); allow write: if false; }
+    }
+    match /connections/{connectionId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
+    match /directMessages/{messageId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
+    match /notifications/{notificationId} { allow read: if active() && resource.data.userId == request.auth.uid; allow write: if false; }
+    match /reports/{reportId} { allow read: if active() && (resource.data.reporterId == request.auth.uid || moderator()); allow write: if false; }
+    match /trustAppeals/{appealId} { allow read: if active() && (resource.data.userId == request.auth.uid || moderator()); allow write: if false; }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
