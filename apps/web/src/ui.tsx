@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import type { Profile } from "@theloop/core";
+let openModals = 0,
+  originalOverflow = "";
 export const Logo = ({ small = false }: { small?: boolean }) => (
   <span className={`logo ${small ? "small" : ""}`} aria-hidden="true">
     <i />
@@ -80,11 +82,16 @@ export function ModalShell({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const before = document.activeElement as HTMLElement;
-    const previousOverflow = document.body.style.overflow;
+    if (openModals === 0) originalOverflow = document.body.style.overflow;
+    openModals++;
     document.body.style.overflow = "hidden";
     const el = ref.current;
     el?.querySelector<HTMLElement>("input,button,select,textarea")?.focus();
     const handler = (e: KeyboardEvent) => {
+      if (
+        Array.from(document.querySelectorAll('[role="dialog"]')).at(-1) !== el
+      )
+        return;
       if (e.key === "Escape") close();
       if (e.key === "Tab") {
         const items = el?.querySelectorAll<HTMLElement>(
@@ -105,7 +112,8 @@ export function ModalShell({
     document.addEventListener("keydown", handler);
     return () => {
       document.removeEventListener("keydown", handler);
-      document.body.style.overflow = previousOverflow;
+      openModals = Math.max(0, openModals - 1);
+      if (openModals === 0) document.body.style.overflow = originalOverflow;
       if (before?.isConnected) before.focus();
       else document.getElementById("main")?.focus();
     };

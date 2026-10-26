@@ -25,3 +25,9 @@ Build Functions and start loopback Auth, Firestore and Functions emulators under
 7. Sign out/switch accounts and ensure open routes, drafts and private content do not carry over. Native new-account onboarding must survive successful signup.
 
 Calendar permissions, push registration/delivery, OS share sheets, haptics and native deep links require a physical device. Export success and phone-sized browser screenshots do not establish these checks.
+
+## Private images
+
+Choose a JPEG, PNG or WebP photo, add a caption and send it in a room, Squad, DM or post. Web/native prepare a bounded still WebP; sample mode persists only canonical bytes on this device (2MiB total). Verify reload, viewer close/focus, removal and blocked/left-squad visibility. Images outside the web viewport are fetched on approach rather than all at once.
+
+Live uploads use authenticated callables and server Sharp normalization. There are no client Storage uploads or public download URLs. `functions/test/media.integration.test.ts` checks real Auth/Functions/Storage authorization, normalization, request retry, audience revocation, report-specific image access and cleanup. CI runs this and the main callable suite with `scripts/run-callable-integration.mjs`; the runner requires both opt-in flags, the exact demo namespace, loopback endpoints and zero skipped tests. See BACKEND.md for local emulator commands. Do not run integration fixtures against production.

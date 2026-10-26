@@ -37,6 +37,7 @@ import {
   type SquadMessage,
 } from "@theloop/core";
 import { Empty, Field, ModalShell } from "./ui";
+import { ImageComposer, ProtectedImage, useImageDraft } from "./images";
 type Props = {
   selectedId: string;
   select: (id: string) => void;
@@ -74,6 +75,7 @@ export default function Squads({
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const active = groups.find((g) => g.id === selectedId),
     mine = active?.ownerId === s.currentUserId;
+  const photo = useImageDraft(active ? { kind: "squad", id: active.id } : null);
   const incoming = s.squadInvites.filter(
     (i) =>
       i.toId === s.currentUserId &&
@@ -409,6 +411,9 @@ export default function Squads({
                         </div>
                       )}
                       <p>{m.body}</p>
+                      {m.image && (
+                        <ProtectedImage image={m.image} alt={m.body} />
+                      )}
                       <div className="reactions">
                         {Object.entries(m.reactions)
                           .filter(([, ids]) => ids.length)
@@ -501,18 +506,25 @@ export default function Squads({
                 className="squad-composer"
                 onSubmit={async (e) => {
                   e.preventDefault();
+                  if (pending > 0 || photo.busy) return;
                   const form = e.currentTarget;
                   const body = String(new FormData(form).get("body"));
+                  const uploaded = await photo.prepare();
+                  if (!uploaded.ok) return;
                   if (
                     await run({
                       type: "squad.message.send",
                       squadId: active.id,
                       body,
+                      ...(uploaded.imageId
+                        ? { imageId: uploaded.imageId }
+                        : {}),
                       ...(replyId ? { replyTo: replyId } : {}),
                     })
                   ) {
                     pinned.current = true;
                     form.reset();
+                    photo.clear();
                     setReplyId("");
                   }
                 }}
@@ -536,6 +548,7 @@ export default function Squads({
                     </button>
                   </div>
                 )}
+                <ImageComposer value={photo} disabled={pending > 0} />
                 <div>
                   <textarea
                     id="squad-body"
@@ -559,7 +572,7 @@ export default function Squads({
                   <button
                     className="send-button"
                     aria-label="Send squad message"
-                    disabled={pending > 0}
+                    disabled={pending > 0 || photo.busy}
                   >
                     <Send size={17} />
                   </button>

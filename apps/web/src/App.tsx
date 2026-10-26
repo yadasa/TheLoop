@@ -57,6 +57,7 @@ import {
 } from "./ContentDialog";
 import Squads from "./Squads";
 import GuideDialog from "./GuideDialog";
+import { ImageComposer, ProtectedImage, useImageDraft } from "./images";
 import {
   channelUnread,
   connected,
@@ -179,6 +180,7 @@ export default function App() {
     [contentTarget, setContentTarget] = useState<ContentTarget | null>(null),
     [contentMode, setContentMode] = useState<ContentMode>("menu"),
     [composeKind, setComposeKind] = useState<Post["kind"]>("discussion"),
+    [composeCommunityId, setComposeCommunityId] = useState(""),
     [followerMode, setFollowerMode] = useState<"followers" | "following">(
       "followers",
     );
@@ -188,6 +190,29 @@ export default function App() {
   const activeChannel =
     availableChannels.find((c) => c.id === channelId) ?? availableChannels[0];
   const activeCommunity = s.communities.find((c) => c.id === communityId);
+  const chatImage = useImageDraft(
+    page === "chat" && activeChannel
+      ? { kind: "channel", id: activeChannel.id }
+      : null,
+  );
+  const dmImage = useImageDraft(
+    page === "inbox" && dmId ? { kind: "directMessage", id: dmId } : null,
+  );
+  const composeImage = useImageDraft(
+    modal === "compose" && composeCommunityId
+      ? { kind: "community", id: composeCommunityId }
+      : null,
+  );
+  const reportImage =
+    reportTarget.type === "post"
+      ? s.posts.find((p) => p.id === reportTarget.id)?.image
+      : reportTarget.type === "message"
+        ? s.messages.find((m) => m.id === reportTarget.id)?.image
+        : reportTarget.type === "directMessage"
+          ? s.directMessages.find((d) => d.id === reportTarget.id)?.image
+          : reportTarget.type === "squadMessage"
+            ? s.squadMessages.find((m) => m.id === reportTarget.id)?.image
+            : undefined;
   const myNotifications = s.notifications.filter(
     (n) => n.userId === s.currentUserId,
   );
@@ -294,7 +319,14 @@ export default function App() {
   }, [s.preferences.subscriptions]);
   const welcomed = useRef(false);
   useEffect(() => {
-    if (modal === "compose") setComposeKind("discussion");
+    if (modal === "compose") {
+      setComposeKind("discussion");
+      setComposeCommunityId(
+        communityId === "all"
+          ? (s.preferences.joinedCommunityIds[0] ?? "")
+          : communityId,
+      );
+    }
   }, [modal]);
   useEffect(() => {
     if (ready && me && !s.preferences.onboardingComplete && !welcomed.current) {
@@ -594,6 +626,7 @@ export default function App() {
             {post.title}
           </button>
           <p>{post.body}</p>
+          {post.image && <ProtectedImage image={post.image} alt={post.title} />}
           {post.url && (
             <a
               className="external-link"
@@ -1420,6 +1453,9 @@ export default function App() {
                               </div>
                             )}
                             <p>{m.body}</p>
+                            {m.image && (
+                              <ProtectedImage image={m.image} alt={m.body} />
+                            )}
                             <div className="reactions">
                               {Object.entries(m.reactions)
                                 .filter(([, ids]) => ids.length)
@@ -1518,18 +1554,25 @@ export default function App() {
                       className="chat-composer"
                       onSubmit={async (e) => {
                         e.preventDefault();
+                        if (pending > 0 || chatImage.busy) return;
                         const form = e.currentTarget;
                         const f = new FormData(form);
+                        const uploaded = await chatImage.prepare();
+                        if (!uploaded.ok) return;
                         if (
                           await act({
                             type: "message.send",
                             channelId: activeChannel.id,
                             topic: String(f.get("topic")),
                             body: String(f.get("body")),
+                            ...(uploaded.imageId
+                              ? { imageId: uploaded.imageId }
+                              : {}),
                             ...(replyTo ? { replyTo } : {}),
                           })
                         ) {
                           form.reset();
+                          chatImage.clear();
                           setReplyTo(null);
                         }
                       }}
@@ -1568,6 +1611,7 @@ export default function App() {
                         </select>
                         <span>Messages stay in their topic.</span>
                       </div>
+                      <ImageComposer value={chatImage} disabled={pending > 0} />
                       <textarea
                         id="chat-body"
                         name="body"
@@ -1585,7 +1629,7 @@ export default function App() {
                         <span>Be kind. Be curious. Be you.</span>
                         <button
                           className="send-button"
-                          disabled={pending > 0}
+                          disabled={pending > 0 || chatImage.busy}
                           aria-label="Send message"
                         >
                           <Send size={17} />
@@ -2509,6 +2553,9 @@ export default function App() {
                               key={d.id}
                             >
                               <p>{d.body}</p>
+                              {d.image && (
+                                <ProtectedImage image={d.image} alt={d.body} />
+                              )}
                               <small>
                                 {displayDate(d.createdAt, {
                                   hour: "numeric",
@@ -2534,14 +2581,27 @@ export default function App() {
                           ))}
                       </div>
                       <form
+                        className="dm-composer"
                         onSubmit={async (e) => {
                           e.preventDefault();
+                          if (pending > 0 || dmImage.busy) return;
                           const form = e.currentTarget;
                           const body = String(new FormData(form).get("body"));
+                          const uploaded = await dmImage.prepare();
+                          if (!uploaded.ok) return;
                           if (
-                            await act({ type: "dm.send", userId: dmId, body })
-                          )
+                            await act({
+                              type: "dm.send",
+                              userId: dmId,
+                              body,
+                              ...(uploaded.imageId
+                                ? { imageId: uploaded.imageId }
+                                : {}),
+                            })
+                          ) {
                             form.reset();
+                            dmImage.clear();
+                          }
                         }}
                       >
                         <input
@@ -2554,10 +2614,11 @@ export default function App() {
                         <button
                           className="send-button"
                           aria-label="Send private message"
-                          disabled={pending > 0}
+                          disabled={pending > 0 || dmImage.busy}
                         >
                           <Send size={18} />
                         </button>
+                        <ImageComposer value={dmImage} disabled={pending > 0} />
                       </form>
                     </>
                   )}
@@ -2723,7 +2784,10 @@ export default function App() {
             className="modal-form"
             onSubmit={async (e) => {
               e.preventDefault();
+              if (pending > 0 || composeImage.busy) return;
               const f = new FormData(e.currentTarget);
+              const uploaded = await composeImage.prepare();
+              if (!uploaded.ok) return;
               const options = String(f.get("options") ?? "")
                 .split("\n")
                 .filter(Boolean);
@@ -2734,6 +2798,7 @@ export default function App() {
                     communityId: String(f.get("communityId")),
                     title: String(f.get("title")),
                     body: String(f.get("body")),
+                    ...(uploaded.imageId ? { imageId: uploaded.imageId } : {}),
                     kind: String(f.get("kind")) as Post["kind"],
                     tags: String(f.get("tags") ?? "")
                       .split(",")
@@ -2748,6 +2813,7 @@ export default function App() {
                 )
               ) {
                 setModal(null);
+                composeImage.clear();
                 setIntro(false);
               }
             }}
@@ -2756,11 +2822,8 @@ export default function App() {
               <Field label="Your community">
                 <select
                   name="communityId"
-                  defaultValue={
-                    communityId === "all"
-                      ? s.preferences.joinedCommunityIds[0]
-                      : communityId
-                  }
+                  value={composeCommunityId}
+                  onChange={(e) => setComposeCommunityId(e.currentTarget.value)}
                 >
                   {s.communities
                     .filter((c) =>
@@ -2835,12 +2898,15 @@ export default function App() {
                 </Field>
               )}
             </div>
+            <ImageComposer value={composeImage} disabled={pending > 0} />
             <footer>
               <span>Show up with care. Make room for others.</span>
               <button
                 className="button primary"
                 disabled={
-                  pending > 0 || !s.preferences.joinedCommunityIds.length
+                  pending > 0 ||
+                  composeImage.busy ||
+                  !s.preferences.joinedCommunityIds.length
                 }
               >
                 Share with the circle
@@ -3785,6 +3851,13 @@ export default function App() {
                               : undefined) ??
                       "Content isn’t available. Review the report without removing unseen content."}
                   </blockquote>
+                  {r.snapshot?.image && (
+                    <ProtectedImage
+                      image={r.snapshot.image}
+                      reportId={r.id}
+                      alt="Photo included in this reported message"
+                    />
+                  )}
                   {r.snapshot && (
                     <small className="muted">
                       Excerpt captured {displayDate(r.snapshot.capturedAt)}. A
@@ -3894,8 +3967,8 @@ export default function App() {
                 <strong>Share this message with community care?</strong>
                 <p>
                   Sending this report shares an excerpt of the selected private
-                  message with moderators. It does not open the rest of your
-                  conversation.
+                  message{reportImage ? " and its photo" : ""} with moderators.
+                  It does not open the rest of your conversation.
                 </p>
                 <blockquote>
                   {(reportTarget.type === "directMessage"
@@ -3905,6 +3978,12 @@ export default function App() {
                         ?.body) ?? "This message is no longer loaded."}
                 </blockquote>
               </div>
+            )}
+            {reportImage && (
+              <ProtectedImage
+                image={reportImage}
+                alt="Photo included in this report"
+              />
             )}
             <Field label="What should we know?">
               <textarea
