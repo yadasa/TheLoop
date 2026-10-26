@@ -465,7 +465,7 @@ export function PostCard({
             </Text>
           </Touch>
           <Touch
-            label={`${post.comments.length} comments`}
+            label={`${post.comments.length} ${post.comments.length === 1 ? "reply" : "replies"}`}
             onPress={() => !detail && nav.open({ kind: "post", id: post.id })}
             style={{ padding: 7 }}
           >

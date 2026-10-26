@@ -86,10 +86,16 @@ export function You({ nav }: { nav: Nav }) {
       </View>
       <View style={[s.wrap, { gap: 10 }]}>
         {[
-          [String(count), "connections"],
-          [String(me.followerCount || 0), "followers"],
+          [String(count), count === 1 ? "connection" : "connections"],
+          [
+            String(me.followerCount || 0),
+            me.followerCount === 1 ? "follower" : "followers",
+          ],
           [String(state.preferences.followingIds.length), "following"],
-          [String(upcoming), "upcoming events"],
+          [
+            String(upcoming),
+            upcoming === 1 ? "upcoming event" : "upcoming events",
+          ],
         ].map(([value, label]) => (
           <View
             key={label}
@@ -141,7 +147,7 @@ export function You({ nav }: { nav: Nav }) {
           },
           {
             title: "Communities",
-            subtitle: `${state.preferences.joinedCommunityIds.length} joined communities`,
+            subtitle: `${state.preferences.joinedCommunityIds.length} joined ${state.preferences.joinedCommunityIds.length === 1 ? "community" : "communities"}`,
             route: "communities",
           },
           {
