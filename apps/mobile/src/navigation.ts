@@ -7,6 +7,7 @@ export type Route =
         | "edit-post"
         | "community"
         | "event"
+        | "edit-event"
         | "profile"
         | "dm"
         | "squad"

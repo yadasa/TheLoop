@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import * as Calendar from "expo-calendar/legacy";
 import { useLoop } from "@theloop/client";
-import { eventICS, previewEventDraft, type LoopEvent } from "@theloop/core";
+import { eventICS, type LoopEvent } from "@theloop/core";
 import {
   Avatar,
   Button,
@@ -27,6 +27,7 @@ import {
 import type { Nav } from "./navigation";
 import { DetailState } from "./DetailState";
 import { shareTargetURL } from "./sharedLinks";
+import { shareCalendarFile } from "./shareCalendar";
 
 const dayKey = (d: string | Date) => new Date(d).toLocaleDateString("en-CA");
 export function Events({ nav }: { nav: Nav }) {
@@ -324,6 +325,7 @@ export function EventCard({ event: e, nav }: { event: LoopEvent; nav: Nav }) {
   const date = new Date(e.startAt);
   const going = e.attendeeIds.includes(state.currentUserId);
   const wait = e.waitlistIds.includes(state.currentUserId);
+  const cancelled = e.status === "cancelled";
   return (
     <Touch
       label={`View ${e.title}`}
@@ -360,8 +362,15 @@ export function EventCard({ event: e, nav }: { event: LoopEvent; nav: Nav }) {
         <View style={[s.grow, { gap: 6 }]}>
           <View style={s.wrap}>
             <Label>{e.kind.toUpperCase()}</Label>
-            {going && <Label dark>YOU'RE GOING</Label>}
-            {wait && <Label>WAITLISTED</Label>}
+            {cancelled && <Label dark>CANCELLED</Label>}
+            {going && (
+              <Label dark>
+                {cancelled ? "YOU WERE GOING" : "YOU'RE GOING"}
+              </Label>
+            )}
+            {wait && (
+              <Label>{cancelled ? "WAS WAITLISTED" : "WAITLISTED"}</Label>
+            )}
           </View>
           <Text style={s.h3}>{e.title}</Text>
           <Text style={s.small}>
@@ -384,7 +393,7 @@ export function EventCard({ event: e, nav }: { event: LoopEvent; nav: Nav }) {
             </View>
           ))}
           <Text style={[s.small, { marginLeft: 8 }]}>
-            {e.attendeeIds.length} going
+            {e.attendeeIds.length} {cancelled ? "previously going" : "going"}
           </Text>
         </View>
         <Text style={s.small}>
@@ -396,12 +405,16 @@ export function EventCard({ event: e, nav }: { event: LoopEvent; nav: Nav }) {
 }
 
 export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
-  const { state, role, watchEvent, eventStatus } = useLoop();
+  const { state, role, watchEvent, eventStatus, pending } = useLoop();
   useEffect(() => {
     watchEvent(id);
     return () => watchEvent(null);
   }, [id, watchEvent]);
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const [cancelDraft, setCancelDraft] = useState<{
+    initial: LoopEvent;
+    reason: string;
+  } | null>(null);
   const event = state.events.find((e) => e.id === id);
   if (
     eventStatus.id !== id ||
@@ -422,6 +435,8 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
   const waiting = event.waitlistIds.includes(state.currentUserId);
   const full = event.capacity > 0 && event.attendeeIds.length >= event.capacity;
   const expired = new Date(event.endAt) < new Date();
+  const cancelled = event.status === "cancelled";
+  const canManage = role === "admin" || event.hostId === state.currentUserId;
   const conference = state.conferences.find(
     (c) => c.id === event.conferenceId,
   ) as { organizerIds?: string[] } | undefined;
@@ -432,6 +447,10 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
       !!conference?.organizerIds?.includes(state.currentUserId));
   const addCalendar = async () => {
     try {
+      if (cancelled) {
+        await shareCalendarFile(eventICS(event), "Share event cancellation");
+        return;
+      }
       if (Platform.OS === "web") {
         await Share.share({ message: eventICS(event) });
         return;
@@ -495,6 +514,25 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
           "COMMUNITY EVENT"}
       </Label>
       <Text style={s.title}>{event.title}</Text>
+      {cancelled && (
+        <View style={s.card}>
+          <Label dark>CANCELLED</Label>
+          <Text style={s.h3}>This plan is no longer happening.</Text>
+          {!!event.cancellationReason && (
+            <Text style={s.body}>{event.cancellationReason}</Text>
+          )}
+          <Text style={s.small}>
+            The details and attendee list stay available. Update or remove any
+            saved device calendar entry yourself.
+          </Text>
+        </View>
+      )}
+      {!!event.updatedAt && (
+        <Text style={s.small}>
+          Plan updated {new Date(event.updatedAt).toLocaleString()}. Saved
+          device calendars do not update automatically.
+        </Text>
+      )}
       <View style={s.card}>
         <Text style={s.h3}>
           {new Date(event.startAt).toLocaleDateString(undefined, {
@@ -528,15 +566,17 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
         <View style={s.divider} />
         <Text style={s.h3}>↗ {event.location}</Text>
         <Text style={s.small}>
-          {event.capacity > 0
-            ? `${event.attendeeIds.length} of ${event.capacity} spots filled`
-            : "Open invitation"}
+          {cancelled
+            ? `${event.attendeeIds.length} previously confirmed`
+            : event.capacity > 0
+              ? `${event.attendeeIds.length} of ${event.capacity} spots filled`
+              : "Open invitation"}
           {event.waitlistIds.length > 0
             ? ` · ${event.waitlistIds.length} waiting`
             : ""}
         </Text>
       </View>
-      <Text style={s.body}>{event.description}</Text>
+      {!!event.description && <Text style={s.body}>{event.description}</Text>}
       <View style={s.wrap}>
         {event.tags.map((t) => (
           <Label key={t}>#{t}</Label>
@@ -544,24 +584,30 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
       </View>
       <Button
         title={
-          expired
-            ? "This one is in the books"
-            : going
-              ? "Going ✓ · Change RSVP"
-              : waiting
-                ? "Waitlisted · Leave waitlist"
-                : full
-                  ? "Join the waitlist"
-                  : "Count me in ↗"
+          going
+            ? cancelled || expired
+              ? "Withdraw my RSVP"
+              : "Going ✓ · Change RSVP"
+            : waiting
+              ? "Leave waitlist"
+              : cancelled
+                ? "This event is cancelled"
+                : expired
+                  ? "This one is in the books"
+                  : full
+                    ? "Join the waitlist"
+                    : "Count me in ↗"
         }
-        disabled={expired}
+        disabled={(expired || cancelled) && !going && !waiting}
         onPress={() => {
           if (going || waiting) {
             Alert.alert(
               "Change your plans?",
-              going
-                ? "Your spot will go to the next person in line."
-                : "You will leave this event waitlist.",
+              cancelled || expired
+                ? "Your RSVP will be withdrawn. This plan is closed, so nobody will be promoted from its waitlist."
+                : going
+                  ? "Your spot will go to the next person in line."
+                  : "You will leave this event waitlist.",
               [
                 { text: "Keep my plan", style: "cancel" },
                 {
@@ -585,7 +631,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
         <View style={s.grow}>
           <Button
             secondary
-            title="Add to calendar"
+            title={cancelled ? "Cancellation calendar file" : "Add to calendar"}
             onPress={() => void addCalendar()}
           />
         </View>
@@ -595,12 +641,57 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
             title="Share ↗"
             onPress={() =>
               void Share.share({
-                message: `${event.title}\n${new Date(event.startAt).toLocaleString()}\n${event.location}\n\n${event.description}\n\n${shareTargetURL({ kind: "event", id: event.id })}`,
+                message: `${cancelled ? "CANCELLED: " : ""}${event.title}\n${new Date(event.startAt).toLocaleString()}\n${event.location}\n\n${cancelled ? event.cancellationReason || "This event has been cancelled." : event.description}\n\n${shareTargetURL({ kind: "event", id: event.id })}`,
               })
             }
           />
         </View>
       </View>
+      {!cancelled && (
+        <Button
+          secondary
+          title="Share calendar file (.ics) ↗"
+          onPress={() =>
+            void shareCalendarFile(eventICS(event)).catch(() =>
+              nav.toast("Calendar sharing is unavailable."),
+            )
+          }
+        />
+      )}
+      <Text style={s.small}>
+        Changes in TheLoop do not sync to saved device calendar entries. Update
+        or remove the saved entry yourself, or share the latest calendar file.
+      </Text>
+      {canManage && !cancelled && !expired && (
+        <Button
+          secondary
+          title="Edit event details ↗"
+          disabled={pending > 0}
+          onPress={() => nav.open({ kind: "edit-event", id: event.id })}
+        />
+      )}
+      {canManage && !cancelled && !expired && (
+        <Button
+          secondary
+          title={cancelDraft ? "Keep this plan" : "Cancel this event"}
+          disabled={pending > 0}
+          onPress={() =>
+            setCancelDraft((draft) =>
+              draft ? null : { initial: { ...event }, reason: "" },
+            )
+          }
+        />
+      )}
+      {canManage && cancelDraft && !cancelled && !expired && (
+        <EventCancellation
+          key={event.id}
+          event={event}
+          nav={nav}
+          draft={cancelDraft}
+          onChange={setCancelDraft}
+          onDone={() => setCancelDraft(null)}
+        />
+      )}
       {event.url && (
         <Button
           secondary
@@ -614,8 +705,10 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
         />
       )}
       <Section
-        title="The people make it"
-        subtitle={`${event.attendeeIds.length} going${event.waitlistIds.length ? ` · ${event.waitlistIds.length} on the waitlist` : ""}`}
+        title={
+          cancelled ? "The people who planned to come" : "The people make it"
+        }
+        subtitle={`${event.attendeeIds.length} ${cancelled ? "planned to come" : "going"}${event.waitlistIds.length ? ` · ${event.waitlistIds.length} ${cancelled ? "were waitlisted" : "on the waitlist"}` : ""}`}
       />
       {event.hostId === state.currentUserId && !canCheckin && (
         <Text style={s.small}>
@@ -646,7 +739,8 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
           );
         })}
       </View>
-      {canCheckin &&
+      {!cancelled &&
+        canCheckin &&
         Date.now() >= new Date(event.startAt).getTime() - 6 * 3600000 &&
         Date.now() <= new Date(event.endAt).getTime() + 24 * 3600000 && (
           <View style={s.card}>
@@ -694,249 +788,103 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
   );
 }
 
-export function CreateEvent({ nav }: { nav: Nav }) {
-  const { state } = useLoop();
-  const [conferenceId, setConference] = useState(
-    state.conferences[0]?.id || "",
-  );
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [location, setLocation] = useState("");
-  const [url, setUrl] = useState("");
-  const [tags, setTags] = useState("");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-  const [capacity, setCapacity] = useState("30");
-  const [kind, setKind] = useState<LoopEvent["kind"]>("meetup");
-  const [timezone, setTimezone] = useState(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-  );
-  const [errors, setErrors] = useState<string[]>([]);
+function EventCancellation({
+  event,
+  nav,
+  draft,
+  onChange,
+  onDone,
+}: {
+  event: LoopEvent;
+  nav: Nav;
+  draft: { initial: LoopEvent; reason: string };
+  onChange: (draft: { initial: LoopEvent; reason: string }) => void;
+  onDone: () => void;
+}) {
+  const { initial, reason } = draft;
   const [busy, setBusy] = useState(false);
-  const edit = (update: (value: string) => void) => (value: string) => {
-    update(value);
-    setErrors([]);
-  };
+  const [error, setError] = useState("");
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const stale = (event.sequence ?? 0) !== (initial.sequence ?? 0);
   return (
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      contentContainerStyle={s.content}
-    >
-      <Text style={s.title}>Bring your{`\n`}people together.</Text>
-      <Horizontal>
-        {state.conferences.map((c) => (
-          <Chip
-            key={c.id}
-            title={c.shortName}
-            selected={conferenceId === c.id}
-            onPress={() => {
-              if (!busy) {
-                setConference(c.id);
-                setErrors([]);
-              }
-            }}
-          />
-        ))}
-      </Horizontal>
+    <View style={s.card}>
+      <Text style={s.h3}>Cancel “{initial.title}”?</Text>
+      <Text style={s.small}>
+        Cancellation is final. The event and its attendee list stay available so
+        people can understand the change. Create a new plan if you want to meet
+        another time.
+      </Text>
       <Field
-        label="The occasion"
-        value={title}
-        onChangeText={edit(setTitle)}
+        label="A note for the people who planned to come · optional"
+        value={reason}
+        onChangeText={(value) => onChange({ initial, reason: value })}
         disabled={busy}
-        placeholder="Coffee before the keynote"
-        maxLength={160}
-      />
-      <Field
-        label="What should people know?"
-        value={description}
-        onChangeText={edit(setDescription)}
-        disabled={busy}
-        maxLength={3000}
         multiline
+        maxLength={500}
+        placeholder="Let people know what changed…"
       />
-      <Field
-        label="Where are we meeting?"
-        value={location}
-        onChangeText={edit(setLocation)}
-        disabled={busy}
-        maxLength={240}
-        placeholder="Venue or meeting link"
-      />
-      <Horizontal>
-        {(["conference", "meetup", "workshop", "social"] as const).map((k) => (
-          <Chip
-            key={k}
-            title={k}
-            selected={kind === k}
+      {stale && (
+        <View style={{ gap: 9 }}>
+          <Text style={s.small}>
+            This event changed after you opened cancellation. Review its latest
+            title and details before continuing.
+          </Text>
+          <Button
+            secondary
+            title="Review the latest plan"
+            disabled={busy}
             onPress={() => {
-              if (!busy) {
-                setKind(k);
-                setErrors([]);
-              }
+              onChange({ initial: { ...event }, reason });
+              setError("");
             }}
           />
-        ))}
-      </Horizontal>
-      <Field
-        label="Event website · optional"
-        value={url}
-        onChangeText={edit(setUrl)}
-        disabled={busy}
-        maxLength={2048}
-        keyboardType="url"
-        placeholder="https://…"
-      />
-      <Field
-        label="Tags · comma separated"
-        value={tags}
-        onChangeText={edit(setTags)}
-        disabled={busy}
-        placeholder="Founders, Coffee, Networking"
-      />
-      <Text style={s.small}>
-        Add up to 6 tags, each up to 30 characters. Event websites use HTTPS.
-      </Text>
-      <Field
-        label="Event timezone · IANA name"
-        value={timezone}
-        onChangeText={edit(setTimezone)}
-        disabled={busy}
-        autoCapitalize="none"
-        autoCorrect={false}
-        placeholder="America/Chicago"
-        maxLength={100}
-      />
-      <Horizontal>
-        {Array.from(
-          new Set([
-            Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-            "America/Chicago",
-            "America/New_York",
-            "America/Los_Angeles",
-            "UTC",
-          ]),
-        ).map((zone) => (
-          <Chip
-            key={zone}
-            title={zone.replace("America/", "").replace(/_/g, " ")}
-            selected={timezone === zone}
-            onPress={() => {
-              if (!busy) {
-                setTimezone(zone);
-                setErrors([]);
-              }
-            }}
-          />
-        ))}
-      </Horizontal>
-      <Field
-        label="Starts · YYYY-MM-DD HH:mm"
-        value={start}
-        onChangeText={edit(setStart)}
-        disabled={busy}
-        autoCapitalize="none"
-        autoCorrect={false}
-        placeholder="2026-11-05 18:00"
-        maxLength={40}
-      />
-      <Field
-        label="Ends · YYYY-MM-DD HH:mm"
-        value={end}
-        onChangeText={edit(setEnd)}
-        disabled={busy}
-        autoCapitalize="none"
-        autoCorrect={false}
-        placeholder="2026-11-05 20:00"
-        maxLength={40}
-      />
-      <Text style={s.small}>
-        Enter local times in the event timezone. If a clock change repeats a
-        time, include its UTC offset, for example 2026-11-01T01:30-05:00. A Z
-        suffix means UTC. Impossible dates and skipped local times need
-        correcting.
-      </Text>
-      <Field
-        label="Capacity · 0 for unlimited"
-        value={capacity}
-        onChangeText={edit(setCapacity)}
-        disabled={busy}
-        keyboardType="numeric"
-        maxLength={4}
-      />
-      <Text style={s.small}>
-        Capacity can be 0 to 1,000. A waitlist opens automatically when the
-        event fills up.
-      </Text>
-      {errors.length > 0 && (
-        <View style={s.card} accessibilityRole="alert">
-          <Text style={s.h3}>A few details need care</Text>
-          {errors.map((error, index) => (
-            <Text key={`${index}:${error}`} style={s.small}>
-              {error}
-            </Text>
-          ))}
         </View>
       )}
+      {!!error && (
+        <Text accessibilityRole="alert" style={s.small}>
+          {error}
+        </Text>
+      )}
       <Button
-        title={busy ? "Creating…" : "Make it happen ↗"}
-        disabled={
-          busy ||
-          !title.trim() ||
-          !description.trim() ||
-          !location.trim() ||
-          !start ||
-          !end ||
-          !timezone.trim() ||
-          !conferenceId
-        }
+        title={busy ? "Cancelling…" : "Confirm event cancellation"}
+        disabled={busy || stale}
         onPress={() => {
-          const result = previewEventDraft(
-            {
-              conferenceId,
-              title,
-              description,
-              location,
-              kind,
-              capacity,
-              startAt: start,
-              endAt: end,
-              timezone,
-              tags: tags
-                .split(",")
-                .map((value) => value.trim())
-                .filter(Boolean),
-              url,
-            },
-            {
-              conferences: state.conferences,
-              existingEvents: state.events,
-              now: new Date().toISOString(),
-            },
-          );
-          if (!result.event) {
-            setErrors(
-              result.errors.length
-                ? result.errors
-                : ["Check the event dates and details."],
-            );
+          if (new Date(event.endAt).getTime() <= Date.now()) {
+            setError("This event has ended and cannot be cancelled.");
             return;
           }
-          setErrors([]);
           setBusy(true);
           void nav
             .run(
               {
-                type: "event.create",
-                event: result.event,
+                type: "event.cancel",
+                eventId: initial.id,
+                expectedSequence: initial.sequence ?? 0,
+                reason,
               },
-              "Your event is ready",
+              "The event was cancelled",
             )
             .then((ok) => {
-              if (ok) nav.closeIfTop("create-event");
+              if (!mounted.current) return;
+              if (ok) onDone();
+              else
+                setError(
+                  "The cancellation was not saved. Check the latest event details and try again.",
+                );
             })
-            .finally(() => setBusy(false));
+            .finally(() => {
+              if (mounted.current) setBusy(false);
+            });
         }}
       />
-    </ScrollView>
+    </View>
   );
 }
+
+export { CreateEvent, EditEvent } from "./EventForm";

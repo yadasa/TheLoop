@@ -37,7 +37,7 @@ import {
 } from "./src/Feed";
 import { Chats, ChannelDetail } from "./src/Chat";
 import { DirectInbox } from "./src/DirectInbox";
-import { Events, EventDetail, CreateEvent } from "./src/Events";
+import { Events, EventDetail, CreateEvent, EditEvent } from "./src/Events";
 import { People, ProfileDetail, DirectChat } from "./src/People";
 import { Search } from "./src/Search";
 import { Safety } from "./src/Safety";
@@ -293,6 +293,7 @@ function LoopApp() {
       "edit-post": "Your perspective",
       channel: "The room",
       event: "The plan",
+      "edit-event": "Keep the plan in sync",
       profile: "In the loop",
       dm: "Just between us",
       inbox: "Private conversations",
@@ -348,6 +349,10 @@ function LoopApp() {
       case "event":
         return (
           <EventDetail key={`${scope}:${route.id}`} id={route.id} nav={nav} />
+        );
+      case "edit-event":
+        return (
+          <EditEvent key={`${scope}:${route.id}`} id={route.id} nav={nav} />
         );
       case "profile":
         return (
