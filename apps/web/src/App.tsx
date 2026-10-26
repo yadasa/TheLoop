@@ -1,4 +1,10 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowUpRight,
   ArrowUp,
@@ -43,10 +49,14 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useLoop } from "@theloop/client";
-import {Avatar,Empty,Field,Logo,ModalShell} from "./ui";
-import {ContentDialog,type ContentMode,type ContentTarget} from "./ContentDialog";
-import Squads from './Squads';
-import GuideDialog from './GuideDialog';
+import { Avatar, Empty, Field, Logo, ModalShell } from "./ui";
+import {
+  ContentDialog,
+  type ContentMode,
+  type ContentTarget,
+} from "./ContentDialog";
+import Squads from "./Squads";
+import GuideDialog from "./GuideDialog";
 import {
   channelUnread,
   connected,
@@ -78,7 +88,7 @@ type Page =
   | "saved"
   | "profile"
   | "inbox";
-type SquadPage = 'squads';
+type SquadPage = "squads";
 type Modal =
   | "compose"
   | "event"
@@ -94,7 +104,7 @@ type Modal =
   | "organize"
   | "topic"
   | "followers"
-  | 'guide'
+  | "guide"
   | null;
 const nav = [
   ["home", Home, "Your loop"],
@@ -128,22 +138,33 @@ export default function App() {
     emailVerified,
     sendVerificationEmail,
     refreshVerification,
-    watchConversation,loadOlderMessages,history,directory,setDirectoryQuery,loadMoreDirectory,loadSavedPosts,loadProfile,
+    watchConversation,
+    loadOlderMessages,
+    history,
+    directory,
+    setDirectoryQuery,
+    loadMoreDirectory,
+    loadSavedPosts,
+    loadProfile,
   } = useLoop();
-  const [page, setPage] = useState<Page|SquadPage>("home"),
+  const [page, setPage] = useState<Page | SquadPage>("home"),
     [modal, setModal] = useState<Modal>(null),
     [channelId, setChannelId] = useState("the-lobby"),
     [topic, setTopic] = useState("All topics"),
     [communityId, setCommunityId] = useState("all"),
     [profileId, setProfileId] = useState(""),
     [dmId, setDmId] = useState(""),
-    [squadId,setSquadId]=useState(''),
+    [squadId, setSquadId] = useState(""),
     [query, setQuery] = useState(""),
     [searchOpen, setSearchOpen] = useState(false),
     [feedTab, setFeedTab] = useState("For you"),
     [notice, setNotice] = useState(""),
     [mobileNav, setMobileNav] = useState(false),
-    [reportTarget, setReportTarget] = useState<{id:string;type:Report['targetType'];postId?:string}>({
+    [reportTarget, setReportTarget] = useState<{
+      id: string;
+      type: Report["targetType"];
+      postId?: string;
+    }>({
       id: "",
       type: "post",
     }),
@@ -155,8 +176,8 @@ export default function App() {
     [calendarScope, setCalendarScope] = useState("all"),
     [authRegister, setAuthRegister] = useState(false),
     [intro, setIntro] = useState(false),
-    [contentTarget,setContentTarget]=useState<ContentTarget|null>(null),
-    [contentMode,setContentMode]=useState<ContentMode>('menu'),
+    [contentTarget, setContentTarget] = useState<ContentTarget | null>(null),
+    [contentMode, setContentMode] = useState<ContentMode>("menu"),
     [composeKind, setComposeKind] = useState<Post["kind"]>("discussion"),
     [followerMode, setFollowerMode] = useState<"followers" | "following">(
       "followers",
@@ -167,7 +188,9 @@ export default function App() {
   const activeChannel =
     availableChannels.find((c) => c.id === channelId) ?? availableChannels[0];
   const activeCommunity = s.communities.find((c) => c.id === communityId);
-  const myNotifications=s.notifications.filter(n=>n.userId===s.currentUserId);
+  const myNotifications = s.notifications.filter(
+    (n) => n.userId === s.currentUserId,
+  );
   const unread = myNotifications.filter((n) => !n.read).length;
   const toast = (text: string) => {
     setNotice(text);
@@ -186,7 +209,7 @@ export default function App() {
       return false;
     }
   };
-  const navigate = (target: Page|SquadPage) => {
+  const navigate = (target: Page | SquadPage) => {
     setPage(target);
     setModal(null);
     setPostDetail(null);
@@ -197,15 +220,47 @@ export default function App() {
   };
   const openProfile = (id: string) => {
     setProfileId(id);
-    void loadProfile(id).catch(()=>{});
+    void loadProfile(id).catch(() => {});
     navigate("profile");
   };
-  const showContent=(target:ContentTarget,mode:ContentMode='menu')=>{setContentTarget(target);setContentMode(mode);};
-  const accountId=useRef(s.currentUserId);
-  useEffect(()=>{if(accountId.current===s.currentUserId)return;accountId.current=s.currentUserId;welcomed.current=false;setModal(null);setContentTarget(null);setPostDetail(null);setReplyTo(null);setDmId('');setSquadId('');setProfileId('');setPage('home');setQuery('');setSearchOpen(false);setMobileNav(false);},[s.currentUserId]);
-  useEffect(()=>{watchConversation(page==='chat'?activeChannel?.id??null:null,topic==='All topics'?undefined:topic);return()=>watchConversation(null);},[page,activeChannel?.id,topic,watchConversation]);
-  useEffect(()=>{if(page==='saved')void loadSavedPosts().catch(()=>{});},[page,loadSavedPosts,s.preferences.savedPostIds.join('|')]);
-  useEffect(()=>{const timer=setTimeout(()=>setDirectoryQuery(page==='people'||searchOpen?query:''),300);return()=>clearTimeout(timer);},[query,page,searchOpen,setDirectoryQuery]);
+  const showContent = (target: ContentTarget, mode: ContentMode = "menu") => {
+    setContentTarget(target);
+    setContentMode(mode);
+  };
+  const accountId = useRef(s.currentUserId);
+  useEffect(() => {
+    if (accountId.current === s.currentUserId) return;
+    accountId.current = s.currentUserId;
+    welcomed.current = false;
+    setModal(null);
+    setContentTarget(null);
+    setPostDetail(null);
+    setReplyTo(null);
+    setDmId("");
+    setSquadId("");
+    setProfileId("");
+    setPage("home");
+    setQuery("");
+    setSearchOpen(false);
+    setMobileNav(false);
+  }, [s.currentUserId]);
+  useEffect(() => {
+    watchConversation(
+      page === "chat" ? (activeChannel?.id ?? null) : null,
+      topic === "All topics" ? undefined : topic,
+    );
+    return () => watchConversation(null);
+  }, [page, activeChannel?.id, topic, watchConversation]);
+  useEffect(() => {
+    if (page === "saved") void loadSavedPosts().catch(() => {});
+  }, [page, loadSavedPosts, s.preferences.savedPostIds.join("|")]);
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setDirectoryQuery(page === "people" || searchOpen ? query : ""),
+      300,
+    );
+    return () => clearTimeout(timer);
+  }, [query, page, searchOpen, setDirectoryQuery]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
@@ -277,13 +332,70 @@ export default function App() {
     [s.posts, s.preferences, communityId, page, feedTab],
   );
   const suggestions = suggestedConnections(s);
-  const activeMessages=useMemo(()=>s.messages.filter(m=>m.channelId===activeChannel?.id&&!s.preferences.blockedIds.includes(m.authorId)&&(topic==='All topics'?subscriptionFor(s,`${activeChannel.id}:${m.topic}`,activeChannel.id)!=='hidden':m.topic===topic)).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id)),[s.messages,s.preferences,activeChannel?.id,topic]);
-  const messageList=useRef<HTMLDivElement>(null),pinnedToBottom=useRef(true),historyAnchor=useRef<{height:number;top:number}|null>(null),lastConversation=useRef('');
-  const conversationKey=page==='chat'?`${activeChannel?.id??''}:${topic}`:'';
-  useLayoutEffect(()=>{const el=messageList.current;if(!el)return;if(lastConversation.current!==conversationKey){lastConversation.current=conversationKey;historyAnchor.current=null;pinnedToBottom.current=true;el.scrollTop=el.scrollHeight;}else if(historyAnchor.current){el.scrollTop=el.scrollHeight-historyAnchor.current.height+historyAnchor.current.top;historyAnchor.current=null;}else if(pinnedToBottom.current)el.scrollTop=el.scrollHeight;},[conversationKey,activeMessages.length,activeMessages.at(-1)?.id]);
-  const earlierMessages=async()=>{const el=messageList.current;if(el)historyAnchor.current={height:el.scrollHeight,top:el.scrollTop};try{await loadOlderMessages();}catch{historyAnchor.current=null;}};
-  const quotedMessage=(id:string)=>{const m=s.messages.find(x=>x.id===id);return m?s.preferences.blockedIds.includes(m.authorId)?'Message from a blocked member':m.body:'Earlier message';};
-  const directoryPeople=directory.results.filter(p=>p.id!==s.currentUserId&&!s.preferences.blockedIds.includes(p.id));
+  const activeMessages = useMemo(
+    () =>
+      s.messages
+        .filter(
+          (m) =>
+            m.channelId === activeChannel?.id &&
+            !s.preferences.blockedIds.includes(m.authorId) &&
+            (topic === "All topics"
+              ? subscriptionFor(
+                  s,
+                  `${activeChannel.id}:${m.topic}`,
+                  activeChannel.id,
+                ) !== "hidden"
+              : m.topic === topic),
+        )
+        .sort(
+          (a, b) =>
+            a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+        ),
+    [s.messages, s.preferences, activeChannel?.id, topic],
+  );
+  const messageList = useRef<HTMLDivElement>(null),
+    pinnedToBottom = useRef(true),
+    historyAnchor = useRef<{ height: number; top: number } | null>(null),
+    lastConversation = useRef("");
+  const conversationKey =
+    page === "chat" ? `${activeChannel?.id ?? ""}:${topic}` : "";
+  useLayoutEffect(() => {
+    const el = messageList.current;
+    if (!el) return;
+    if (lastConversation.current !== conversationKey) {
+      lastConversation.current = conversationKey;
+      historyAnchor.current = null;
+      pinnedToBottom.current = true;
+      el.scrollTop = el.scrollHeight;
+    } else if (historyAnchor.current) {
+      el.scrollTop =
+        el.scrollHeight -
+        historyAnchor.current.height +
+        historyAnchor.current.top;
+      historyAnchor.current = null;
+    } else if (pinnedToBottom.current) el.scrollTop = el.scrollHeight;
+  }, [conversationKey, activeMessages.length, activeMessages.at(-1)?.id]);
+  const earlierMessages = async () => {
+    const el = messageList.current;
+    if (el)
+      historyAnchor.current = { height: el.scrollHeight, top: el.scrollTop };
+    try {
+      await loadOlderMessages();
+    } catch {
+      historyAnchor.current = null;
+    }
+  };
+  const quotedMessage = (id: string) => {
+    const m = s.messages.find((x) => x.id === id);
+    return m
+      ? s.preferences.blockedIds.includes(m.authorId)
+        ? "Message from a blocked member"
+        : m.body
+      : "Earlier message";
+  };
+  const directoryPeople = directory.results.filter(
+    (p) => p.id !== s.currentUserId && !s.preferences.blockedIds.includes(p.id),
+  );
   const upcoming = s.events
     .filter((e) => new Date(e.endAt).getTime() > Date.now())
     .sort((a, b) => a.startAt.localeCompare(b.startAt));
@@ -444,14 +556,25 @@ export default function App() {
               {author?.verified && <ShieldCheck size={13} />}
             </button>
             <span>
-              <button className="community-link" onClick={()=>{setPostDetail(null);setCommunityId(post.communityId);navigate('communities');}}>{community?.name}</button> <b>·</b> {displayDate(post.createdAt)}{post.editedAt?' · edited':''}
+              <button
+                className="community-link"
+                onClick={() => {
+                  setPostDetail(null);
+                  setCommunityId(post.communityId);
+                  navigate("communities");
+                }}
+              >
+                {community?.name}
+              </button>{" "}
+              <b>·</b> {displayDate(post.createdAt)}
+              {post.editedAt ? " · edited" : ""}
             </span>
           </div>
           <button
             className="icon-button more"
             aria-label={`More options for ${post.title}`}
             onClick={() => {
-              showContent({kind:'post',post});
+              showContent({ kind: "post", post });
             }}
           >
             <MoreHorizontal size={20} />
@@ -1230,122 +1353,166 @@ export default function App() {
                         </button>
                       ))}
                     </div>
-                    <div className="message-list" ref={messageList} onScroll={e=>{const el=e.currentTarget;pinnedToBottom.current=el.scrollHeight-el.scrollTop-el.clientHeight<90;}}>
-                      {history.hasMore&&<button className="button subtle history-button" disabled={history.loading} onClick={()=>void earlierMessages()}>{history.loading?'Finding the earlier conversation…':'Earlier in the conversation'}<ChevronDown size={14}/></button>}
-                    {!activeMessages.length&&<div className="chat-welcome">
-                      <span>{activeChannel.icon}</span>
-                      <h2>Good conversations start with a hello.</h2>
-                      <p>
-                        You’re in #{activeChannel.name}. Find a topic, find your
-                        people.
-                      </p>
-                      <small>
-                        Choose what you follow. Everything else stays quiet.
-                      </small>
-                    </div>}
-                      {activeMessages
-                        .map((m) => (
-                          <article className="message" key={m.id}>
-                            <Avatar
-                              person={person(m.authorId)}
-                              onClick={() => openProfile(m.authorId)}
-                            />
-                            <div className="message-content">
-                              <header>
-                                <button
-                                  className="name-button"
-                                  onClick={() => openProfile(m.authorId)}
-                                >
-                                  {person(m.authorId)?.name ?? "Member"}
-                                </button>
-                                <time>
-                                  {displayDate(m.createdAt, {
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                  })}
-                                </time>
-                                <button
-                                  className="topic-label"
-                                  onClick={() => setTopic(m.topic)}
-                                >
-                                  {m.topic}
-                                </button>
-                              </header>
-                              {m.replyTo && (
-                                <div className="reply-preview">
-                                  ↳{" "}
-                                  {quotedMessage(m.replyTo)}
-                                </div>
-                              )}
-                              <p>{m.body}</p>
-                              <div className="reactions">
-                                {Object.entries(m.reactions)
-                                  .filter(([, ids]) => ids.length)
-                                  .map(([emoji, ids]) => (
-                                    <button
-                                      className={
-                                        ids.includes(s.currentUserId)
-                                          ? "selected"
-                                          : ""
-                                      }
-                                      key={emoji}
-                                      onClick={() =>
-                                        void act({
-                                          type: "message.react",
-                                          messageId: m.id,
-                                          emoji,
-                                        })
-                                      }
-                                    >
-                                      {emoji}
-                                      <span>{ids.length}</span>
-                                    </button>
-                                  ))}
-                                <button
-                                  title="React with heart"
-                                  onClick={() =>
-                                    void act({
-                                      type: "message.react",
-                                      messageId: m.id,
-                                      emoji: "🖤",
-                                    })
-                                  }
-                                >
-                                  <Heart size={13} />
-                                  <Plus size={10} />
-                                </button>
-                                <button
-                                  title="Reply in topic"
-                                  onClick={() => {
-                                    setTopic(m.topic);
-                                    setReplyTo(m.id);
-                                    (
-                                      document.getElementById(
-                                        "chat-body",
-                                      ) as HTMLTextAreaElement
-                                    )?.focus();
-                                  }}
-                                >
-                                  Reply
-                                </button>
-                                {m.authorId===s.currentUserId&&<><button title="Edit your message" onClick={()=>showContent({kind:'message',message:m},'edit')}>Edit</button><button title="Delete your message" onClick={()=>showContent({kind:'message',message:m},'delete')}>Delete</button></>}
-                                <button
-                                  className="message-report"
-                                  title="Report message"
-                                  onClick={() => {
-                                    setReportTarget({
-                                      id: m.id,
-                                      type: "message",
-                                    });
-                                    setModal("report");
-                                  }}
-                                >
-                                  <Flag size={12} />
-                                </button>
+                    <div
+                      className="message-list"
+                      ref={messageList}
+                      onScroll={(e) => {
+                        const el = e.currentTarget;
+                        pinnedToBottom.current =
+                          el.scrollHeight - el.scrollTop - el.clientHeight < 90;
+                      }}
+                    >
+                      {history.hasMore && (
+                        <button
+                          className="button subtle history-button"
+                          disabled={history.loading}
+                          onClick={() => void earlierMessages()}
+                        >
+                          {history.loading
+                            ? "Finding the earlier conversation…"
+                            : "Earlier in the conversation"}
+                          <ChevronDown size={14} />
+                        </button>
+                      )}
+                      {!activeMessages.length && (
+                        <div className="chat-welcome">
+                          <span>{activeChannel.icon}</span>
+                          <h2>Good conversations start with a hello.</h2>
+                          <p>
+                            You’re in #{activeChannel.name}. Find a topic, find
+                            your people.
+                          </p>
+                          <small>
+                            Choose what you follow. Everything else stays quiet.
+                          </small>
+                        </div>
+                      )}
+                      {activeMessages.map((m) => (
+                        <article className="message" key={m.id}>
+                          <Avatar
+                            person={person(m.authorId)}
+                            onClick={() => openProfile(m.authorId)}
+                          />
+                          <div className="message-content">
+                            <header>
+                              <button
+                                className="name-button"
+                                onClick={() => openProfile(m.authorId)}
+                              >
+                                {person(m.authorId)?.name ?? "Member"}
+                              </button>
+                              <time>
+                                {displayDate(m.createdAt, {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })}
+                              </time>
+                              <button
+                                className="topic-label"
+                                onClick={() => setTopic(m.topic)}
+                              >
+                                {m.topic}
+                              </button>
+                            </header>
+                            {m.replyTo && (
+                              <div className="reply-preview">
+                                ↳ {quotedMessage(m.replyTo)}
                               </div>
+                            )}
+                            <p>{m.body}</p>
+                            <div className="reactions">
+                              {Object.entries(m.reactions)
+                                .filter(([, ids]) => ids.length)
+                                .map(([emoji, ids]) => (
+                                  <button
+                                    className={
+                                      ids.includes(s.currentUserId)
+                                        ? "selected"
+                                        : ""
+                                    }
+                                    key={emoji}
+                                    onClick={() =>
+                                      void act({
+                                        type: "message.react",
+                                        messageId: m.id,
+                                        emoji,
+                                      })
+                                    }
+                                  >
+                                    {emoji}
+                                    <span>{ids.length}</span>
+                                  </button>
+                                ))}
+                              <button
+                                title="React with heart"
+                                onClick={() =>
+                                  void act({
+                                    type: "message.react",
+                                    messageId: m.id,
+                                    emoji: "🖤",
+                                  })
+                                }
+                              >
+                                <Heart size={13} />
+                                <Plus size={10} />
+                              </button>
+                              <button
+                                title="Reply in topic"
+                                onClick={() => {
+                                  setTopic(m.topic);
+                                  setReplyTo(m.id);
+                                  (
+                                    document.getElementById(
+                                      "chat-body",
+                                    ) as HTMLTextAreaElement
+                                  )?.focus();
+                                }}
+                              >
+                                Reply
+                              </button>
+                              {m.authorId === s.currentUserId && (
+                                <>
+                                  <button
+                                    title="Edit your message"
+                                    onClick={() =>
+                                      showContent(
+                                        { kind: "message", message: m },
+                                        "edit",
+                                      )
+                                    }
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    title="Delete your message"
+                                    onClick={() =>
+                                      showContent(
+                                        { kind: "message", message: m },
+                                        "delete",
+                                      )
+                                    }
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                className="message-report"
+                                title="Report message"
+                                onClick={() => {
+                                  setReportTarget({
+                                    id: m.id,
+                                    type: "message",
+                                  });
+                                  setModal("report");
+                                }}
+                              >
+                                <Flag size={12} />
+                              </button>
                             </div>
-                          </article>
-                        ))}
+                          </div>
+                        </article>
+                      ))}
                     </div>
                     <form
                       className="chat-composer"
@@ -1626,7 +1793,14 @@ export default function App() {
                   </p>
                 </div>
                 <div className="heading-actions">
-                  <button className="button subtle" onClick={()=>setModal('guide')}><Globe size={15}/>AfroTech guide<ArrowUpRight size={14}/></button>
+                  <button
+                    className="button subtle"
+                    onClick={() => setModal("guide")}
+                  >
+                    <Globe size={15} />
+                    AfroTech guide
+                    <ArrowUpRight size={14} />
+                  </button>
                   <button
                     className="button subtle"
                     onClick={() => setModal("import")}
@@ -1829,8 +2003,7 @@ export default function App() {
                   <p>A shared interest is just the beginning.</p>
                 </div>
                 <span className="count-pill">
-                  <Users size={15} />
-                  A community of possibilities
+                  <Users size={15} />A community of possibilities
                 </span>
               </div>
               <div className="people-search">
@@ -1899,105 +2072,126 @@ export default function App() {
                 </section>
               )}
               <div className="people-grid">
-                {directoryPeople
-                  .map((p) => {
-                    const isConnected = connected(s, p.id),
-                      requested = s.connections.some(
-                        (c) =>
-                          c.status === "pending" &&
-                          [c.fromId, c.toId].includes(s.currentUserId) &&
-                          [c.fromId, c.toId].includes(p.id),
-                      );
-                    return (
-                      <article className="person-card" key={p.id}>
-                        <div className="person-card-top">
-                          <Avatar
-                            person={p}
-                            size="large"
-                            onClick={() => openProfile(p.id)}
-                          />
-                          <span className="trust-pill">
-                            <ShieldCheck size={12} />
-                            {p.trust.score}
-                          </span>
-                        </div>
-                        <button
-                          className="person-title"
-                          onClick={() => openProfile(p.id)}
-                        >
-                          {p.name}
-                          {p.verified && <ShieldCheck size={15} />}
-                        </button>
-                        <p>{p.headline}</p>
-                        <span className="person-location">
-                          <MapPin size={12} />
-                          {p.location}
-                        </span>
-                        <div className="tags">
-                          {p.interests.slice(0, 3).map((t) => (
-                            <span key={t}>{t}</span>
-                          ))}
-                        </div>
-                        <div className="match-note">
-                          <Sparkles size={12} />
-                          {
-                            p.interests.filter((i) =>
-                              s.preferences.interests.includes(i),
-                            ).length
-                          }{" "}
-                          shared interests
-                        </div>
-                        <footer>
-                          <button
-                            className={`button ${isConnected ? "subtle" : "primary"} small-button`}
-                            disabled={requested}
-                            onClick={() =>
-                              isConnected
-                                ? (setDmId(p.id), navigate("inbox"))
-                                : void act(
-                                    {
-                                      type: "connection.request",
-                                      userId: p.id,
-                                    },
-                                    "Connection request sent.",
-                                  )
-                            }
-                          >
-                            {isConnected ? (
-                              <>
-                                <MessageCircle size={14} />
-                                Say hello
-                              </>
-                            ) : requested ? (
-                              "Request sent"
-                            ) : (
-                              <>
-                                <UserPlus size={14} />
-                                Connect
-                              </>
-                            )}
-                          </button>
-                          <button
-                            className={`icon-button ${s.preferences.followingIds.includes(p.id) ? "selected" : ""}`}
-                            onClick={() =>
-                              void act({ type: "profile.follow", userId: p.id })
-                            }
-                            title={
-                              s.preferences.followingIds.includes(p.id)
-                                ? "Unfollow"
-                                : "Follow"
-                            }
-                          >
-                            <Heart size={17} />
-                          </button>
-                        </footer>
-                      </article>
+                {directoryPeople.map((p) => {
+                  const isConnected = connected(s, p.id),
+                    requested = s.connections.some(
+                      (c) =>
+                        c.status === "pending" &&
+                        [c.fromId, c.toId].includes(s.currentUserId) &&
+                        [c.fromId, c.toId].includes(p.id),
                     );
-                  })}
+                  return (
+                    <article className="person-card" key={p.id}>
+                      <div className="person-card-top">
+                        <Avatar
+                          person={p}
+                          size="large"
+                          onClick={() => openProfile(p.id)}
+                        />
+                        <span className="trust-pill">
+                          <ShieldCheck size={12} />
+                          {p.trust.score}
+                        </span>
+                      </div>
+                      <button
+                        className="person-title"
+                        onClick={() => openProfile(p.id)}
+                      >
+                        {p.name}
+                        {p.verified && <ShieldCheck size={15} />}
+                      </button>
+                      <p>{p.headline}</p>
+                      <span className="person-location">
+                        <MapPin size={12} />
+                        {p.location}
+                      </span>
+                      <div className="tags">
+                        {p.interests.slice(0, 3).map((t) => (
+                          <span key={t}>{t}</span>
+                        ))}
+                      </div>
+                      <div className="match-note">
+                        <Sparkles size={12} />
+                        {
+                          p.interests.filter((i) =>
+                            s.preferences.interests.includes(i),
+                          ).length
+                        }{" "}
+                        shared interests
+                      </div>
+                      <footer>
+                        <button
+                          className={`button ${isConnected ? "subtle" : "primary"} small-button`}
+                          disabled={requested}
+                          onClick={() =>
+                            isConnected
+                              ? (setDmId(p.id), navigate("inbox"))
+                              : void act(
+                                  {
+                                    type: "connection.request",
+                                    userId: p.id,
+                                  },
+                                  "Connection request sent.",
+                                )
+                          }
+                        >
+                          {isConnected ? (
+                            <>
+                              <MessageCircle size={14} />
+                              Say hello
+                            </>
+                          ) : requested ? (
+                            "Request sent"
+                          ) : (
+                            <>
+                              <UserPlus size={14} />
+                              Connect
+                            </>
+                          )}
+                        </button>
+                        <button
+                          className={`icon-button ${s.preferences.followingIds.includes(p.id) ? "selected" : ""}`}
+                          onClick={() =>
+                            void act({ type: "profile.follow", userId: p.id })
+                          }
+                          title={
+                            s.preferences.followingIds.includes(p.id)
+                              ? "Unfollow"
+                              : "Follow"
+                          }
+                        >
+                          <Heart size={17} />
+                        </button>
+                      </footer>
+                    </article>
+                  );
+                })}
               </div>
-              {directory.loading&&<p className="directory-status" role="status">Finding your people…</p>}
-              {!directory.loading&&!directoryPeople.length&&<Empty title="Your people are out there." body={query?'Try another name, role, skill, or interest.':'The directory is quiet for now. Invite a connection to join.'}/>}
-              {directory.hasMore&&<button className="button subtle directory-more" disabled={directory.loading} onClick={loadMoreDirectory}>Meet more people<ArrowDown size={15}/></button>}
+              {directory.loading && (
+                <p className="directory-status" role="status">
+                  Finding your people…
+                </p>
+              )}
+              {!directory.loading && !directoryPeople.length && (
+                <Empty
+                  title="Your people are out there."
+                  body={
+                    query
+                      ? "Try another name, role, skill, or interest."
+                      : "The directory is quiet for now. Invite a connection to join."
+                  }
+                />
+              )}
+              {directory.hasMore && (
+                <button
+                  className="button subtle directory-more"
+                  disabled={directory.loading}
+                  onClick={loadMoreDirectory}
+                >
+                  Meet more people
+                  <ArrowDown size={15} />
+                </button>
+              )}
             </>
           )}
           {page === "profile" &&
@@ -2217,7 +2411,18 @@ export default function App() {
                 </>
               );
             })()}
-          {page==='squads'&&<Squads selectedId={squadId} select={setSquadId} openProfile={openProfile} run={act} report={target=>{setReportTarget(target);setModal('report');}}/>}
+          {page === "squads" && (
+            <Squads
+              selectedId={squadId}
+              select={setSquadId}
+              openProfile={openProfile}
+              run={act}
+              report={(target) => {
+                setReportTarget(target);
+                setModal("report");
+              }}
+            />
+          )}
           {page === "inbox" && (
             <>
               <div className="page-heading">
@@ -2310,7 +2515,21 @@ export default function App() {
                                   minute: "2-digit",
                                 })}
                               </small>
-                              {d.fromId!==s.currentUserId&&<button className="dm-report" aria-label="Report this private message" onClick={()=>{setReportTarget({id:d.id,type:'directMessage'});setModal('report');}}><Flag size={12}/></button>}
+                              {d.fromId !== s.currentUserId && (
+                                <button
+                                  className="dm-report"
+                                  aria-label="Report this private message"
+                                  onClick={() => {
+                                    setReportTarget({
+                                      id: d.id,
+                                      type: "directMessage",
+                                    });
+                                    setModal("report");
+                                  }}
+                                >
+                                  <Flag size={12} />
+                                </button>
+                              )}
                             </div>
                           ))}
                       </div>
@@ -2396,10 +2615,7 @@ export default function App() {
             {query.length > 1 ? (
               <div className="search-results">
                 {directory.results
-                  .filter(
-                    (p) =>
-                      !s.preferences.blockedIds.includes(p.id),
-                  )
+                  .filter((p) => !s.preferences.blockedIds.includes(p.id))
                   .slice(0, 5)
                   .map((p) => (
                     <button key={p.id} onClick={() => openProfile(p.id)}>
@@ -2411,7 +2627,11 @@ export default function App() {
                       <ArrowUpRight size={16} />
                     </button>
                   ))}
-                {directory.loading&&<p className="directory-status" role="status">Looking for people…</p>}
+                {directory.loading && (
+                  <p className="directory-status" role="status">
+                    Looking for people…
+                  </p>
+                )}
                 {visibleChannels(s)
                   .filter((c) =>
                     `${c.name} ${c.description}`
@@ -2957,8 +3177,18 @@ export default function App() {
                   setModal(null);
                   if (n.kind === "connection") navigate("people");
                   else if (n.kind === "event") navigate("calendar");
-                  else if(n.kind==='squad'){setSquadId(s.squads.some(g=>g.id===n.targetId&&g.memberIds.includes(s.currentUserId))?n.targetId:'');navigate('squads');}
-                  else if (n.kind === "community") {
+                  else if (n.kind === "squad") {
+                    setSquadId(
+                      s.squads.some(
+                        (g) =>
+                          g.id === n.targetId &&
+                          g.memberIds.includes(s.currentUserId),
+                      )
+                        ? n.targetId
+                        : "",
+                    );
+                    navigate("squads");
+                  } else if (n.kind === "community") {
                     const post = s.posts.find((p) => p.id === n.targetId);
                     if (post) setPostDetail(post.id);
                     else navigate("home");
@@ -3319,9 +3549,9 @@ export default function App() {
                 className="text-button"
                 onClick={() => {
                   resetDemo();
-                  welcomed.current=true;
-                  navigate('home');
-                  setModal('interests');
+                  welcomed.current = true;
+                  navigate("home");
+                  setModal("interests");
                   toast("A fresh sample is ready.");
                 }}
               >
@@ -3540,13 +3770,28 @@ export default function App() {
                   </span>
                   <p>{r.reason}</p>
                   <blockquote>
-                    {r.snapshot?.body ?? (r.targetType === "post"
-                      ? s.posts.find((p) => p.id === r.targetId)?.body
-                      : r.targetType === "message"
-                        ? s.messages.find((m) => m.id === r.targetId)?.body
-                        : r.targetType==='comment'?s.posts.find(p=>p.id===r.postId)?.comments.find(c=>c.id===r.targetId)?.body:r.targetType==='profile'?person(r.targetId)?.bio:undefined) ?? "Content isn’t available. Review the report without removing unseen content."}
+                    {r.snapshot?.body ??
+                      (r.targetType === "post"
+                        ? s.posts.find((p) => p.id === r.targetId)?.body
+                        : r.targetType === "message"
+                          ? s.messages.find((m) => m.id === r.targetId)?.body
+                          : r.targetType === "comment"
+                            ? s.posts
+                                .find((p) => p.id === r.postId)
+                                ?.comments.find((c) => c.id === r.targetId)
+                                ?.body
+                            : r.targetType === "profile"
+                              ? person(r.targetId)?.bio
+                              : undefined) ??
+                      "Content isn’t available. Review the report without removing unseen content."}
                   </blockquote>
-                  {r.snapshot&&<small className="muted">Excerpt captured {displayDate(r.snapshot.capturedAt)}. A private report shares only this excerpt with community care.</small>}
+                  {r.snapshot && (
+                    <small className="muted">
+                      Excerpt captured {displayDate(r.snapshot.capturedAt)}. A
+                      private report shares only this excerpt with community
+                      care.
+                    </small>
+                  )}
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
@@ -3570,11 +3815,22 @@ export default function App() {
                     <Field label="Decision">
                       <select name="outcome">
                         <option value="dismiss">Dismiss report</option>
-                        {r.targetType !== "profile" && (r.snapshot||r.targetType==='post'&&s.posts.some(p=>p.id===r.targetId)||r.targetType==='message'&&s.messages.some(m=>m.id===r.targetId)||r.targetType==='comment'&&s.posts.some(p=>p.id===r.postId&&p.comments.some(c=>c.id===r.targetId))) && (
-                          <option value="remove">
-                            Remove reported content
-                          </option>
-                        )}
+                        {r.targetType !== "profile" &&
+                          (r.snapshot ||
+                            (r.targetType === "post" &&
+                              s.posts.some((p) => p.id === r.targetId)) ||
+                            (r.targetType === "message" &&
+                              s.messages.some((m) => m.id === r.targetId)) ||
+                            (r.targetType === "comment" &&
+                              s.posts.some(
+                                (p) =>
+                                  p.id === r.postId &&
+                                  p.comments.some((c) => c.id === r.targetId),
+                              ))) && (
+                            <option value="remove">
+                              Remove reported content
+                            </option>
+                          )}
                       </select>
                     </Field>
                     <button
@@ -3621,7 +3877,9 @@ export default function App() {
                     type: "report.create",
                     targetId: reportTarget.id,
                     targetType: reportTarget.type,
-                    ...(reportTarget.postId?{postId:reportTarget.postId}:{}),
+                    ...(reportTarget.postId
+                      ? { postId: reportTarget.postId }
+                      : {}),
                     reason: String(new FormData(e.currentTarget).get("reason")),
                   },
                   "Your concern has been recorded for review.",
@@ -3630,7 +3888,24 @@ export default function App() {
                 setModal(null);
             }}
           >
-            {(reportTarget.type==='directMessage'||reportTarget.type==='squadMessage')&&<div className="callout"><strong>Share this message with community care?</strong><p>Sending this report shares an excerpt of the selected private message with moderators. It does not open the rest of your conversation.</p><blockquote>{(reportTarget.type==='directMessage'?s.directMessages.find(d=>d.id===reportTarget.id)?.body:s.squadMessages.find(m=>m.id===reportTarget.id)?.body)??'This message is no longer loaded.'}</blockquote></div>}
+            {(reportTarget.type === "directMessage" ||
+              reportTarget.type === "squadMessage") && (
+              <div className="callout">
+                <strong>Share this message with community care?</strong>
+                <p>
+                  Sending this report shares an excerpt of the selected private
+                  message with moderators. It does not open the rest of your
+                  conversation.
+                </p>
+                <blockquote>
+                  {(reportTarget.type === "directMessage"
+                    ? s.directMessages.find((d) => d.id === reportTarget.id)
+                        ?.body
+                    : s.squadMessages.find((m) => m.id === reportTarget.id)
+                        ?.body) ?? "This message is no longer loaded."}
+                </blockquote>
+              </div>
+            )}
             <Field label="What should we know?">
               <textarea
                 name="reason"
@@ -3647,7 +3922,9 @@ export default function App() {
           </form>
         </ModalShell>
       )}
-      {modal==='guide'&&<GuideDialog close={()=>setModal(null)} notify={toast}/>}
+      {modal === "guide" && (
+        <GuideDialog close={() => setModal(null)} notify={toast} />
+      )}
       {modal === "import" && (
         <ImportDialog
           close={() => setModal(null)}
@@ -3666,8 +3943,37 @@ export default function App() {
           }}
         />
       )}
-      {contentTarget&&<ContentDialog target={contentTarget} mode={contentMode} setMode={setContentMode} close={()=>setContentTarget(null)} run={act} deleted={()=>{if(contentTarget.kind==='post'&&postDetail===contentTarget.post.id)setPostDetail(null);if(contentTarget.kind==='message'&&replyTo===contentTarget.message.id)setReplyTo(null);setContentTarget(null);}} report={target=>{setReportTarget(target);setContentTarget(null);setModal('report');}}/>}
-      {postDetail && !modal && !contentTarget && !searchOpen &&
+      {contentTarget && (
+        <ContentDialog
+          target={contentTarget}
+          mode={contentMode}
+          setMode={setContentMode}
+          close={() => setContentTarget(null)}
+          run={act}
+          deleted={() => {
+            if (
+              contentTarget.kind === "post" &&
+              postDetail === contentTarget.post.id
+            )
+              setPostDetail(null);
+            if (
+              contentTarget.kind === "message" &&
+              replyTo === contentTarget.message.id
+            )
+              setReplyTo(null);
+            setContentTarget(null);
+          }}
+          report={(target) => {
+            setReportTarget(target);
+            setContentTarget(null);
+            setModal("report");
+          }}
+        />
+      )}
+      {postDetail &&
+        !modal &&
+        !contentTarget &&
+        !searchOpen &&
         (() => {
           const post = s.posts.find((p) => p.id === postDetail);
           if (!post) return null;
@@ -3700,7 +4006,20 @@ export default function App() {
                           <strong>{person(c.authorId)?.name}</strong>
                           <p>{c.body}</p>
                           <small>{displayDate(c.createdAt)}</small>
-                          <button className="comment-options" aria-label={`More options for ${person(c.authorId)?.name??'member'}’s reply`} onClick={()=>showContent({kind:'comment',postId:post.id,comment:c})}><MoreHorizontal size={15}/>{c.editedAt?<span>edited</span>:null}</button>
+                          <button
+                            className="comment-options"
+                            aria-label={`More options for ${person(c.authorId)?.name ?? "member"}’s reply`}
+                            onClick={() =>
+                              showContent({
+                                kind: "comment",
+                                postId: post.id,
+                                comment: c,
+                              })
+                            }
+                          >
+                            <MoreHorizontal size={15} />
+                            {c.editedAt ? <span>edited</span> : null}
+                          </button>
                         </div>
                       </div>
                     ))}
