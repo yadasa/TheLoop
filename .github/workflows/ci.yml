@@ -28,6 +28,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm --filter @theloop/mobile test:config
+      - run: node --test scripts/native-port.test.cjs
       - run: pnpm test
       - run: pnpm build
       - name: Firestore access and pagination rules

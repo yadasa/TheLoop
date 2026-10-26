@@ -4,24 +4,32 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import native from "./native-config.cjs";
+import ports from "./native-port.cjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const configIndex = args.indexOf("--public-firebase-config");
+const portIndex = args.indexOf("--port");
 const start = args.includes("--start");
 const check = args.includes("--check");
+const validArguments = args.every((arg, index) =>
+  index === configIndex + 1 || (portIndex >= 0 && index === portIndex + 1) ||
+  ["--public-firebase-config", "--port", "--start", "--check"].includes(arg));
+const options = args.filter(arg => arg.startsWith("--"));
 if (
   configIndex < 0 ||
   !args[configIndex + 1] ||
   start === check ||
-  args.length !== 3
+  args.length !== (portIndex >= 0 ? 5 : 3) ||
+  !validArguments || new Set(options).size !== options.length
 ) {
   console.error(
-    "Use --public-firebase-config <public SDK JSON path> with exactly one of --check or --start.",
+    "Use --public-firebase-config <public SDK JSON path> with exactly one of --check or --start, and optional --port <number>.",
   );
   process.exit(1);
 }
 try {
+  const port = ports.nativePort(portIndex >= 0 ? args[portIndex + 1] : undefined);
   const source = path.resolve(args[configIndex + 1]);
   if (statSync(source).size > 65536)
     throw new Error("The public SDK configuration file is too large.");
@@ -36,6 +44,7 @@ try {
       "Validation only. No server, build, account, or deployment was started.",
     );
   } else {
+    await ports.assertNativePortAvailable(port);
     const project = path.join(root, "apps/mobile");
     const require = createRequire(path.join(project, "package.json"));
     const cli = path.join(
@@ -43,7 +52,7 @@ try {
       "bin/cli",
     );
     console.log(
-      "Starting the separate native live preview on port 8098. Sign in with your own real account.",
+      `Starting the separate native live preview on port ${port}. Sign in with your own real account.`,
     );
     const child = spawn(
       process.execPath,
@@ -54,7 +63,7 @@ try {
         "--host",
         "lan",
         "--port",
-        "8098",
+        String(port),
         "--max-workers",
         "2",
       ],
