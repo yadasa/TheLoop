@@ -31,6 +31,8 @@ import {
   where,
   limit,
   orderBy,
+  documentId,
+  getDocs,
   connectFirestoreEmulator,
   type Firestore,
   type Query,
@@ -53,6 +55,8 @@ import {
   type Profile,
   type Connection,
 } from "@theloop/core";
+import { documentIdBatches, matchesDirectory, mergeMessages, messageCursor, normalizeDirectoryQuery, previewChannelIds, type MessageCursor } from "./data";
+import { directoryPageQuery, messagePageQuery } from "./queries";
 export type StorageDriver = {
   load(): Promise<LoopState | null>;
   save(state: LoopState): Promise<void>;
@@ -92,6 +96,14 @@ type LoopContextValue = {
   emailVerified: boolean;
   sendVerificationEmail(): Promise<void>;
   refreshVerification(): Promise<boolean>;
+  watchConversation(channelId: string | null, topic?: string): void;
+  loadOlderMessages(): Promise<void>;
+  history: { loading: boolean; hasMore: boolean };
+  directory: { results: Profile[]; loading: boolean; hasMore: boolean };
+  setDirectoryQuery(query: string): void;
+  loadMoreDirectory(): void;
+  loadSavedPosts(): Promise<void>;
+  loadProfile(userId: string): Promise<void>;
 };
 const Context = createContext<LoopContextValue | null>(null);
 let cloud: { auth: Auth; db: Firestore; functions: Functions } | undefined;
@@ -183,6 +195,37 @@ export function LoopProvider({
   const storageRef = useRef(storage);
   storageRef.current = storage;
   const [hasMore, setHasMore] = useState({ posts: false, events: false });
+  const [history, setHistory] = useState({ loading: false, hasMore: false });
+  const [directory, setDirectory] = useState<{ results: Profile[]; loading: boolean; hasMore: boolean }>({ results: [], loading: false, hasMore: false });
+  const [directoryQuery, updateDirectoryQuery] = useState("");
+  const directoryQueryRef = useRef("");
+  const conversationRef = useRef<{ channelId: string | null; topic?: string }>({ channelId: null });
+  const liveActions = useRef<Partial<{
+    watchConversation(channelId: string | null, topic?: string): void;
+    loadOlderMessages(): Promise<void>;
+    setDirectoryQuery(query: string): void;
+    loadMoreDirectory(): void;
+    loadSavedPosts(): Promise<void>;
+    loadProfile(userId: string): Promise<void>;
+  }>>({});
+  const watchConversation = useCallback((channelId: string | null, topic?: string) => {
+    const previous = conversationRef.current;
+    if (previous.channelId === channelId && previous.topic === topic) return;
+    conversationRef.current = { channelId, topic };
+    if (liveActions.current.watchConversation) liveActions.current.watchConversation(channelId, topic);
+    else setHistory({ loading: false, hasMore: false });
+  }, []);
+  const loadOlderMessages = useCallback(async () => { await liveActions.current.loadOlderMessages?.(); }, []);
+  const setDirectoryQuery = useCallback((value: string) => {
+    const normalized = normalizeDirectoryQuery(value);
+    if (directoryQueryRef.current === normalized) return;
+    directoryQueryRef.current = normalized;
+    updateDirectoryQuery(normalized);
+    liveActions.current.setDirectoryQuery?.(normalized);
+  }, []);
+  const loadMoreDirectory = useCallback(() => liveActions.current.loadMoreDirectory?.(), []);
+  const loadSavedPosts = useCallback(async () => { await liveActions.current.loadSavedPosts?.(); }, []);
+  const loadProfile = useCallback(async (userId: string) => { await liveActions.current.loadProfile?.(userId); }, []);
   const catalogLoaders = useRef<
     Partial<Record<"posts" | "events", () => void>>
   >({});
@@ -197,6 +240,9 @@ export function LoopProvider({
     (collection: "posts" | "events") => catalogLoaders.current[collection]?.(),
     [],
   );
+  useEffect(() => {
+    if (mode === "demo") setDirectory({ results: state.profiles.filter(profile => matchesDirectory(profile, directoryQuery)), loading: false, hasMore: false });
+  }, [mode, state.profiles, directoryQuery]);
   useEffect(() => {
     let active = true;
     if (mode === "demo") {
@@ -229,16 +275,16 @@ export function LoopProvider({
       };
     }
     let dispose: (() => void)[] = [];
-    let messageDispose: (() => void)[] = [];
     let generation = 0;
     const off = onAuthStateChanged(c.auth, async (user) => {
       const turn = ++generation;
       dispose.forEach((fn) => fn());
-      messageDispose.forEach((fn) => fn());
       dispose = [];
-      messageDispose = [];
       catalogLoaders.current = {};
+      liveActions.current = {};
       setHasMore({ posts: false, events: false });
+      setHistory({ loading: false, hasMore: false });
+      setDirectory({ results: [], loading: false, hasMore: false });
       setRole("member");
       setEmailVerified(user?.emailVerified ?? false);
       setState(emptyState(user?.uid ?? ""));
@@ -311,18 +357,137 @@ export function LoopProvider({
         let publicProfiles: Profile[] = [];
         let connections: Connection[] = [];
         let blockedIds: string[] = [];
+        let subscriptions = defaultPreferences().subscriptions;
+        let savedPostIds: string[] = [];
+        let refreshMessageSubscriptions = () => {};
         const peerProfiles = new Map<string, Profile>(),
           peerListeners = new Map<string, () => void>();
+        const targetedProfiles = new Map<string, Profile>(),
+          targetedListeners = new Map<string, () => void>(),
+          targetedRequests = new Map<string, Promise<void>>(),
+          targetedPending = new Map<string, { resolve(): void }>(),
+          revokedProfileIds = new Set<string>();
+        const directoryPages = new Map<number, { rows: Profile[]; cursor?: { nameKey: string; id: string }; full: boolean }>(),
+          directoryListeners = new Map<number, () => void>(), pendingDirectoryPages = new Set<number>();
+        let directoryGeneration = 0, directoryLoading = false, directoryDesiredPages = 1;
         let allowedPeerIds = new Set<string>();
         const publishProfiles = () => {
           if (!current()) return;
           const profiles = new Map(
             publicProfiles.map((profile) => [profile.id, profile]),
           );
+          for (const page of directoryPages.values()) for (const profile of page.rows) profiles.set(profile.id, profile);
+          targetedProfiles.forEach((profile) => profiles.set(profile.id, profile));
           peerProfiles.forEach((profile) => profiles.set(profile.id, profile));
           if (ownProfile) profiles.set(ownProfile.id, ownProfile);
-          setState((s) => ({ ...s, profiles: [...profiles.values()] }));
+          setState((s) => ({ ...s, profiles: [...profiles.values()].filter(profile => !revokedProfileIds.has(profile.id)) }));
         };
+        const publishDirectory = () => {
+          if (!current()) return;
+          const pages = [...directoryPages.entries()].sort(([a], [b]) => a - b);
+          const rows = new Map(pages.flatMap(([, page]) => page.rows.map(profile => [profile.id, profile] as const)));
+          setDirectory({ results: [...rows.values()].filter(profile => !revokedProfileIds.has(profile.id)), loading: directoryLoading, hasMore: pages.at(-1)?.[1].full ?? false });
+          publishProfiles();
+        };
+        const subscribeDirectoryPage = (pageNumber: number, cursor?: { nameKey: string; id: string }) => {
+          if (!current() || directoryLoading || directoryListeners.has(pageNumber)) return;
+          const requestGeneration = directoryGeneration;
+          pendingDirectoryPages.add(pageNumber);
+          directoryLoading = true;
+          publishDirectory();
+          const text = directoryQueryRef.current;
+          directoryListeners.set(pageNumber, onSnapshot(directoryPageQuery(c.db, text, cursor), snap => {
+            if (!current() || requestGeneration !== directoryGeneration) return;
+            const last = snap.docs.at(-1);
+            const rows = snap.docs.map(record => ({ ...record.data(), id: record.id }) as Profile);
+            const nextCursor = last ? { nameKey: last.data().nameKey as string, id: last.id } : cursor;
+            const previousCursor = directoryPages.get(pageNumber)?.cursor;
+            if (previousCursor && (previousCursor.nameKey !== nextCursor?.nameKey || previousCursor.id !== nextCursor?.id)) {
+              for (const [number, unsubscribe] of directoryListeners) if (number > pageNumber) {
+                unsubscribe();
+                directoryListeners.delete(number);
+                directoryPages.delete(number);
+                pendingDirectoryPages.delete(number);
+              }
+            }
+            rows.forEach(profile => revokedProfileIds.delete(profile.id));
+            directoryPages.set(pageNumber, { rows, cursor: nextCursor, full: snap.size === 50 });
+            pendingDirectoryPages.delete(pageNumber);
+            directoryLoading = pendingDirectoryPages.size > 0;
+            publishDirectory();
+            if (snap.size === 50 && nextCursor && pageNumber + 1 < directoryDesiredPages) subscribeDirectoryPage(pageNumber + 1, nextCursor);
+          }, error => {
+            if (!current() || requestGeneration !== directoryGeneration) return;
+            pendingDirectoryPages.delete(pageNumber);
+            directoryLoading = pendingDirectoryPages.size > 0;
+            directoryPages.delete(pageNumber);
+            directoryListeners.delete(pageNumber);
+            publishDirectory();
+            failure(error);
+          }));
+        };
+        liveActions.current.setDirectoryQuery = () => {
+          directoryGeneration++;
+          directoryListeners.forEach(unsubscribe => unsubscribe());
+          directoryListeners.clear();
+          directoryPages.clear();
+          pendingDirectoryPages.clear();
+          directoryLoading = false;
+          directoryDesiredPages = 1;
+          subscribeDirectoryPage(0);
+        };
+        liveActions.current.loadMoreDirectory = () => {
+          const last = [...directoryPages.entries()].sort(([a], [b]) => a - b).at(-1);
+          if (!directoryLoading && last?.[1].full && last[1].cursor) {
+            directoryDesiredPages = last[0] + 2;
+            subscribeDirectoryPage(last[0] + 1, last[1].cursor);
+          }
+        };
+        liveActions.current.loadProfile = (id: string) => {
+          if (!current() || !id || id.includes("/")) return Promise.resolve();
+          if (id === user.uid || peerProfiles.has(id)) return Promise.resolve();
+          const existing = targetedRequests.get(id);
+          if (existing) return existing;
+          // Keep explicit author lookups bounded; directory results have their own live pages.
+          if (targetedListeners.size >= 100) {
+            const oldest = targetedListeners.keys().next().value as string;
+            targetedListeners.get(oldest)?.();
+            targetedListeners.delete(oldest);
+            targetedProfiles.delete(oldest);
+            targetedRequests.delete(oldest);
+            targetedPending.get(oldest)?.resolve();
+            targetedPending.delete(oldest);
+          }
+          const request = new Promise<void>((resolve, reject) => {
+            targetedPending.set(id, { resolve });
+            targetedListeners.set(id, onSnapshot(doc(c.db, "profiles", id), snap => {
+              if (!current() || !targetedListeners.has(id)) { resolve(); return; }
+              const profile = snap.exists() ? { ...snap.data(), id: snap.id } as Profile : undefined;
+              if (profile && (profile.visibility === "public" || allowedPeerIds.has(id))) {
+                targetedProfiles.set(id, profile);
+                revokedProfileIds.delete(id);
+              } else {
+                targetedProfiles.delete(id);
+                revokedProfileIds.add(id);
+              }
+              publishDirectory();
+              resolve();
+              targetedPending.delete(id);
+            }, error => {
+              targetedProfiles.delete(id);
+              revokedProfileIds.add(id);
+              targetedRequests.delete(id);
+              targetedListeners.delete(id);
+              targetedPending.delete(id);
+              publishDirectory();
+              if ((error as { code?: string }).code !== "permission-denied") failure(error);
+              reject(error);
+            }));
+          });
+          targetedRequests.set(id, request);
+          return request;
+        };
+        subscribeDirectoryPage(0);
         const refreshPeers = () => {
           if (!current()) return;
           const wanted = new Set(
@@ -336,6 +501,12 @@ export function LoopProvider({
               .filter((id) => !blockedIds.includes(id)),
           );
           allowedPeerIds = wanted;
+          targetedProfiles.forEach((profile, id) => {
+            if (profile.visibility !== "public" && !wanted.has(id)) {
+              targetedProfiles.delete(id);
+              revokedProfileIds.add(id);
+            }
+          });
           peerListeners.forEach((unsubscribe, id) => {
             if (!wanted.has(id)) {
               unsubscribe();
@@ -357,6 +528,7 @@ export function LoopProvider({
                         id: snap.id,
                       } as Profile);
                     else peerProfiles.delete(id);
+                    if (snap.exists()) revokedProfileIds.delete(id);
                     publishProfiles();
                   },
                   (e) => {
@@ -373,6 +545,17 @@ export function LoopProvider({
           peerListeners.forEach((unsubscribe) => unsubscribe());
           peerListeners.clear();
           peerProfiles.clear();
+          targetedListeners.forEach(unsubscribe => unsubscribe());
+          targetedListeners.clear();
+          targetedProfiles.clear();
+          targetedRequests.clear();
+          targetedPending.forEach(request => request.resolve());
+          targetedPending.clear();
+          directoryGeneration++;
+          directoryListeners.forEach(unsubscribe => unsubscribe());
+          directoryListeners.clear();
+          directoryPages.clear();
+          pendingDirectoryPages.clear();
         });
         dispose.push(
           onSnapshot(
@@ -386,6 +569,7 @@ export function LoopProvider({
                 publicProfiles = snap.docs.map(
                   (d) => ({ ...d.data(), id: d.id }) as Profile,
                 );
+                publicProfiles.forEach(profile => revokedProfileIds.delete(profile.id));
                 publishProfiles();
               }
               loaded("publicProfiles");
@@ -461,8 +645,13 @@ export function LoopProvider({
                 setRole(nextRole);
                 watchReports(nextRole);
                 blockedIds = preferences.blockedIds;
+                subscriptions = preferences.subscriptions;
+                savedPostIds = preferences.savedPostIds;
+                savedPosts.forEach((_, id) => { if (!savedPostIds.includes(id)) savedPosts.delete(id); });
                 setState((s) => ({ ...s, preferences }));
                 refreshPeers();
+                refreshMessageSubscriptions();
+                publishPosts();
               } else loaded("reports");
               loaded("preferences");
             },
@@ -524,6 +713,28 @@ export function LoopProvider({
         // Bounded expanding windows keep recent posts live. UI can explicitly request more history.
         let postLimit = 100,
           offPosts: (() => void) | undefined;
+        let feedPosts: LoopState["posts"] = [];
+        const savedPosts = new Map<string, LoopState["posts"][number]>();
+        const publishPosts = () => {
+          if (!current()) return;
+          const posts = new Map([...savedPosts.values(), ...feedPosts].map(post => [post.id, post]));
+          setState(s => ({ ...s, posts: [...posts.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)) }));
+        };
+        let savedLoadGeneration = 0;
+        liveActions.current.loadSavedPosts = async () => {
+          const requestGeneration = ++savedLoadGeneration;
+          const wanted = [...savedPostIds];
+          try {
+            const snapshots = await Promise.all(documentIdBatches(wanted).map(ids => getDocs(query(collection(c.db, "posts"), where(documentId(), "in", ids)))));
+            if (!current() || requestGeneration !== savedLoadGeneration) return;
+            savedPosts.clear();
+            for (const snap of snapshots) for (const record of snap.docs) if (savedPostIds.includes(record.id)) savedPosts.set(record.id, { ...record.data(), id: record.id } as LoopState["posts"][number]);
+            publishPosts();
+          } catch (error) {
+            if (current() && requestGeneration === savedLoadGeneration) failure(error);
+            throw error;
+          }
+        };
         const subscribePosts = () => {
           offPosts?.();
           offPosts = onSnapshot(
@@ -534,13 +745,11 @@ export function LoopProvider({
             ),
             (snap) => {
               if (current()) {
-                setState((s) => ({
-                  ...s,
-                  posts: snap.docs.map(
+                feedPosts = snap.docs.map(
                     (d) =>
                       ({ ...d.data(), id: d.id }) as LoopState["posts"][number],
-                  ),
-                }));
+                  );
+                publishPosts();
                 setHasMore((value) => ({
                   ...value,
                   posts: snap.size === postLimit && postLimit < 1000,
@@ -641,47 +850,175 @@ export function LoopProvider({
           }
         };
 
-        const attachMessages = (channels: LoopState["channels"]) => {
-          messageDispose.forEach((fn) => fn());
-          messageDispose = [];
-          const buckets = new Map<string, Message[]>();
-          channels.slice(0, 30).forEach((channel) => {
-            messageDispose.push(
-              onSnapshot(
-                query(
-                  collection(c.db, "messages"),
-                  where("channelId", "==", channel.id),
-                  orderBy("createdAt", "desc"),
-                  limit(100),
-                ),
-                (snap) => {
-                  buckets.set(
-                    channel.id,
-                    snap.docs.map(
-                      (d) => ({ ...d.data(), id: d.id }) as Message,
-                    ),
-                  );
-                  if (current())
-                    setState((s) => ({
-                      ...s,
-                      messages: [...buckets.values()]
-                        .flat()
-                        .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-                    }));
-                },
-                (e) => failure(e),
-              ),
-            );
+        let publicChannels: LoopState["channels"] = [], privateChannels: LoopState["channels"] = [];
+        const previewListeners = new Map<string, () => void>(), previewBuckets = new Map<string, Message[]>();
+        const revokedChannelIds = new Set<string>();
+        const activePages = new Map<number, { rows: Message[]; cursor?: MessageCursor; full: boolean }>(), activePageListeners = new Map<number, () => void>();
+        const pendingMessagePages = new Set<number>();
+        const historyRequests = new Map<number, { resolve(): void; reject(error: unknown): void }>();
+        let activeChannel: LoopState["channels"][number] | undefined;
+        let offActiveChannel: (() => void) | undefined;
+        let conversationGeneration = 0, desiredHistoryPages = 1, historyLoading = false;
+        const accessible = (channel: LoopState["channels"][number]) => channel.visibility === "public" || Boolean(channel.memberIds?.includes(user.uid));
+        const allChannels = () => {
+          const channels = new Map([...publicChannels, ...privateChannels].filter(channel => accessible(channel) && !revokedChannelIds.has(channel.id)).map(channel => [channel.id, channel]));
+          if (activeChannel && accessible(activeChannel) && !revokedChannelIds.has(activeChannel.id)) channels.set(activeChannel.id, activeChannel);
+          return [...channels.values()];
+        };
+        const publishMessages = () => {
+          if (!current()) return;
+          const allowed = new Set(allChannels().map(channel => channel.id));
+          const pages = [...activePages.entries()].sort(([a], [b]) => b - a);
+          // The latest active page wins if its IDs overlap an older page or preview.
+          const messages = mergeMessages([...previewBuckets.values(), ...pages.map(([, page]) => page.rows)], allowed);
+          setState(s => ({ ...s, messages }));
+          const last = [...activePages.entries()].sort(([a], [b]) => a - b).at(-1);
+          setHistory({ loading: historyLoading, hasMore: last?.[1].full ?? false });
+        };
+        const stopActivePages = () => {
+          conversationGeneration++;
+          activePageListeners.forEach(unsubscribe => unsubscribe());
+          activePageListeners.clear();
+          activePages.clear();
+          pendingMessagePages.clear();
+          historyRequests.forEach(request => request.resolve());
+          historyRequests.clear();
+          historyLoading = false;
+        };
+        const subscribeMessagePage = (pageNumber: number, cursor?: MessageCursor) => {
+          const selected = conversationRef.current;
+          if (!current() || !selected.channelId || !activeChannel || !accessible(activeChannel) || activePageListeners.has(pageNumber)) return;
+          const requestGeneration = conversationGeneration;
+          const channelId = selected.channelId;
+          pendingMessagePages.add(pageNumber);
+          historyLoading = true;
+          publishMessages();
+          activePageListeners.set(pageNumber, onSnapshot(messagePageQuery(c.db, channelId, selected.topic, cursor), snap => {
+            if (!current() || requestGeneration !== conversationGeneration || !activeChannel || !accessible(activeChannel)) return;
+            const rows = snap.docs.map(record => ({ ...record.data(), id: record.id }) as Message);
+            const nextCursor = messageCursor(rows) ?? cursor;
+            const previous = activePages.get(pageNumber)?.cursor;
+            if (previous && (previous.createdAt !== nextCursor?.createdAt || previous.id !== nextCursor?.id)) {
+              for (const [number, unsubscribe] of activePageListeners) if (number > pageNumber) {
+                unsubscribe();
+                activePageListeners.delete(number);
+                activePages.delete(number);
+                pendingMessagePages.delete(number);
+              }
+            }
+            activePages.set(pageNumber, { rows, cursor: nextCursor, full: snap.size === 100 });
+            pendingMessagePages.delete(pageNumber);
+            historyLoading = pendingMessagePages.size > 0;
+            publishMessages();
+            historyRequests.get(pageNumber)?.resolve();
+            historyRequests.delete(pageNumber);
+            if (snap.size === 100 && nextCursor && pageNumber + 1 < desiredHistoryPages) subscribeMessagePage(pageNumber + 1, nextCursor);
+          }, error => {
+            if (!current() || requestGeneration !== conversationGeneration) return;
+            activePages.delete(pageNumber);
+            activePageListeners.delete(pageNumber);
+            pendingMessagePages.delete(pageNumber);
+            historyLoading = pendingMessagePages.size > 0;
+            if ((error as { code?: string }).code === "permission-denied") {
+              revokedChannelIds.add(channelId);
+              activeChannel = undefined;
+              previewBuckets.delete(channelId);
+              stopActivePages();
+            }
+            publishMessages();
+            historyRequests.get(pageNumber)?.reject(error);
+            historyRequests.delete(pageNumber);
+            failure(error);
+          }));
+        };
+        refreshMessageSubscriptions = () => {
+          if (!current()) return;
+          const channels = allChannels();
+          const wanted = previewChannelIds(channels, subscriptions);
+          previewListeners.forEach((unsubscribe, id) => {
+            if (!wanted.has(id)) {
+              unsubscribe();
+              previewListeners.delete(id);
+              previewBuckets.delete(id);
+            }
+          });
+          for (const id of wanted) if (!previewListeners.has(id)) {
+            previewListeners.set(id, onSnapshot(query(collection(c.db, "messages"), where("channelId", "==", id), orderBy("createdAt", "desc"), orderBy(documentId(), "desc"), limit(100)), snap => {
+              if (!current() || !previewListeners.has(id)) return;
+              previewBuckets.set(id, snap.docs.map(record => ({ ...record.data(), id: record.id }) as Message));
+              publishMessages();
+            }, error => {
+              previewBuckets.delete(id);
+              if ((error as { code?: string }).code === "permission-denied") {
+                revokedChannelIds.add(id);
+                if (conversationRef.current.channelId === id) {
+                  activeChannel = undefined;
+                  stopActivePages();
+                }
+              }
+              publishMessages();
+              failure(error);
+            }));
+          }
+          setState(s => ({ ...s, channels }));
+          publishMessages();
+        };
+        liveActions.current.watchConversation = (id: string | null) => {
+          offActiveChannel?.();
+          offActiveChannel = undefined;
+          stopActivePages();
+          activeChannel = undefined;
+          desiredHistoryPages = 1;
+          refreshMessageSubscriptions();
+          if (!id || id.includes("/")) return;
+          const requestGeneration = conversationGeneration;
+          historyLoading = true;
+          publishMessages();
+          offActiveChannel = onSnapshot(doc(c.db, "channels", id), snap => {
+            if (!current() || requestGeneration !== conversationGeneration) return;
+            const channel = snap.exists() ? { ...snap.data(), id: snap.id } as LoopState["channels"][number] : undefined;
+            if (!channel || !accessible(channel)) {
+              revokedChannelIds.add(id);
+              activeChannel = undefined;
+              previewBuckets.delete(id);
+              stopActivePages();
+            } else {
+              revokedChannelIds.delete(id);
+              activeChannel = channel;
+              subscribeMessagePage(0);
+            }
+            refreshMessageSubscriptions();
+          }, error => {
+            if (!current() || requestGeneration !== conversationGeneration) return;
+            if ((error as { code?: string }).code === "permission-denied") revokedChannelIds.add(id);
+            activeChannel = undefined;
+            previewBuckets.delete(id);
+            stopActivePages();
+            refreshMessageSubscriptions();
+            failure(error);
           });
         };
-        let publicChannels: LoopState["channels"] = [],
-          privateChannels: LoopState["channels"] = [];
-        const refresh = () => {
-          if (!current()) return;
-          const all = [...publicChannels, ...privateChannels];
-          setState((s) => ({ ...s, channels: all }));
-          attachMessages(all);
+        liveActions.current.loadOlderMessages = () => {
+          if (historyLoading || !current()) return Promise.resolve();
+          const last = [...activePages.entries()].sort(([a], [b]) => a - b).at(-1);
+          if (!last?.[1].full || !last[1].cursor) return Promise.resolve();
+          const pageNumber = last[0] + 1;
+          desiredHistoryPages = pageNumber + 1;
+          return new Promise<void>((resolve, reject) => {
+            historyRequests.set(pageNumber, { resolve, reject });
+            subscribeMessagePage(pageNumber, last[1].cursor);
+          });
         };
+        const refresh = refreshMessageSubscriptions;
+        const selected = conversationRef.current;
+        liveActions.current.watchConversation(selected.channelId, selected.topic);
+        dispose.push(() => {
+          offActiveChannel?.();
+          stopActivePages();
+          previewListeners.forEach(unsubscribe => unsubscribe());
+          previewListeners.clear();
+          previewBuckets.clear();
+        });
         dispose.push(
           onSnapshot(
             query(
@@ -694,6 +1031,7 @@ export function LoopProvider({
                 (d) =>
                   ({ ...d.data(), id: d.id }) as LoopState["channels"][number],
               );
+              publicChannels.forEach(channel => revokedChannelIds.delete(channel.id));
               refresh();
               loaded("publicChannels");
             },
@@ -708,6 +1046,7 @@ export function LoopProvider({
               limit(100),
             ),
             (snap) => {
+              const previousIds = new Set(privateChannels.map(channel => channel.id));
               privateChannels = snap.docs
                 .map(
                   (d) =>
@@ -717,6 +1056,17 @@ export function LoopProvider({
                     }) as LoopState["channels"][number],
                 )
                 .filter((x) => x.visibility === "private");
+              privateChannels.forEach(channel => {
+                revokedChannelIds.delete(channel.id);
+                previousIds.delete(channel.id);
+              });
+              // A membership query removal immediately hides cached private history. Re-read
+              // an active room to distinguish revocation from a bounded catalog window shift.
+              previousIds.forEach(id => revokedChannelIds.add(id));
+              if (activeChannel && previousIds.has(activeChannel.id)) {
+                const selected = conversationRef.current;
+                liveActions.current.watchConversation?.(selected.channelId, selected.topic);
+              }
               refresh();
               loaded("privateChannels");
             },
@@ -738,7 +1088,6 @@ export function LoopProvider({
       generation++;
       off();
       dispose.forEach((fn) => fn());
-      messageDispose.forEach((fn) => fn());
     };
   }, [mode, firebaseConfig?.projectId, useEmulators, emulators?.host, emulators?.authPort, emulators?.firestorePort, emulators?.functionsPort]);
   useEffect(() => {
@@ -903,6 +1252,14 @@ export function LoopProvider({
         emailVerified,
         sendVerificationEmail,
         refreshVerification,
+        watchConversation,
+        loadOlderMessages,
+        history,
+        directory,
+        setDirectoryQuery,
+        loadMoreDirectory,
+        loadSavedPosts,
+        loadProfile,
         clearError: () => setError(null),
         resetDemo: () => {
           setState(initialState());
