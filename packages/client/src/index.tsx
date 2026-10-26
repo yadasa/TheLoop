@@ -48,6 +48,7 @@ import {
   initialState,
   emptyState,
   defaultPreferences,
+  canReadPreviewImage,
   type LoopState,
   type Command,
   type Preferences,
@@ -57,11 +58,16 @@ import {
   type Squad,
   type SquadInvite,
   type SquadMessage,
+  type MediaTarget,
+  type ImageAttachment,
 } from "@theloop/core";
 import { documentIdBatches, matchesDirectory, mergeMessages, mergeSquadInvites, normalizeDirectoryQuery, previewChannelIds, revokePrivateProfiles, visibleSquadMessages } from "./data";
 import { directoryPageQuery, messagePageQuery, squadMessagePageQuery, squadMembershipQuery, squadParticipantInvitesQuery, squadIncomingInvitesQuery, squadOwnerInvitesQuery } from "./queries";
 import { MessagePages } from "./messagePages";
+import { encodeImageBase64, imageMetadata, imageUploadBytes, ImageMemoryCache, MediaScopeChanged, mediaAuthority, mediaScope, previewImageData, safeMediaId, type ImageUploadInput, type ImageDataResult } from "./media";
 export { useGuideEvents, type GuideEventsState } from "./guide";
+export type { ImageUploadInput, ImageDataResult } from "./media";
+export { stripWebPMetadata } from "./media";
 export type StorageDriver = {
   load(): Promise<LoopState | null>;
   save(state: LoopState): Promise<void>;
@@ -112,6 +118,10 @@ type LoopContextValue = {
   watchSquad(squadId: string | null): void;
   loadOlderSquadMessages(): Promise<void>;
   squadHistory: { loading: boolean; hasMore: boolean };
+  uploadImage(target: MediaTarget, input: ImageUploadInput): Promise<ImageAttachment>;
+  getImage(mediaId: string, reportId?: string): Promise<ImageDataResult>;
+  discardImage(mediaId: string): void;
+  mediaRevision: number;
 };
 const Context = createContext<LoopContextValue | null>(null);
 let cloud: { auth: Auth; db: Firestore; functions: Functions } | undefined;
@@ -180,6 +190,18 @@ export function restorePreview(saved: LoopState): LoopState {
   for (const squad of saved.squads ?? []) if (typeof squad.name !== "string" || !strings(squad.memberIds) || !strings(squad.pendingInviteeIds) || !object(squad.memberProfiles)) throw new Error("Invalid saved squad.");
   for (const invite of saved.squadInvites ?? []) if (typeof invite.squadId !== "string" || !strings(invite.participantIds) || !Number.isFinite(Date.parse(invite.expiresAt))) throw new Error("Invalid saved squad invitation.");
   for (const message of saved.squadMessages ?? []) if (typeof message.body !== "string" || !strings(message.audienceIds) || !Number.isFinite(Date.parse(message.createdAt)) || !object(message.reactions)) throw new Error("Invalid saved squad message.");
+  if (saved.previewImages !== undefined) {
+    if (!object(saved.previewImages) || Object.keys(saved.previewImages).length > 64) throw new Error("Invalid saved preview images.");
+    let total = 0;
+    for (const [id, entry] of Object.entries(saved.previewImages)) {
+      if (!object(entry) || !object(entry.target) || !["channel", "squad", "directMessage", "community"].includes(entry.target.kind as string) || !safeMediaId(entry.target.id) || typeof entry.ownerId !== "string" || !Number.isFinite(Date.parse(entry.createdAt as string))) throw new Error("Invalid saved preview image scope.");
+      const parsed = previewImageData(entry);
+      if (parsed.image.id !== id) throw new Error("Invalid saved preview image ID.");
+      if (entry.linkedTo !== undefined && (!object(entry.linkedTo) || !["message", "squadMessage", "directMessage", "post"].includes(entry.linkedTo.kind as string) || !safeMediaId(entry.linkedTo.id))) throw new Error("Invalid saved preview image source.");
+      total += parsed.image.size;
+    }
+    if (total > 2 * 1024 * 1024) throw new Error("Saved preview images exceed 2 MB.");
+  }
   return { ...saved, follows: saved.follows ?? [], squads: saved.squads ?? [], squadInvites: saved.squadInvites ?? [], squadMessages: saved.squadMessages ?? [], preferences: { ...preferences, squadReadAt: preferences.squadReadAt ?? {}, squadMutedIds: preferences.squadMutedIds ?? [] } };
 }
 export function LoopProvider({
@@ -203,6 +225,10 @@ export function LoopProvider({
   );
   const stateRef = useRef(state);
   stateRef.current = state;
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const imageCache = useRef(new ImageMemoryCache());
+  const [mediaRevision, setMediaRevision] = useState(0);
   const [ready, setReady] = useState(false),
     [error, setError] = useState<string | null>(null),
     [pending, setPending] = useState(0);
@@ -226,11 +252,14 @@ export function LoopProvider({
     loadProfile(userId: string): Promise<void>;
     watchSquad(squadId: string | null): void;
     loadOlderSquadMessages(): Promise<void>;
+    uploadImage(payload: { target: MediaTarget; contentType: ImageUploadInput["contentType"]; base64: string; requestId: string }): Promise<unknown>;
+    getImage(mediaId: string, reportId?: string): Promise<unknown>;
   }>>({});
   const watchConversation = useCallback((channelId: string | null, topic?: string) => {
     const previous = conversationRef.current;
     if (previous.channelId === channelId && previous.topic === topic) return;
     conversationRef.current = { channelId, topic };
+    synchronizeMedia();
     if (liveActions.current.watchConversation) liveActions.current.watchConversation(channelId, topic);
     else setHistory({ loading: false, hasMore: false });
   }, []);
@@ -238,6 +267,7 @@ export function LoopProvider({
   const watchSquad = useCallback((squadId: string | null) => {
     if (squadRef.current === squadId) return;
     squadRef.current = squadId;
+    synchronizeMedia();
     if (liveActions.current.watchSquad) liveActions.current.watchSquad(squadId);
     else setSquadHistory({ loading: false, hasMore: false });
   }, []);
@@ -257,6 +287,83 @@ export function LoopProvider({
   >({});
   const [role, setRole] = useState<LoopRole>("member"),
     [emailVerified, setEmailVerified] = useState(false);
+  const roleRef = useRef(role);
+  roleRef.current = role;
+  const currentMediaState = useCallback(() => {
+    const current = stateRef.current;
+    return modeRef.current === "live" ? { ...current, currentUserId: cloud?.auth.currentUser?.uid ?? "" } : current;
+  }, []);
+  const currentMediaAuthority = useCallback(() => {
+    const selected = conversationRef.current;
+    return mediaAuthority(currentMediaState(), { mode: modeRef.current, role: roleRef.current, conversation: selected.channelId ? `${selected.channelId}\u0000${selected.topic ?? ""}` : null, squad: squadRef.current });
+  }, [currentMediaState]);
+  const synchronizeMedia = useCallback(() => {
+    const selected = conversationRef.current;
+    if (imageCache.current.setContext(mediaScope(currentMediaState(), { mode: modeRef.current, role: roleRef.current, conversation: selected.channelId ? `${selected.channelId}\u0000${selected.topic ?? ""}` : null, squad: squadRef.current }))) setMediaRevision(value => value + 1);
+    return imageCache.current.revision;
+  }, [currentMediaState]);
+  const uploadImage = useCallback(async (target: MediaTarget, input: ImageUploadInput): Promise<ImageAttachment> => {
+    setError(null);
+    synchronizeMedia();
+    const authority = currentMediaAuthority(), selectedMode = modeRef.current;
+    const ownerId = stateRef.current.currentUserId;
+    try {
+      if (!ownerId || !["channel", "squad", "directMessage", "community"].includes(target.kind) || !safeMediaId(target.id)) throw new Error("Choose a conversation before adding an image.");
+      const bytes = await imageUploadBytes(input, selectedMode === "demo");
+      synchronizeMedia();
+      if (authority !== currentMediaAuthority()) throw new MediaScopeChanged();
+      const base64 = encodeImageBase64(bytes);
+      if (selectedMode === "demo") {
+        const current = stateRef.current, entries = current.previewImages ?? {};
+        if (Object.keys(entries).length >= 64 || Object.values(entries).reduce((total, entry) => total + entry.image.size, 0) + bytes.length > 2 * 1024 * 1024) throw new Error("Preview images are limited to 2 MB in total. Remove an unused image or delete a sample image post to make room.");
+        const image: ImageAttachment = { id: `preview-${requestId()}`, mimeType: "image/webp", width: input.width!, height: input.height!, size: bytes.length };
+        const next = { ...current, previewImages: { ...entries, [image.id]: { image, dataUrl: `data:image/webp;base64,${base64}`, target: { ...target }, ownerId, createdAt: new Date().toISOString() } } };
+        stateRef.current = next; setState(next);
+        return image;
+      }
+      const action = liveActions.current.uploadImage;
+      if (!action) throw new Error("Sign in before adding an image.");
+      const payload = { target, contentType: input.contentType, base64, requestId: requestId() };
+      let value: unknown;
+      try { value = await action(payload); }
+      catch (error) {
+        synchronizeMedia();
+        if (authority !== currentMediaAuthority()) throw new MediaScopeChanged();
+        if (!["functions/unavailable", "functions/deadline-exceeded"].includes((error as { code?: string }).code ?? "")) throw error;
+        value = await action(payload);
+      }
+      synchronizeMedia();
+      if (authority !== currentMediaAuthority()) throw new MediaScopeChanged();
+      return imageMetadata((value as { image?: unknown })?.image);
+    } catch (error) {
+      if (!(error instanceof MediaScopeChanged)) setError(readableError(error));
+      throw error;
+    }
+  }, [synchronizeMedia, currentMediaAuthority]);
+  const getImage = useCallback(async (id: string, reportId?: string): Promise<ImageDataResult> => {
+    synchronizeMedia();
+    if (modeRef.current === "demo") {
+      const current = stateRef.current, entry = current.previewImages?.[id];
+      if (reportId || !entry || !canReadPreviewImage(current, entry)) throw new Error("This image is no longer available in this conversation.");
+      return imageCache.current.get(id, undefined, async () => ({ image: entry.image, base64: entry.dataUrl.slice("data:image/webp;base64,".length) }));
+    }
+    const action = liveActions.current.getImage;
+    if (!action) throw new Error("Sign in to view this image.");
+    return imageCache.current.get(id, reportId, async () => {
+      const value = await action(id, reportId);
+      synchronizeMedia();
+      return value;
+    });
+  }, [synchronizeMedia]);
+  const discardImage = useCallback((id: string) => {
+    if (modeRef.current !== "demo") return;
+    const current = stateRef.current, entry = current.previewImages?.[id];
+    if (!entry || entry.ownerId !== current.currentUserId || entry.linkedTo) return;
+    const entries = { ...current.previewImages }; delete entries[id];
+    const next = { ...current, previewImages: entries };
+    stateRef.current = next; setState(next);
+    imageCache.current.clear(); setMediaRevision(value => value + 1);
+  }, []);
   const registeredPushToken = useRef<{
     token: string;
     platform: "ios" | "android" | "web";
@@ -266,6 +373,7 @@ export function LoopProvider({
     (collection: "posts" | "events") => catalogLoaders.current[collection]?.(),
     [],
   );
+  useEffect(() => { synchronizeMedia(); }, [state, role, mode, synchronizeMedia]);
   useEffect(() => {
     if (mode === "demo") setDirectory({ results: state.profiles.filter(profile => matchesDirectory(profile, directoryQuery)), loading: false, hasMore: false });
   }, [mode, state.profiles, directoryQuery]);
@@ -296,6 +404,7 @@ export function LoopProvider({
       return () => {
         active = false;
         previewReady.current = false;
+        imageCache.current.clear();
       };
     }
     let c: ReturnType<typeof setup>;
@@ -312,6 +421,7 @@ export function LoopProvider({
     let generation = 0;
     const off = onAuthStateChanged(c.auth, async (user) => {
       const turn = ++generation;
+      imageCache.current.clear(); setMediaRevision(value => value + 1);
       dispose.forEach((fn) => fn());
       dispose = [];
       catalogLoaders.current = {};
@@ -364,6 +474,18 @@ export function LoopProvider({
             setError(readableError(e));
             if (key) loaded(key);
           }
+        };
+        liveActions.current.uploadImage = async payload => {
+          if (!current()) throw new MediaScopeChanged();
+          const value = (await httpsCallable(c.functions, "uploadMedia", { timeout: 90000 })(payload)).data;
+          if (!current()) throw new MediaScopeChanged();
+          return value;
+        };
+        liveActions.current.getImage = async (mediaId, reportId) => {
+          if (!current()) throw new MediaScopeChanged();
+          const value = (await httpsCallable(c.functions, "getMedia")({ mediaId, ...(reportId ? { reportId } : {}) })).data;
+          if (!current()) throw new MediaScopeChanged();
+          return value;
         };
         const listen = (key: keyof LoopState, q: Query) => {
           dispose.push(
@@ -675,6 +797,7 @@ export function LoopProvider({
                   data.role === "moderator" || data.role === "admin"
                     ? data.role
                     : "member";
+                if (nextRole !== roleRef.current || JSON.stringify(blockedIds) !== JSON.stringify(preferences.blockedIds)) { imageCache.current.clear(); setMediaRevision(value => value + 1); }
                 setRole(nextRole);
                 watchReports(nextRole);
                 blockedIds = preferences.blockedIds;
@@ -861,6 +984,7 @@ export function LoopProvider({
           memberSquads = snap.docs.map(record => ({ ...record.data(), id: record.id }) as Squad).filter(squadMember);
           memberSquads.forEach(squad => { previousIds.delete(squad.id); revokedSquadIds.delete(squad.id); });
           previousIds.forEach(id => revokedSquadIds.add(id));
+          if (previousIds.size) { imageCache.current.clear(); setMediaRevision(value => value + 1); }
           const selected = squadRef.current;
           if (activeSquad) {
             const updated = memberSquads.find(squad => squad.id === activeSquad?.id);
@@ -1218,6 +1342,7 @@ export function LoopProvider({
               // A membership query removal immediately hides cached private history. Re-read
               // an active room to distinguish revocation from a bounded catalog window shift.
               previousIds.forEach(id => revokedChannelIds.add(id));
+              if (previousIds.size) { imageCache.current.clear(); setMediaRevision(value => value + 1); }
               if (activeChannel && previousIds.has(activeChannel.id)) {
                 const selected = conversationRef.current;
                 liveActions.current.watchConversation?.(selected.channelId, selected.topic);
@@ -1241,6 +1366,7 @@ export function LoopProvider({
     return () => {
       active = false;
       previewReady.current = false;
+      imageCache.current.clear();
       generation++;
       off();
       dispose.forEach((fn) => fn());
@@ -1423,6 +1549,10 @@ export function LoopProvider({
         watchSquad,
         loadOlderSquadMessages,
         squadHistory,
+        uploadImage,
+        getImage,
+        discardImage,
+        mediaRevision,
         clearError: () => setError(null),
         resetDemo: () => {
           setState(initialState());
