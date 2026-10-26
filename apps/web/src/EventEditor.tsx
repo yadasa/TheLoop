@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { useLoop } from "@theloop/client";
 import {
@@ -50,8 +50,10 @@ export default function EventEditor({
   const tags = initial?.tags.join(", ") ?? "";
   const problem = (messages: string[]) => {
     setErrors(messages);
-    requestAnimationFrame(() => feedback.current?.focus());
   };
+  useEffect(() => {
+    if (errors.length || failed) feedback.current?.focus();
+  }, [errors, failed]);
   return (
     <ModalShell
       title={initial ? "A little update to the plan." : "Make the next plan."}
@@ -129,7 +131,6 @@ export default function EventEditor({
           try {
             if (!(await submit(result.event))) {
               setFailed(true);
-              requestAnimationFrame(() => feedback.current?.focus());
             }
           } catch {
             setFailed(true);
@@ -236,7 +237,7 @@ export default function EventEditor({
             <summary>Clock change? Choose an explicit UTC offset</summary>
             <p>
               Usually you can leave these blank. For a time that occurs twice,
-              use its exact offset, such as −05:00 or −06:00. An explicit offset
+              use its exact offset, such as -05:00 or -06:00. An explicit offset
               determines the instant; the timezone controls how the plan is
               displayed.
             </p>
