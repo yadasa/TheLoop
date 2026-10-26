@@ -9,7 +9,7 @@ Verified on 2026-10-26 using project-scoped Google administrative APIs. This des
 | Cloud Billing                 | User approved linking an existing account and delegated account choice; an eligible existing Firebase Payment account is linked and billingEnabled was verified true |
 | Firestore API                 | Enabled through the authorized free setup                                                                           |
 | Firestore database            | First `(default)` database created, Standard Native, `us-central1`, `freeTier: true`                                |
-| PITR/backups/TTL              | PITR explicitly disabled; backups and TTL not enabled by this setup                                                 |
+| PITR/backups/TTL              | PITR explicitly disabled and no backups configured; request TTL is declared in canonical indexes, but its live post-deployment field state was not re-read                                                 |
 | Firebase Auth                 | Initialized through the free console flow; Email/Password provider visibly enabled; no users created or emails sent |
 | Cloud Storage                 | Default theloop-community-2026.firebasestorage.app bucket created through the Firebase API in US-CENTRAL1 after billing approval |
 | Cloud Functions / Run / Build | Deployment completed from clean3c4b493 source; all18 Node22/us-central1 functions verified ACTIVE |
