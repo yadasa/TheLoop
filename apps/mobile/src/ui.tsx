@@ -7,7 +7,10 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  ActionSheetIOS,
   AccessibilityInfo,
+  Alert,
+  Linking,
   Animated,
   Platform,
   Pressable,
@@ -21,7 +24,8 @@ import {
   type ViewStyle,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import type { Profile } from "@theloop/core";
+import type { Profile, Subscription } from "@theloop/core";
+import { safeURL } from "@theloop/core";
 
 const MotionContext = createContext(false);
 export const useReducedMotion = () => useContext(MotionContext);
@@ -53,7 +57,14 @@ export const color = {
 };
 export const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: color.paper },
-  content: { padding: 22, paddingBottom: 100, gap: 22 },
+  content: {
+    padding: 22,
+    paddingBottom: 100,
+    gap: 22,
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
+  },
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   between: {
     flexDirection: "row",
@@ -351,6 +362,9 @@ export function Field({
   secureTextEntry,
   keyboardType,
   maxLength = 5000,
+  autoCorrect,
+  autoCapitalize,
+  disabled = false,
 }: {
   label?: string;
   value: string;
@@ -361,12 +375,17 @@ export function Field({
   secureTextEntry?: boolean;
   keyboardType?: "default" | "email-address" | "url" | "numeric";
   maxLength?: number;
+  autoCorrect?: boolean;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  disabled?: boolean;
 }) {
   return (
     <View>
       {label && <Text style={s.label}>{label}</Text>}
       <TextInput
         accessibilityLabel={label || placeholder}
+        accessibilityState={{ disabled }}
+        editable={!disabled}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -374,17 +393,19 @@ export function Field({
         multiline={multiline}
         secureTextEntry={secureTextEntry}
         autoCapitalize={
-          secureTextEntry ||
+          autoCapitalize ??
+          (secureTextEntry ||
           keyboardType === "email-address" ||
           keyboardType === "url"
             ? "none"
-            : "sentences"
+            : "sentences")
         }
         keyboardType={keyboardType}
         autoCorrect={
-          !secureTextEntry &&
-          keyboardType !== "email-address" &&
-          keyboardType !== "url"
+          autoCorrect ??
+          (!secureTextEntry &&
+            keyboardType !== "email-address" &&
+            keyboardType !== "url")
         }
         maxLength={maxLength}
         style={[
@@ -522,4 +543,76 @@ export function TextLink({
       </Text>
     </Pressable>
   );
+}
+
+export function LinkifiedText({
+  text,
+  style,
+}: {
+  text: string;
+  style?: StyleProp<TextStyle>;
+}) {
+  const parts = text.split(/(https?:\/\/[^\s<>()]+)/g);
+  return (
+    <Text selectable style={[s.body, style]}>
+      {parts.map((part, index) => {
+        if (!/^https?:\/\//i.test(part)) return part;
+        const url = part.replace(/[.,;!?]+$/, "");
+        const trailing = part.slice(url.length);
+        if (!safeURL(url)) return part;
+        return (
+          <React.Fragment key={index}>
+            <Text
+              accessibilityRole="link"
+              accessibilityLabel={`Open ${url}`}
+              style={{ textDecorationLine: "underline" }}
+              onPress={(event) => {
+                event.stopPropagation();
+                void Linking.openURL(url).catch(() =>
+                  Alert.alert(
+                    "Link unavailable",
+                    "Try again or copy this address.",
+                  ),
+                );
+              }}
+            >
+              {url}
+            </Text>
+            {trailing}
+          </React.Fragment>
+        );
+      })}
+    </Text>
+  );
+}
+
+export function pickSubscription(
+  title: string,
+  current: Subscription,
+  onPick: (value: Subscription) => void,
+) {
+  const values: Subscription[] = ["following", "muted", "hidden"];
+  const labels = values.map(
+    (v) =>
+      `${v === "following" ? "Following" : v === "muted" ? "Muted" : "Hidden"}${current === v ? " ✓" : ""}`,
+  );
+  const message =
+    "Follow what matters. Mute the rest. Hidden spaces leave your view until you discover them again.";
+  if (Platform.OS === "ios") {
+    ActionSheetIOS.showActionSheetWithOptions(
+      { title, message, options: [...labels, "Cancel"], cancelButtonIndex: 3 },
+      (index) => {
+        if (index >= 0 && index < 3) onPick(values[index]);
+      },
+    );
+  } else
+    Alert.alert(
+      title,
+      message,
+      values.map((value, index) => ({
+        text: labels[index],
+        onPress: () => onPick(value),
+      })),
+      { cancelable: true },
+    );
 }

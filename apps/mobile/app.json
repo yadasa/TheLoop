@@ -7,7 +7,6 @@
     "orientation": "portrait",
     "scheme": "theloop",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "co.theloop.community",
@@ -36,9 +35,25 @@
     },
     "plugins": [
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#171816",
+          "defaultChannel": "default"
+        }
+      ],
+      [
         "expo-calendar",
-        { "calendarPermission": "Save events you choose to your calendar." }
+        {
+          "calendarPermission": "Save events you choose to your calendar."
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "32f68c1f-9301-43d0-886b-93bbc35ea208"
+      }
+    },
+    "owner": "keithazodeh"
   }
 }

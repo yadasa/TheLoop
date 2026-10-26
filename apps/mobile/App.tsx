@@ -35,6 +35,7 @@ import { Search } from "./src/Search";
 import { Safety } from "./src/Safety";
 import { Spaces } from "./src/Spaces";
 import { ImportEvents } from "./src/ImportEvents";
+import { NativePushBridge } from "./src/devicePush";
 import {
   Auth,
   EditProfile,
@@ -76,6 +77,18 @@ const firebaseConfig = process.env.EXPO_PUBLIC_FIREBASE_API_KEY
       appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
     }
   : undefined;
+const emulators = process.env.EXPO_PUBLIC_EMULATOR_HOST
+  ? {
+      host: process.env.EXPO_PUBLIC_EMULATOR_HOST,
+      authPort: Number(process.env.EXPO_PUBLIC_AUTH_EMULATOR_PORT || 9099),
+      firestorePort: Number(
+        process.env.EXPO_PUBLIC_FIRESTORE_EMULATOR_PORT || 8080,
+      ),
+      functionsPort: Number(
+        process.env.EXPO_PUBLIC_FUNCTIONS_EMULATOR_PORT || 5001,
+      ),
+    }
+  : undefined;
 
 export default function App() {
   return (
@@ -84,6 +97,8 @@ export default function App() {
         storage={storage}
         firebaseConfig={firebaseConfig}
         authPersistence={authPersistence}
+        useEmulators={!!emulators}
+        emulators={emulators}
       >
         <StatusBar style="dark" />
         <MotionProvider>
@@ -103,6 +118,7 @@ function LoopApp() {
   const [stack, setStack] = useState<Route[]>([]);
   const [toast, setToast] = useState("");
   const fade = useRef(new Animated.Value(1)).current;
+  const transition = useRef(0);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onboarded = useRef(false);
   const showToast = useCallback((text: string) => {
@@ -118,7 +134,10 @@ function LoopApp() {
   const navigate = useCallback(
     (target: Tab) => {
       setStack([]);
+      const token = ++transition.current;
+      fade.stopAnimation();
       if (reducedMotion) {
+        fade.setValue(1);
         setTab(target);
         return;
       }
@@ -126,7 +145,8 @@ function LoopApp() {
         toValue: 0,
         duration: 80,
         useNativeDriver: true,
-      }).start(() => {
+      }).start(({ finished }) => {
+        if (!finished || token !== transition.current) return;
         setTab(target);
         Animated.timing(fade, {
           toValue: 1,
@@ -291,6 +311,7 @@ function LoopApp() {
   ];
   return (
     <SafeAreaView style={s.page} edges={["top", "left", "right"]}>
+      <NativePushBridge nav={nav} />
       <View
         style={{
           paddingHorizontal: 22,

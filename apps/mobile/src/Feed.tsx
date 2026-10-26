@@ -11,6 +11,7 @@ import {
   Field,
   Horizontal,
   Label,
+  pickSubscription,
   RelativeTime,
   s,
   Section,
@@ -771,20 +772,15 @@ export function Communities({ nav }: { nav: Nav }) {
               <Touch
                 label={`Notification preferences for ${c.name}`}
                 onPress={() =>
-                  Alert.alert(
+                  pickSubscription(
                     c.name,
-                    "Choose how this community appears in your feed.",
-                    (["following", "muted", "hidden"] as const).map(
-                      (value) => ({
-                        text: value,
-                        onPress: () =>
-                          void nav.run({
-                            type: "subscription.set",
-                            targetId: c.id,
-                            value,
-                          }),
+                    state.preferences.subscriptions[c.id] || "following",
+                    (value) =>
+                      void nav.run({
+                        type: "subscription.set",
+                        targetId: c.id,
+                        value,
                       }),
-                    ),
                   )
                 }
                 style={{ padding: 12 }}

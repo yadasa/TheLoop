@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, Share, Switch, Text, View } from "react-native";
+import { Alert, ScrollView, Switch, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
 import { interests, safeURL } from "@theloop/core";
 import {
@@ -17,9 +17,19 @@ import {
   Touch,
 } from "./ui";
 import type { Nav } from "./navigation";
+import { DevicePushSettings, unlinkDevicePush } from "./devicePush";
+import { shareExport } from "./shareExport";
 
 export function You({ nav }: { nav: Nav }) {
-  const { state, mode, signOut, resetDemo, role, emailVerified } = useLoop();
+  const {
+    state,
+    mode,
+    signOut,
+    resetDemo,
+    role,
+    emailVerified,
+    registerPushToken,
+  } = useLoop();
   const me = state.profiles.find((p) => p.id === state.currentUserId);
   if (!me)
     return (
@@ -68,17 +78,24 @@ export function You({ nav }: { nav: Nav }) {
           onPress={() => nav.open({ kind: "profile", id: me.id })}
         />
       </View>
-      <View style={[s.row, { gap: 10 }]}>
+      <View style={[s.wrap, { gap: 10 }]}>
         {[
           [String(count), "connections"],
+          [String(me.followerCount || 0), "followers"],
+          [String(state.preferences.followingIds.length), "following"],
           [String(upcoming), "upcoming plans"],
-          [String(state.preferences.savedPostIds.length), "saved posts"],
         ].map(([value, label]) => (
           <View
             key={label}
             style={[
               s.card,
-              { flex: 1, padding: 14, alignItems: "center", gap: 5 },
+              {
+                flexGrow: 1,
+                minWidth: "45%",
+                padding: 14,
+                alignItems: "center",
+                gap: 5,
+              },
             ]}
           >
             <Text style={{ fontSize: 25, fontWeight: "600", color: color.ink }}>
@@ -157,7 +174,13 @@ export function You({ nav }: { nav: Nav }) {
         }
         onPress={() => nav.open({ kind: "safety" })}
       />
-      {role!=='member'&&<Button secondary title="Manage conferences and rooms ↗" onPress={()=>nav.open({kind:'spaces'})}/>}
+      {role !== "member" && (
+        <Button
+          secondary
+          title="Manage conferences and rooms ↗"
+          onPress={() => nav.open({ kind: "spaces" })}
+        />
+      )}
       {mode === "demo" ? (
         <View style={[s.card, { backgroundColor: color.soft }]}>
           <Text style={s.h3}>You're exploring the sample loop.</Text>
@@ -192,7 +215,8 @@ export function You({ nav }: { nav: Nav }) {
           secondary
           title="Sign out"
           onPress={() =>
-            void signOut()
+            void unlinkDevicePush(state.currentUserId, registerPushToken)
+              .then(() => signOut())
               .then(() => nav.toast("Signed out"))
               .catch((e) => nav.toast(e.message))
           }
@@ -488,6 +512,7 @@ export function Settings({ nav }: { nav: Nav }) {
         Your boundaries make this a better place to be.
       </Text>
       <Section title="Your attention" />
+      <DevicePushSettings nav={nav} />
       <View style={s.card}>
         <Toggle
           title="Hide unfollowed rooms"
@@ -1013,12 +1038,7 @@ export function ExportData({ nav }: { nav: Nav }) {
         onPress={() => {
           setBusy(true);
           void exportAccount()
-            .then((exported) =>
-              Share.share({
-                title: "TheLoop personal data export",
-                message: JSON.stringify(exported, null, 2),
-              }),
-            )
+            .then((exported) => shareExport(exported))
             .catch((e) =>
               nav.toast(e.message || "Sharing is unavailable on this device."),
             )
@@ -1034,7 +1054,8 @@ export function ExportData({ nav }: { nav: Nav }) {
 }
 
 export function Auth({ nav }: { nav: Nav }) {
-  const { mode, signIn, signUp, resetPassword } = useLoop();
+  const { state, mode, signIn, signUp, resetPassword, registerPushToken } =
+    useLoop();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -1073,7 +1094,7 @@ export function Auth({ nav }: { nav: Nav }) {
         keyboardType="email-address"
       />
       <Field
-        label="Password"
+        label={creating ? "Password · at least 8 characters" : "Password"}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
@@ -1089,16 +1110,18 @@ export function Auth({ nav }: { nav: Nav }) {
         disabled={
           busy ||
           !email.trim() ||
-          password.length < 6 ||
+          password.length < (creating ? 8 : 6) ||
           (creating && !name.trim())
         }
         onPress={() => {
           setBusy(true);
-          void (
-            creating
+          void (async () => {
+            if (mode === "live" && state.currentUserId)
+              await unlinkDevicePush(state.currentUserId, registerPushToken);
+            return creating
               ? signUp(email.trim(), password, name)
-              : signIn(email.trim(), password)
-          )
+              : signIn(email.trim(), password);
+          })()
             .then(() => nav.close())
             .catch((e) => nav.toast(e.message))
             .finally(() => setBusy(false));

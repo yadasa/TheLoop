@@ -6,6 +6,7 @@ import {
   ScrollView,
   Text,
   View,
+  type ScrollViewInstance,
 } from "react-native";
 import { useLoop } from "@theloop/client";
 import type { Message, Subscription } from "@theloop/core";
@@ -19,10 +20,13 @@ import {
   Field,
   Horizontal,
   Label,
+  LinkifiedText,
+  pickSubscription,
   RelativeTime,
   s,
   Section,
   Touch,
+  useReducedMotion,
 } from "./ui";
 import type { Nav } from "./navigation";
 
@@ -95,20 +99,15 @@ export function Chats({ nav }: { nav: Nav }) {
           <Touch
             label="Conference notification preferences"
             onPress={() =>
-              Alert.alert(
+              pickSubscription(
                 "Conference updates",
-                "Room and topic choices can override this conference default.",
-                (["following", "muted", "hidden"] as Subscription[]).map(
-                  (value) => ({
-                    text: value,
-                    onPress: () =>
-                      void nav.run({
-                        type: "subscription.set",
-                        targetId: conference,
-                        value,
-                      }),
+                state.preferences.subscriptions[conference] || "muted",
+                (value) =>
+                  void nav.run({
+                    type: "subscription.set",
+                    targetId: conference,
+                    value,
                   }),
-                ),
               )
             }
             style={{ padding: 8 }}
@@ -269,7 +268,12 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
   const [reply, setReply] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
-  const scroll = useRef<ScrollView>(null);
+  const [reacting, setReacting] = useState<string | null>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
+  const stickToBottom = useRef(true);
+  const firstLayout = useRef(true);
+  const [showJump, setShowJump] = useState(false);
+  const reducedMotion = useReducedMotion();
   useEffect(() => {
     void nav.run({ type: "channel.read", channelId: id });
   }, [id]);
@@ -307,25 +311,24 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
     state.preferences.subscriptions[channel.conferenceId] ||
     "muted";
   const subscription = (targetId: string, label: string) =>
-    Alert.alert(
+    pickSubscription(
       label,
-      "Following brings it into your loop. Muted stays quiet. Hidden leaves your view until you discover it again.",
-      (["following", "muted", "hidden"] as Subscription[]).map((value) => ({
-        text: value[0].toUpperCase() + value.slice(1),
-        onPress: () =>
-          void nav
-            .run(
-              { type: "subscription.set", targetId, value },
-              `${label}: ${value}`,
-            )
-            .then((ok) => {
-              if (ok && value === "hidden" && targetId === `${id}:${topic}`)
-                setTopic("all");
-            }),
-      })),
+      state.preferences.subscriptions[targetId] || pref,
+      (value) =>
+        void nav
+          .run(
+            { type: "subscription.set", targetId, value },
+            `${label}: ${value}`,
+          )
+          .then((ok) => {
+            if (ok && value === "hidden" && targetId === `${id}:${topic}`)
+              setTopic("all");
+          }),
     );
   const send = () => {
     if (!body.trim()) return;
+    stickToBottom.current = true;
+    setShowJump(false);
     const sendTopic = topic === "all" ? topicNames[0] || "General" : topic;
     setBusy(true);
     void nav
@@ -444,10 +447,24 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
             </View>
             <Button
               small
-              title={busy?'…':'Create topic'}
-              disabled={busy||!newTopic.trim()}
+              title={busy ? "…" : "Create topic"}
+              disabled={busy || !newTopic.trim()}
               onPress={() => {
-                const name=newTopic.trim();setBusy(true);void nav.run({type:'topic.create',channelId:id,name},'Your topic is ready').then(ok=>{if(ok){setTopic(name);setAddingTopic(false);setNewTopic('');}}).finally(()=>setBusy(false));
+                const name = newTopic.trim();
+                setBusy(true);
+                void nav
+                  .run(
+                    { type: "topic.create", channelId: id, name },
+                    "Your topic is ready",
+                  )
+                  .then((ok) => {
+                    if (ok) {
+                      setTopic(name);
+                      setAddingTopic(false);
+                      setNewTopic("");
+                    }
+                  })
+                  .finally(() => setBusy(false));
               }}
             />
           </View>
@@ -458,9 +475,23 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ padding: 20, gap: 24, paddingBottom: 35 }}
-        onContentSizeChange={() =>
-          scroll.current?.scrollToEnd({ animated: true })
-        }
+        scrollEventThrottle={64}
+        onScroll={(event) => {
+          const { layoutMeasurement, contentOffset, contentSize } =
+            event.nativeEvent;
+          stickToBottom.current =
+            contentOffset.y + layoutMeasurement.height >=
+            contentSize.height - 90;
+          if (stickToBottom.current) setShowJump(false);
+        }}
+        onContentSizeChange={() => {
+          if (stickToBottom.current)
+            scroll.current?.scrollToEnd({
+              animated: !firstLayout.current && !reducedMotion,
+            });
+          else setShowJump(true);
+          firstLayout.current = false;
+        }}
       >
         <View style={{ alignItems: "center", paddingVertical: 14, gap: 7 }}>
           <Text style={{ fontSize: 33 }}>◎</Text>
@@ -504,52 +535,59 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
                   <Touch
                     label="Message actions"
                     onPress={() =>
-                      Alert.alert("Message", m.body, [
-                        {
-                          text: "Reply",
-                          onPress: () => {
-                            setReply(m);
-                            setTopic(m.topic);
-                            setEditing(null);
+                      Alert.alert(
+                        "Message",
+                        m.body.length > 160
+                          ? `${m.body.slice(0, 160)}…`
+                          : m.body,
+                        [
+                          {
+                            text: "Reply",
+                            onPress: () => {
+                              setReply(m);
+                              setTopic(m.topic);
+                              setEditing(null);
+                            },
                           },
-                        },
-                        ...(mine
-                          ? [
-                              {
-                                text: "Edit",
-                                onPress: () => {
-                                  setEditing(m);
-                                  setBody(m.body);
-                                  setReply(null);
+                          ...(mine
+                            ? [
+                                {
+                                  text: "Edit",
+                                  onPress: () => {
+                                    setEditing(m);
+                                    setBody(m.body);
+                                    setReply(null);
+                                  },
                                 },
-                              },
-                              {
-                                text: "Delete",
-                                style: "destructive" as const,
-                                onPress: () =>
-                                  void nav.run({
-                                    type: "message.delete",
-                                    messageId: m.id,
-                                  }),
-                              },
-                            ]
-                          : [
-                              {
-                                text: "Report",
-                                onPress: () =>
-                                  void nav.run(
-                                    {
-                                      type: "report.create",
-                                      targetId: m.id,
-                                      targetType: "message",
-                                      reason: "Community guideline concern",
-                                    },
-                                    "Report sent",
-                                  ),
-                              },
-                            ]),
-                        { text: "Cancel", style: "cancel" },
-                      ])
+                                {
+                                  text: "Delete",
+                                  style: "destructive" as const,
+                                  onPress: () =>
+                                    void nav.run({
+                                      type: "message.delete",
+                                      messageId: m.id,
+                                    }),
+                                },
+                              ]
+                            : [
+                                {
+                                  text: "Report",
+                                  onPress: () =>
+                                    void nav.run(
+                                      {
+                                        type: "report.create",
+                                        targetId: m.id,
+                                        targetType: "message",
+                                        reason: "Community guideline concern",
+                                      },
+                                      "Report sent",
+                                    ),
+                                },
+                              ]),
+                          { text: "Cancel", style: "cancel" },
+                        ],
+                        { cancelable: true },
+                      )
                     }
                     style={{ padding: 5 }}
                   >
@@ -574,9 +612,7 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
                     </Text>
                   </View>
                 )}
-                <Text selectable style={s.body}>
-                  {m.body}
-                </Text>
+                <LinkifiedText text={m.body} />
                 <View style={[s.row, { gap: 6, flexWrap: "wrap" }]}>
                   {Object.entries(m.reactions)
                     .filter(([, ids]) => ids.length > 0)
@@ -609,26 +645,41 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
                     ))}
                   <Touch
                     label="Add reaction"
-                    onPress={() =>
-                      Alert.alert(
-                        "Send some love",
-                        "Choose a reaction",
-                        ["🖤", "🔥", "🙌", "💯", "😂"].map((emoji) => ({
-                          text: emoji,
-                          onPress: () =>
-                            void nav.run({
-                              type: "message.react",
-                              messageId: m.id,
-                              emoji,
-                            }),
-                        })),
-                      )
-                    }
+                    onPress={() => setReacting(reacting === m.id ? null : m.id)}
                     style={{ paddingHorizontal: 5, paddingVertical: 4 }}
                   >
                     <Text style={s.small}>＋</Text>
                   </Touch>
                 </View>
+                {reacting === m.id && (
+                  <View style={[s.wrap, { gap: 6 }]}>
+                    {["🖤", "🔥", "🙌", "💯", "😂"].map((emoji) => (
+                      <Touch
+                        key={emoji}
+                        label={`React ${emoji}`}
+                        onPress={() => {
+                          void nav.run({
+                            type: "message.react",
+                            messageId: m.id,
+                            emoji,
+                          });
+                          setReacting(null);
+                        }}
+                        style={{
+                          padding: 10,
+                          borderRadius: 12,
+                          backgroundColor: color.soft,
+                          minWidth: 39,
+                          minHeight: 43,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Text style={{ fontSize: 19 }}>{emoji}</Text>
+                      </Touch>
+                    ))}
+                  </View>
+                )}
               </View>
             </View>
           );
@@ -640,6 +691,19 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
           />
         )}
       </ScrollView>
+      {showJump && (
+        <View style={{ padding: 7, alignItems: "center" }}>
+          <Button
+            small
+            title="Jump to latest ↓"
+            onPress={() => {
+              stickToBottom.current = true;
+              setShowJump(false);
+              scroll.current?.scrollToEnd({ animated: !reducedMotion });
+            }}
+          />
+        </View>
+      )}
       <View
         style={{
           padding: 14,

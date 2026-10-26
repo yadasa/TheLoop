@@ -117,7 +117,12 @@ export function Events({ nav }: { nav: Nav }) {
         onChangeText={setSearch}
         placeholder="Find an event, a city, a vibe…"
       />
-      <Button small secondary title="Import events from a spreadsheet ↗" onPress={()=>nav.open({kind:'import-events'})}/>
+      <Button
+        small
+        secondary
+        title="Import events from a spreadsheet ↗"
+        onPress={() => nav.open({ kind: "import-events" })}
+      />
       <View style={s.between}>
         <Horizontal>
           {["all", "conference", "meetup", "workshop", "social"].map((v) => (
@@ -386,6 +391,14 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
   const waiting = event.waitlistIds.includes(state.currentUserId);
   const full = event.capacity > 0 && event.attendeeIds.length >= event.capacity;
   const expired = new Date(event.endAt) < new Date();
+  const conference = state.conferences.find(
+    (c) => c.id === event.conferenceId,
+  ) as { organizerIds?: string[] } | undefined;
+  const canCheckin =
+    role === "admin" ||
+    role === "moderator" ||
+    (event.hostId === state.currentUserId &&
+      !!conference?.organizerIds?.includes(state.currentUserId));
   const addCalendar = async () => {
     try {
       if (Platform.OS === "web") {
@@ -573,6 +586,12 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
         title="The people make it"
         subtitle={`${event.attendeeIds.length} going${event.waitlistIds.length ? ` · ${event.waitlistIds.length} on the waitlist` : ""}`}
       />
+      {event.hostId === state.currentUserId && !canCheckin && (
+        <Text style={s.small}>
+          An approved conference organizer confirms attendance for community
+          trust.
+        </Text>
+      )}
       <View style={s.wrap}>
         {event.attendeeIds.map((uid) => {
           const p = state.profiles.find((q) => q.id === uid);
@@ -596,7 +615,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
           );
         })}
       </View>
-      {(event.hostId === state.currentUserId || role === "admin") &&
+      {canCheckin &&
         Date.now() >= new Date(event.startAt).getTime() - 6 * 3600000 &&
         Date.now() <= new Date(event.endAt).getTime() + 24 * 3600000 && (
           <View style={s.card}>
@@ -652,8 +671,8 @@ export function CreateEvent({ nav }: { nav: Nav }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
-  const [url,setUrl]=useState('');
-  const [tags,setTags]=useState('');
+  const [url, setUrl] = useState("");
+  const [tags, setTags] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [capacity, setCapacity] = useState("30");
@@ -704,8 +723,19 @@ export function CreateEvent({ nav }: { nav: Nav }) {
           />
         ))}
       </Horizontal>
-      <Field label="Event website · optional" value={url} onChangeText={setUrl} keyboardType="url" placeholder="https://…"/>
-      <Field label="Tags · comma separated" value={tags} onChangeText={setTags} placeholder="Founders, Coffee, Networking"/>
+      <Field
+        label="Event website · optional"
+        value={url}
+        onChangeText={setUrl}
+        keyboardType="url"
+        placeholder="https://…"
+      />
+      <Field
+        label="Tags · comma separated"
+        value={tags}
+        onChangeText={setTags}
+        placeholder="Founders, Coffee, Networking"
+      />
       <Field
         label="Starts · YYYY-MM-DD HH:MM"
         value={start}
@@ -759,7 +789,10 @@ export function CreateEvent({ nav }: { nav: Nav }) {
             return;
           }
           const cap = Number(capacity);
-          if(url.trim()&&!safeURL(url.trim())){nav.toast('Use a valid http or https event link.');return;}
+          if (url.trim() && !safeURL(url.trim())) {
+            nav.toast("Use a valid http or https event link.");
+            return;
+          }
           if (!Number.isInteger(cap) || cap < 0) {
             nav.toast("Capacity must be a whole number, 0 or higher.");
             return;
@@ -779,8 +812,11 @@ export function CreateEvent({ nav }: { nav: Nav }) {
                   startAt: startDate.toISOString(),
                   endAt: endDate.toISOString(),
                   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                  tags: tags.split(',').map(v=>v.trim()).filter(Boolean),
-                  ...(url.trim()?{url:url.trim()}:{}),
+                  tags: tags
+                    .split(",")
+                    .map((v) => v.trim())
+                    .filter(Boolean),
+                  ...(url.trim() ? { url: url.trim() } : {}),
                 },
               },
               "Your event is ready",

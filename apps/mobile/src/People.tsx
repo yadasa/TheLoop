@@ -8,6 +8,7 @@ import {
   Share,
   Text,
   View,
+  type ScrollViewInstance,
 } from "react-native";
 import { useLoop } from "@theloop/client";
 import {
@@ -26,10 +27,12 @@ import {
   Field,
   Horizontal,
   Label,
+  LinkifiedText,
   RelativeTime,
   s,
   Section,
   Touch,
+  useReducedMotion,
 } from "./ui";
 import type { Nav } from "./navigation";
 
@@ -46,11 +49,18 @@ export function People({ nav }: { nav: Nav }) {
   let people =
     filter === "Connections"
       ? state.profiles.filter((p) => connected(state, p.id))
-      : filter === "Following"
+      : filter === "Followers"
         ? state.profiles.filter((p) =>
-            state.preferences.followingIds.includes(p.id),
+            state.follows.some(
+              (f) =>
+                f.followingId === state.currentUserId && f.followerId === p.id,
+            ),
           )
-        : suggestedConnections(state);
+        : filter === "Following"
+          ? state.profiles.filter((p) =>
+              state.preferences.followingIds.includes(p.id),
+            )
+          : suggestedConnections(state);
   people = people.filter(
     (p) =>
       p.id !== state.currentUserId &&
@@ -121,7 +131,7 @@ export function People({ nav }: { nav: Nav }) {
         </>
       )}
       <Horizontal>
-        {["For you", "Connections", "Following"].map((f) => (
+        {["For you", "Connections", "Following", "Followers"].map((f) => (
           <Chip
             key={f}
             title={f}
@@ -326,7 +336,10 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
           {p.headline}
         </Text>
         <Text style={[s.small, { color: "#999E8E" }]}>
-          {p.location} · @{p.handle}
+          {[p.location, `@${p.handle}`].filter(Boolean).join(" · ")}
+        </Text>
+        <Text style={[s.small, { color: "#C5C9BC" }]}>
+          {p.followerCount || 0} followers · {p.followingCount || 0} following
         </Text>
         {p.foundingYear && <Label>FOUNDING CIRCLE · {p.foundingYear}</Label>}
       </View>
@@ -538,7 +551,11 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
   const { state } = useLoop();
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
+  const stickToBottom = useRef(true);
+  const firstLayout = useRef(true);
+  const [showJump, setShowJump] = useState(false);
+  const reducedMotion = useReducedMotion();
   const p = state.profiles.find((p) => p.id === id);
   const blocked = state.preferences.blockedIds.includes(id);
   const messages = state.directMessages
@@ -577,9 +594,23 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
       </Touch>
       <ScrollView
         ref={scroll}
-        onContentSizeChange={() =>
-          scroll.current?.scrollToEnd({ animated: true })
-        }
+        scrollEventThrottle={64}
+        onScroll={(event) => {
+          const { layoutMeasurement, contentOffset, contentSize } =
+            event.nativeEvent;
+          stickToBottom.current =
+            contentOffset.y + layoutMeasurement.height >=
+            contentSize.height - 90;
+          if (stickToBottom.current) setShowJump(false);
+        }}
+        onContentSizeChange={() => {
+          if (stickToBottom.current)
+            scroll.current?.scrollToEnd({
+              animated: !firstLayout.current && !reducedMotion,
+            });
+          else setShowJump(true);
+          firstLayout.current = false;
+        }}
         contentContainerStyle={{ padding: 20, gap: 15, paddingBottom: 30 }}
       >
         {messages.length === 0 && (
@@ -610,12 +641,10 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                   borderColor: color.line,
                 }}
               >
-                <Text
-                  selectable
-                  style={[s.body, { color: mine ? "#fff" : color.ink }]}
-                >
-                  {m.body}
-                </Text>
+                <LinkifiedText
+                  text={m.body}
+                  style={{ color: mine ? "#fff" : color.ink }}
+                />
               </View>
               <View style={{ alignSelf: mine ? "flex-end" : "flex-start" }}>
                 <RelativeTime date={m.createdAt} />
@@ -624,6 +653,19 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
           );
         })}
       </ScrollView>
+      {showJump && (
+        <View style={{ padding: 7, alignItems: "center" }}>
+          <Button
+            small
+            title="Jump to latest ↓"
+            onPress={() => {
+              stickToBottom.current = true;
+              setShowJump(false);
+              scroll.current?.scrollToEnd({ animated: !reducedMotion });
+            }}
+          />
+        </View>
+      )}
       <View
         style={{
           padding: 15,
@@ -655,6 +697,8 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                 title={busy ? "…" : "Send ↗"}
                 disabled={busy || !body.trim()}
                 onPress={() => {
+                  stickToBottom.current = true;
+                  setShowJump(false);
                   setBusy(true);
                   void nav
                     .run({ type: "dm.send", userId: id, body })
