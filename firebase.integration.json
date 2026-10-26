@@ -1,0 +1,18 @@
+{
+  "functions": [{ "source": "functions", "codebase": "theloop-integration", "runtime": "nodejs22" }],
+  "firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" },
+  "storage": { "rules": "storage.rules" },
+  "emulators": {
+    "auth": { "host": "127.0.0.1", "port": 9098 },
+    "functions": { "host": "127.0.0.1", "port": 5019 },
+    "firestore": { "host": "127.0.0.1", "port": 53991 },
+    "storage": { "host": "127.0.0.1", "port": 9198 },
+    "hub": { "host": "127.0.0.1", "port": 4411 },
+    "logging": { "host": "127.0.0.1", "port": 4511 },
+    "eventarc": { "host": "127.0.0.1", "port": 9298 },
+    "pubsub": { "host": "127.0.0.1", "port": 8598 },
+    "tasks": { "host": "127.0.0.1", "port": 9498 },
+    "ui": { "enabled": false },
+    "singleProjectMode": false
+  }
+}
