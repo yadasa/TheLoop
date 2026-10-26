@@ -29,6 +29,7 @@ export type Command =
   | { type: 'post.comment'; postId: string; body: string }
   | { type: 'poll.vote'; postId: string; optionId: string }
   | { type: 'event.rsvp'; eventId: string }
+  | { type: 'event.checkin'; eventId: string; userId: string }
   | { type: 'event.create'; event: Omit<LoopEvent, 'id' | 'hostId' | 'attendeeIds' | 'waitlistIds'> }
   | { type: 'connection.request'; userId: string }
   | { type: 'connection.respond'; connectionId: string; accept: boolean }
@@ -39,5 +40,6 @@ export type Command =
   | { type: 'notification.read'; notificationId?: string }
   | { type: 'preferences.update'; preferences: Partial<Preferences> }
   | { type: 'onboarding.complete'; interests: string[]; channelIds: string[] }
-  | { type: 'report.create'; targetId: string; targetType: Report['targetType']; reason: string };
+  | { type: 'report.create'; targetId: string; targetType: Report['targetType']; reason: string }
+  | { type: 'report.review'; reportId: string; outcome: 'dismiss' | 'remove'; note?: string };
 export type CommandContext = { now: string; id: string };
