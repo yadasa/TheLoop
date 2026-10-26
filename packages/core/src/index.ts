@@ -7,3 +7,4 @@ export * from './guide';
 export * from './previewImages';
 export * from './links';
 export * from './eventForm';
+export * from './directConversations';
