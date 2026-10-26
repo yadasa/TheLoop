@@ -8,7 +8,6 @@ import {
   id,
   list,
   pairId,
-  rsvp,
   text,
   toggle,
   validatePreferences,
@@ -20,6 +19,14 @@ import { directoryFields } from "./directory.js";
 import { linkImage } from "./media";
 import { authorSnapshot, participationIdentity } from "./identity";
 import { canSendDirectMessage } from "./directMessages";
+import { absoluteEventInstant } from "./eventDates";
+import {
+  assertEventCheckinWindow,
+  cancelEvent,
+  editEvent,
+  eventRsvpTransition,
+} from "./eventLifecycle";
+import { eventChangeJob } from "./eventChangeJobs";
 import {
   catalogDirectMessage,
   readDirectConversation,
@@ -255,7 +262,12 @@ export async function execute(
   ): Promise<void> {
     if (userId === actor.uid) return;
     const recipient = await store.get(`users/${userId}`);
-    if (!recipient || recipient.preferences?.blockedIds?.includes(actor.uid))
+    if (
+      !recipient ||
+      recipient.disabled ||
+      recipient.deletionPending ||
+      recipient.preferences?.blockedIds?.includes(actor.uid)
+    )
       return;
     if (
       suffix === "dm" &&
@@ -274,6 +286,9 @@ export async function execute(
       read: false,
       unreadUserId: userId,
       ...(suffix === "dm" ? { dmSenderId: actor.uid } : {}),
+      ...(kind === "event" && suffix === "promoted"
+        ? { eventNoticeType: "promoted" }
+        : {}),
     });
   }
   function savePreferences(): void {
@@ -1053,15 +1068,29 @@ export async function execute(
       break;
     }
     case "event.create": {
+      commandFields(command, ["type", "event"]);
       const event = command.event;
       assert(
         event && typeof event === "object",
         "invalid-argument",
         "Provide event details.",
       );
+      commandFields(event, [
+        "conferenceId",
+        "title",
+        "description",
+        "startAt",
+        "endAt",
+        "timezone",
+        "location",
+        "kind",
+        "capacity",
+        "tags",
+        "url",
+      ]);
       const conference = await requireDoc("conferences", event.conferenceId);
-      const startAt = text(event.startAt, "Start time", 40);
-      const endAt = text(event.endAt, "End time", 40);
+      const startAt = absoluteEventInstant(event.startAt, "Start time");
+      const endAt = absoluteEventInstant(event.endAt, "End time");
       assert(
         Number.isFinite(Date.parse(startAt)) &&
           Number.isFinite(Date.parse(endAt)) &&
@@ -1096,7 +1125,7 @@ export async function execute(
         id: entityId,
         conferenceId: conference.id,
         title: text(event.title, "Title", 160),
-        description: text(event.description, "Description", 5000),
+        description: text(event.description, "Description", 5000, 0),
         startAt: new Date(startAt).toISOString(),
         endAt: new Date(endAt).toISOString(),
         timezone,
@@ -1108,31 +1137,66 @@ export async function execute(
         waitlistIds: [],
         tags: event.tags ? list(event.tags, "Tags", 6, 30) : [],
         createdAt: now,
+        updatedAt: now,
+        status: "scheduled",
+        sequence: 0,
       };
       if (event.url) safe.url = httpsUrl(event.url);
       store.set(`events/${entityId}`, safe);
       break;
     }
-    case "event.rsvp": {
+    case "event.edit":
+    case "event.cancel": {
+      commandFields(
+        command,
+        commandType === "event.edit"
+          ? ["type", "eventId", "expectedSequence", "event"]
+          : ["type", "eventId", "expectedSequence", "reason"],
+      );
       const event = await requireDoc("events", command.eventId);
-      assert(
-        Date.parse(event.endAt) > Date.parse(now),
-        "failed-precondition",
-        "This event has finished.",
-      );
-      assert(
-        (event.attendeeIds?.length || 0) < 1000 ||
-          event.attendeeIds.includes(actor.uid),
-        "resource-exhausted",
-        "This event has reached its RSVP limit.",
-      );
-      assert(
-        (event.waitlistIds?.length || 0) < 500 ||
-          event.waitlistIds.includes(actor.uid),
-        "resource-exhausted",
-        "This event’s waitlist is full.",
-      );
-      const update = rsvp(event, actor.uid);
+      const mutation =
+        commandType === "event.edit"
+          ? editEvent(
+              event,
+              actor.uid,
+              user,
+              command.event,
+              command.expectedSequence,
+              now,
+            )
+          : cancelEvent(
+              event,
+              actor.uid,
+              user,
+              command.expectedSequence,
+              command.reason,
+              now,
+            );
+      if (mutation.changed) {
+        store.set(`events/${event.id}`, mutation.event);
+        const job = eventChangeJob(
+          mutation.event,
+          actor.uid,
+          mutation.promotedIds,
+          mutation.changedFields,
+          now,
+        );
+        store.set(`eventChangeJobs/${job.id}`, job);
+      }
+      result = {
+        ...result,
+        id: event.id,
+        sequence: mutation.event.sequence || 0,
+        status: mutation.event.status || "scheduled",
+        unchanged: !mutation.changed,
+        promotedCount: mutation.promotedIds.length,
+      };
+      break;
+    }
+    case "event.rsvp": {
+      commandFields(command, ["type", "eventId"]);
+      const event = await requireDoc("events", command.eventId);
+      const update = eventRsvpTransition(event, actor.uid, now);
       const { promotedId, ...participants } = update;
       store.set(`events/${event.id}`, { ...event, ...participants });
       if (promotedId)
@@ -1762,6 +1826,7 @@ export async function execute(
       break;
     }
     case "event.checkin": {
+      commandFields(command, ["type", "eventId", "userId"]);
       const event = await requireDoc("events", command.eventId);
       const targetId = id(command.userId);
       const conference = await requireDoc("conferences", event.conferenceId);
@@ -1779,11 +1844,6 @@ export async function execute(
         "The member must RSVP before checking in.",
       );
       assert(
-        Date.parse(event.startAt) - Date.parse(now) <= 6 * 3_600_000,
-        "failed-precondition",
-        "Attendance opens six hours before the event.",
-      );
-      assert(
         targetId !== actor.uid,
         "permission-denied",
         "An organizer cannot confirm their own attendance.",
@@ -1791,10 +1851,12 @@ export async function execute(
       const checkinPath = `events/${event.id}/checkins/${targetId}`;
       const checkin = await store.get(checkinPath);
       assert(!checkin, "already-exists", "Attendance is already confirmed.");
-      const [targetSignals, targetProfile] = await Promise.all([
+      const [targetSignals, targetProfile, targetUser] = await Promise.all([
         store.get(`trustSignals/${targetId}`),
         store.get(`profiles/${targetId}`),
+        store.get(`users/${targetId}`),
       ]);
+      assertEventCheckinWindow(event, targetUser, now);
       assert(targetProfile, "not-found", "Profile not found.");
       const updated = {
         ...(targetSignals || {}),

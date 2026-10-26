@@ -6,8 +6,38 @@ import {
   inQuietHours,
   localClock,
   subscription,
+  shouldDeliverPush,
 } from "../src/notifications";
 import { defaultPreferences } from "../src/policy";
+
+test("essential event changes and cancellation push do not inherit reminder opt-out, but quiet hours still apply", () => {
+  const prefs = { ...defaultPreferences(), eventReminders: false };
+  for (const eventNoticeType of ["updated", "cancelled", "promoted"])
+    assert.equal(
+      shouldDeliverPush(
+        { kind: "event", eventNoticeType },
+        prefs,
+        new Date("2026-10-26T12:00:00Z"),
+      ),
+      true,
+    );
+  assert.equal(
+    shouldDeliverPush(
+      { kind: "event", eventNoticeType: "reminder" },
+      prefs,
+      new Date("2026-10-26T12:00:00Z"),
+    ),
+    false,
+  );
+  assert.equal(
+    shouldDeliverPush(
+      { kind: "event", eventNoticeType: "cancelled" },
+      { ...prefs, quietHours: true },
+      new Date("2026-10-26T23:00:00Z"),
+    ),
+    false,
+  );
+});
 
 test("quiet hours cross midnight in the member timezone and respect the end boundary", () => {
   const prefs = {

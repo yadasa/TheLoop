@@ -49,6 +49,12 @@ import {
 } from "./media";
 import { sanitizeImage } from "./imageCodec";
 import { directMessageRead, migrateDirectMessage } from "./directConversations";
+import {
+  eventChangeJobExpired,
+  eventNoticeCurrent,
+  processEventChangePage,
+  scrubEventChangeJob,
+} from "./eventChangeJobs";
 
 export { sendCommunityDigests, sendEventReminders } from "./workers";
 
@@ -154,6 +160,64 @@ function mediaBucket() {
       `${project}.firebasestorage.app`,
   );
 }
+
+async function drainEventChangeJob(
+  jobId: string,
+  maxPages = 30,
+): Promise<void> {
+  for (let page = 0; page < maxPages; page++) {
+    const result = await transaction((store) =>
+      processEventChangePage(store, jobId, new Date().toISOString()),
+    );
+    if (result.complete) return;
+  }
+}
+
+export const deliverEventChanges = onDocumentCreated(
+  {
+    document: "eventChangeJobs/{jobId}",
+    retry: true,
+    timeoutSeconds: 540,
+    maxInstances: 3,
+  },
+  async (event) => {
+    await drainEventChangeJob(event.params.jobId);
+  },
+);
+
+/** Crash recovery also advances jobs whose creation trigger exhausted its bounded attempt. */
+export const recoverEventChanges = onSchedule(
+  {
+    schedule: "every 5 minutes",
+    timeZone: "UTC",
+    timeoutSeconds: 540,
+    maxInstances: 1,
+  },
+  async () => {
+    const pending = await db
+      .collection("eventChangeJobs")
+      .where("status", "==", "pending")
+      .orderBy("createdAt")
+      .limit(20)
+      .get();
+    for (const job of pending.docs) await drainEventChangeJob(job.id, 2);
+    const now = new Date().toISOString(),
+      cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+    for (const status of ["complete", "superseded"]) {
+      const expired = await db
+        .collection("eventChangeJobs")
+        .where("status", "==", status)
+        .where("updatedAt", "<", cutoff)
+        .orderBy("updatedAt")
+        .limit(100)
+        .get();
+      const batch = db.batch();
+      for (const job of expired.docs)
+        if (eventChangeJobExpired(job.data(), now)) batch.delete(job.ref);
+      if (!expired.empty) await batch.commit();
+    }
+  },
+);
 
 export const uploadMedia = onCall(
   {
@@ -591,6 +655,19 @@ export const deliverPushNotification = onDocumentCreated(
       .limit(10)
       .get();
     if (tokens.empty) return;
+    if (notification.kind === "event") {
+      const target = await db.doc(`events/${notification.targetId}`).get();
+      if (
+        !eventNoticeCurrent(
+          notification,
+          target.data(),
+          user.id,
+          user.data(),
+          new Date().toISOString(),
+        )
+      )
+        return;
+    }
     // Only a generic message is sent to lock screens; private message bodies stay in-app.
     const messages = tokens.docs.map((doc) => ({
       to: doc.get("token"),
@@ -641,6 +718,12 @@ export const exportAccount = onCall(callableOptions, async (request) => {
         source: "posts",
       },
       events: { field: "attendeeIds", operator: "array-contains" },
+      hostedEvents: { field: "hostId", operator: "==", source: "events" },
+      waitlistedEvents: {
+        field: "waitlistIds",
+        operator: "array-contains",
+        source: "events",
+      },
       connections: { field: "participantIds", operator: "array-contains" },
       follows: { field: "participantIds", operator: "array-contains" },
       squads: { field: "memberIds", operator: "array-contains" },
@@ -1165,7 +1248,9 @@ export const processAccountDeletion = onDocumentCreated(
               (value: string) => value !== uid,
             );
             const promotedId =
-              wasGoing && Date.parse(data.endAt) > Date.now()
+              wasGoing &&
+              data.status !== "cancelled" &&
+              Date.parse(data.endAt) > Date.now()
                 ? waitlistIds.shift()
                 : undefined;
             const recipient = promotedId
@@ -1190,6 +1275,7 @@ export const processAccountDeletion = onDocumentCreated(
                 title: "You’re off the waitlist",
                 body: `A spot opened for ${data.title}. You’re now going.`,
                 kind: "event",
+                eventNoticeType: "promoted",
                 targetId: item.id,
                 createdAt: new Date().toISOString(),
                 read: false,
@@ -1204,8 +1290,36 @@ export const processAccountDeletion = onDocumentCreated(
       hostId: "deleted-member",
       hostDeleted: true,
     }));
+    await mutateMatching("events", "cancelledBy", "==", uid, (data) => ({
+      ...data,
+      cancelledBy: "deleted-member",
+    }));
+    await mutateMatching("eventChangeJobs", "actorId", "==", uid, (data) =>
+      scrubEventChangeJob(data, uid),
+    );
+    await mutateMatching(
+      "eventChangeJobs",
+      "recipientIds",
+      "array-contains",
+      uid,
+      (data) => scrubEventChangeJob(data, uid),
+    );
+    await mutateMatching(
+      "eventChangeJobs",
+      "promotedIds",
+      "array-contains",
+      uid,
+      (data) => scrubEventChangeJob(data, uid),
+    );
     await mutateMatching("communities", "creatorId", "==", uid, (data) =>
       scrubCommunityOwner(data, uid),
+    );
+    await mutateMatching(
+      "notifications",
+      "eventActorId",
+      "==",
+      uid,
+      (data) => ({ ...data, eventActorId: "deleted-member" }),
     );
     for (;;) {
       const page = await db
@@ -1344,6 +1458,23 @@ export const processAccountDeletion = onDocumentCreated(
       const batch = db.batch();
       for (const doc of page.docs) batch.delete(doc.ref);
       await batch.commit();
+    }
+    for (const field of ["userId", "confirmedBy"]) {
+      for (;;) {
+        const checks = await db
+          .collectionGroup("checkins")
+          .where(field, "==", uid)
+          .limit(100)
+          .get();
+        if (checks.empty) break;
+        for (const checkin of checks.docs)
+          await db.runTransaction(async (tx) => {
+            const current = await tx.get(checkin.ref);
+            if (!current.exists || current.get(field) !== uid) return;
+            if (field === "userId") tx.delete(checkin.ref);
+            else tx.update(checkin.ref, { confirmedBy: "deleted-member" });
+          });
+      }
     }
     await db.recursiveDelete(db.doc(`profileAccess/${uid}`));
     await db.recursiveDelete(db.doc(`users/${uid}`));

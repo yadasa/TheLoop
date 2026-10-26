@@ -95,6 +95,146 @@ test("bootstrap never seeds fabricated people, messages, badges or relationships
     [],
   );
 });
+
+test("event lifecycle commands preserve revision, FIFO capacity, private jobs and idempotent cancellation", async () => {
+  const db = await database();
+  const draft = {
+    conferenceId: "afrotech",
+    title: "A plan",
+    description: "",
+    startAt: "2026-10-27T12:00:00Z",
+    endAt: "2026-10-27T13:00:00Z",
+    timezone: "UTC",
+    location: "Lobby",
+    kind: "meetup",
+    capacity: 1,
+    tags: [],
+    url: "https://example.test/",
+  };
+  const created = await db.command("alice", {
+    type: "event.create",
+    event: draft,
+  });
+  const path = `events/${created.id}`;
+  assert.equal(db.get(path).description, "");
+  assert.equal(db.get(path).sequence, 0);
+  assert.equal(db.get(path).status, "scheduled");
+  await db.command("bob", { type: "event.rsvp", eventId: created.id });
+  await db.command("eve", { type: "event.rsvp", eventId: created.id });
+  db.get("users/eve").role = "moderator";
+  await assert.rejects(
+    db.command("eve", {
+      type: "event.edit",
+      eventId: created.id,
+      expectedSequence: 0,
+      event: { title: "Impersonation" },
+    }),
+    /Only the event host/,
+  );
+  const change = {
+    type: "event.edit",
+    eventId: created.id,
+    expectedSequence: 0,
+    event: { capacity: 2 },
+  };
+  await db.command("alice", change, "capacity-change");
+  await db.command("alice", change, "capacity-change");
+  assert.equal(db.get(path).sequence, 1);
+  assert.deepEqual(db.get(path).attendeeIds, ["alice", "bob"]);
+  assert.deepEqual(db.get(path).waitlistIds, ["eve"]);
+  await assert.rejects(db.command("alice", change), /event changed/);
+  await db.command("alice", {
+    type: "event.edit",
+    eventId: created.id,
+    expectedSequence: 1,
+    event: { url: "" },
+  });
+  assert.equal(db.get(path).url, undefined);
+  assert.equal(db.get(path).sequence, 2);
+  const cancel = await db.command("alice", {
+    type: "event.cancel",
+    eventId: created.id,
+    expectedSequence: 2,
+    reason: "Venue unavailable",
+  });
+  assert.equal(cancel.status, "cancelled");
+  assert.equal(cancel.sequence, 3);
+  const retry = await db.command("alice", {
+    type: "event.cancel",
+    eventId: created.id,
+    expectedSequence: 0,
+  });
+  assert.equal(retry.unchanged, true);
+  assert.equal(db.get(path).sequence, 3);
+  assert.equal(
+    [...db.documents.keys()].filter((key) => key.startsWith("eventChangeJobs/"))
+      .length,
+    3,
+  );
+  await assert.rejects(
+    db.command("alice", {
+      type: "event.edit",
+      eventId: created.id,
+      expectedSequence: 3,
+      event: { title: "Reopen" },
+    }),
+    /Cancelled/,
+  );
+  await assert.rejects(
+    db.command("alice", {
+      type: "event.edit",
+      eventId: created.id,
+      expectedSequence: 3,
+      event: { hostId: "eve" },
+    }),
+    /Cancelled/,
+  );
+  await db.command("bob", { type: "event.rsvp", eventId: created.id });
+  assert.deepEqual(db.get(path).attendeeIds, ["alice"]);
+  assert.deepEqual(db.get(path).waitlistIds, ["eve"]);
+  db.get("users/eve").role = "admin";
+  await assert.rejects(
+    db.command("eve", {
+      type: "event.checkin",
+      eventId: created.id,
+      userId: "alice",
+    }),
+    /Cancelled/,
+  );
+});
+
+test("event creation requires real absolute instants and cannot forge lifecycle or ownership fields", async () => {
+  const db = await database();
+  const draft = {
+    conferenceId: "afrotech",
+    title: "A plan",
+    description: "",
+    startAt: "2027-02-28T12:00:00Z",
+    endAt: "2027-02-28T13:00:00Z",
+    timezone: "UTC",
+    location: "Lobby",
+    kind: "meetup",
+    capacity: 0,
+    tags: [],
+  };
+  for (const patch of [
+    { startAt: "2027-02-30T12:00:00Z" },
+    { startAt: "2027-02-28T12:00:00" },
+    { startAt: "2027-02-28T12:00:00+25:00" },
+    { status: "cancelled" },
+    { sequence: 99 },
+    { hostId: "eve" },
+    { attendeeIds: ["eve"] },
+  ])
+    await assert.rejects(
+      db.command("alice", {
+        type: "event.create",
+        event: { ...draft, ...patch },
+      }),
+      (error) =>
+        error instanceof DomainError && error.code === "invalid-argument",
+    );
+});
 test("idempotent retry creates only one message and consumes one rate-limit unit", async () => {
   const db = await database();
   const command = {

@@ -2,6 +2,7 @@ import { getFirestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { Doc } from "./policy";
 import { digestContent, digestSlot } from "./notifications";
+import { createEventReminder } from "./eventChangeJobs";
 
 async function createNoticeOnce(
   notificationId: string,
@@ -52,34 +53,33 @@ export const sendEventReminders = onSchedule(
           offset += 20
         ) {
           const ids: string[] = data.attendeeIds.slice(offset, offset + 20);
-          const users = await db.getAll(
-            ...ids.map((uid) => db.doc(`users/${uid}`)),
-          );
           await Promise.all(
-            users.map(async (user) => {
-              if (
-                !user.exists ||
-                user.get("disabled") ||
-                user.get("deletionPending")
-              )
-                return;
-              const preferences = user.get("preferences") || {};
-              if (
-                preferences.eventReminders === false ||
-                preferences.blockedIds?.includes(data.hostId)
-              )
-                return;
-              const noticeId = `event_${event.id}_${user.id}_reminder`;
-              await createNoticeOnce(noticeId, {
-                userId: user.id,
-                title: "Your next good conversation is coming up",
-                body: `${data.title} starts soon at ${data.location}.`,
-                kind: "event",
-                targetId: event.id,
-                createdAt: now.toISOString(),
-                read: false,
-              });
-            }),
+            ids.map((uid) =>
+              db.runTransaction((tx) =>
+                createEventReminder(
+                  {
+                    get: async (path) => {
+                      const snapshot = await tx.get(db.doc(path));
+                      return snapshot.exists ? snapshot.data() : undefined;
+                    },
+                    find: async () => {
+                      throw new Error(
+                        "Reminder transactions do not run collection queries.",
+                      );
+                    },
+                    set: (path, value) => {
+                      tx.set(db.doc(path), value);
+                    },
+                    remove: (path) => {
+                      tx.delete(db.doc(path));
+                    },
+                  },
+                  event.id,
+                  uid,
+                  new Date().toISOString(),
+                ),
+              ),
+            ),
           );
         }
       }

@@ -151,6 +151,12 @@ before(async () => {
       "users/alice/pushTokens/token": { token: "ExpoPushToken[test]" },
       "users/alice/requests/request": { result: {} },
       "deletionJobs/alice": { userId: "alice", status: "pending" },
+      "eventChangeJobs/pending": {
+        eventId: "coffee",
+        actorId: "alice",
+        recipientIds: ["alice", "bob"],
+        status: "pending",
+      },
     };
     for (let n = 0; n < 111; n++)
       rows[`directConversations/catalog-${String(n).padStart(3, "0")}`] = {
@@ -407,8 +413,20 @@ test("trust inputs, rate counters, push tokens, receipts, grants and deletion jo
     "users/alice/requests/request",
     "profileAccess/bob/members/alice",
     "deletionJobs/alice",
+    "eventChangeJobs/pending",
   ]) {
     await assertFails(getDoc(doc(alice, path)));
     await assertFails(setDoc(doc(alice, path), { forged: true }));
+  }
+});
+
+test("event notification outboxes expose neither recipients nor progress to members or moderators", async () => {
+  for (const uid of ["alice", "bob", "mod"]) {
+    const db = env.authenticatedContext(uid).firestore();
+    await assertFails(getDoc(doc(db, "eventChangeJobs/pending")));
+    await assertFails(getDocs(collection(db, "eventChangeJobs")));
+    await assertFails(
+      updateDoc(doc(db, "eventChangeJobs/pending"), { cursor: 999 }),
+    );
   }
 });

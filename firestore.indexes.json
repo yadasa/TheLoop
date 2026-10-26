@@ -1,6 +1,22 @@
 {
   "indexes": [
     {
+      "collectionGroup": "eventChangeJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "eventChangeJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "directConversations",
       "queryScope": "COLLECTION",
       "fields": [
@@ -199,6 +215,16 @@
     }
   ],
   "fieldOverrides": [
+    {
+      "collectionGroup": "checkins",
+      "fieldPath": "userId",
+      "indexes": [{ "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }]
+    },
+    {
+      "collectionGroup": "checkins",
+      "fieldPath": "confirmedBy",
+      "indexes": [{ "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }]
+    },
     {
       "collectionGroup": "requests",
       "fieldPath": "expiresAt",

@@ -61,6 +61,7 @@ service cloud.firestore {
     match /notifications/{notificationId} { allow read: if active() && resource.data.userId == request.auth.uid; allow write: if false; }
     match /reports/{reportId} { allow read: if active() && (resource.data.reporterId == request.auth.uid || moderator()); allow write: if false; }
     match /moderationAudit/{auditId} { allow read: if moderator(); allow write: if false; }
+    match /eventChangeJobs/{jobId} { allow read, write: if false; }
     match /trustAppeals/{appealId} { allow read: if active() && (resource.data.userId == request.auth.uid || moderator()); allow write: if false; }
     match /{document=**} { allow read, write: if false; }
   }

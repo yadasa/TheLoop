@@ -9,6 +9,13 @@ import { getAuth } from "firebase-admin/auth";
 import { squadInviteId } from "../src/squads";
 import { drainDirectRead } from "../../packages/client/src/directRead";
 import { directMessageRead } from "../src/directConversations";
+import type { TransactionStore } from "../src/service";
+import {
+  createEventReminder,
+  eventChangeJobId,
+  eventNoticeCurrent,
+  eventReminderNotice,
+} from "../src/eventChangeJobs";
 
 /**
  * Run only against a dedicated emulator project, never production.
@@ -142,6 +149,35 @@ test(
         `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents/${path}`,
         { headers: { Authorization: `Bearer ${actor.token}` } },
       );
+    const eventTransaction = <T>(
+      work: (store: TransactionStore) => Promise<T>,
+    ) =>
+      db.runTransaction(async (tx) => {
+        const pending = new Map<string, Record<string, any> | null>();
+        const store: TransactionStore = {
+          get: async (path) => {
+            if (pending.has(path)) return pending.get(path) || undefined;
+            const snap = await tx.get(db.doc(path));
+            return snap.exists ? snap.data() : undefined;
+          },
+          find: async () => {
+            throw new Error(
+              "Event integration transaction does not query collections.",
+            );
+          },
+          set: (path, value) => {
+            pending.set(path, value);
+          },
+          remove: (path) => {
+            pending.set(path, null);
+          },
+        };
+        const result = await work(store);
+        for (const [path, value] of pending)
+          if (value) tx.set(db.doc(path), value);
+          else tx.delete(db.doc(path));
+        return result;
+      });
     let alice: TestActor, bob: TestActor;
     try {
       // Load only this repository's rules into the explicitly isolated test namespace.
@@ -1708,6 +1744,403 @@ test(
       );
 
       await t.test(
+        "real event edits enforce revisions and FIFO while cancellation wins races and durable critical notices",
+        async () => {
+          const host = await createActor("event-host");
+          const startAt = new Date(Date.now() + 3600000).toISOString(),
+            endAt = new Date(Date.now() + 7200000).toISOString();
+          const details = {
+            conferenceId: conference,
+            title: `Lifecycle ${runId}`,
+            description: "",
+            startAt,
+            endAt,
+            timezone: "UTC",
+            location: "Emulator only",
+            kind: "meetup",
+            capacity: 1,
+            tags: [],
+          };
+          for (const patch of [
+            { status: "cancelled" },
+            { hostId: bob.uid },
+            { startAt: "2027-02-30T12:00:00Z" },
+            { startAt: "2027-02-28T12:00:00" },
+          ])
+            await denied(
+              command(host, {
+                type: "event.create",
+                event: { ...details, ...patch },
+              }),
+              ["INVALID_ARGUMENT"],
+            );
+          const eventId = remember(
+            "events",
+            (await command(host, { type: "event.create", event: details })).id,
+          );
+          await command(bob, { type: "event.rsvp", eventId });
+          await command(alice, { type: "event.rsvp", eventId });
+          const outsider = await createActor("event-outsider");
+          await db.doc(`users/${outsider.uid}`).update({ role: "moderator" });
+          await denied(
+            command(outsider, {
+              type: "event.edit",
+              eventId,
+              expectedSequence: 0,
+              event: { title: "Impersonation" },
+            }),
+          );
+          await denied(
+            command(outsider, {
+              type: "event.cancel",
+              eventId,
+              expectedSequence: 0,
+            }),
+          );
+          await denied(
+            command(host, {
+              type: "event.edit",
+              eventId,
+              expectedSequence: 0,
+              event: { attendeeIds: [] },
+            }),
+            ["INVALID_ARGUMENT"],
+          );
+          await command(host, {
+            type: "event.edit",
+            eventId,
+            expectedSequence: 0,
+            event: { capacity: 2 },
+          });
+          let record = (await db.doc(`events/${eventId}`).get()).data()!;
+          assert.deepEqual(record.attendeeIds, [host.uid, bob.uid]);
+          assert.deepEqual(record.waitlistIds, [alice.uid]);
+          assert.equal(record.sequence, 1);
+          await denied(
+            command(host, {
+              type: "event.edit",
+              eventId,
+              expectedSequence: 0,
+              event: { title: "Stale overwrite" },
+            }),
+            ["ABORTED"],
+          );
+          await Promise.all([
+            command(host, {
+              type: "event.edit",
+              eventId,
+              expectedSequence: 1,
+              event: { capacity: 3 },
+            }),
+            command(bob, { type: "event.rsvp", eventId }),
+          ]);
+          record = (await db.doc(`events/${eventId}`).get()).data()!;
+          assert.deepEqual(
+            [...record.attendeeIds].sort(),
+            [host.uid, alice.uid].sort(),
+          );
+          assert.deepEqual(record.waitlistIds, []);
+          assert.equal(record.sequence, 2);
+          await command(alice, {
+            type: "preferences.update",
+            preferences: { eventReminders: false },
+          });
+          const race = await Promise.allSettled([
+            command(host, {
+              type: "event.cancel",
+              eventId,
+              expectedSequence: 2,
+              reason: "Venue unavailable",
+            }),
+            command(bob, { type: "event.rsvp", eventId }),
+          ]);
+          assert.equal(race[0].status, "fulfilled");
+          if (race[1].status === "rejected")
+            assert.equal(
+              (race[1].reason as CallableFailure).status,
+              "FAILED_PRECONDITION",
+            );
+          record = (await db.doc(`events/${eventId}`).get()).data()!;
+          assert.equal(record.status, "cancelled");
+          assert.equal(record.sequence, 3);
+          assert.ok(record.attendeeIds.includes(alice.uid));
+          assert.ok(record.attendeeIds.length <= 3);
+          const repeated = await command(host, {
+            type: "event.cancel",
+            eventId,
+            expectedSequence: 0,
+          });
+          assert.equal(repeated.unchanged, true);
+          assert.equal(repeated.sequence, 3);
+          await denied(command(outsider, { type: "event.rsvp", eventId }), [
+            "FAILED_PRECONDITION",
+          ]);
+          await denied(
+            command(alice, {
+              type: "event.checkin",
+              eventId,
+              userId: host.uid,
+            }),
+            ["FAILED_PRECONDITION"],
+          );
+          const jobId = eventChangeJobId({ id: eventId, sequence: 3 });
+          for (let retry = 0; retry < 100; retry++) {
+            const job = await db.doc(`eventChangeJobs/${jobId}`).get();
+            if (job.get("status") === "complete") break;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          assert.equal(
+            (await db.doc(`eventChangeJobs/${jobId}`).get()).get("status"),
+            "complete",
+            "Firestore creation trigger drains the durable event outbox",
+          );
+          const notices = await db
+            .collection("notifications")
+            .where("userId", "==", alice.uid)
+            .get();
+          assert.ok(
+            notices.docs.some(
+              (notice) =>
+                notice.get("targetId") === eventId &&
+                notice.get("eventNoticeType") === "cancelled",
+            ),
+            "critical cancellation remains in-app despite reminder opt-out",
+          );
+          assert.equal(
+            (await readDocument(alice, `eventChangeJobs/${jobId}`)).response
+              .status,
+            403,
+          );
+          assert.ok(
+            (
+              await callable(host, "exportAccount", {
+                collection: "hostedEvents",
+              })
+            ).records.some((row: any) => row.id === eventId),
+          );
+          await command(alice, { type: "event.rsvp", eventId });
+          assert.ok(
+            !(await db.doc(`events/${eventId}`).get())
+              .get("attendeeIds")
+              .includes(alice.uid),
+          );
+        },
+      );
+
+      await t.test(
+        "real reminder transactions reread cancellation and reschedule state while stale push eligibility is revoked",
+        async () => {
+          const host = await createActor("reminder-host");
+          const eventId = remember(
+            "events",
+            (
+              await command(host, {
+                type: "event.create",
+                event: {
+                  conferenceId: conference,
+                  title: `Reminder ${runId}`,
+                  description: "",
+                  startAt: new Date(Date.now() + 1200000).toISOString(),
+                  endAt: new Date(Date.now() + 2400000).toISOString(),
+                  timezone: "UTC",
+                  location: "Emulator",
+                  kind: "meetup",
+                  capacity: 0,
+                  tags: [],
+                },
+              })
+            ).id,
+          );
+          assert.equal(
+            await eventTransaction((store) =>
+              createEventReminder(
+                store,
+                eventId,
+                host.uid,
+                new Date().toISOString(),
+              ),
+            ),
+            true,
+          );
+          let record = (await db.doc(`events/${eventId}`).get()).data()!;
+          const original = eventReminderNotice(
+            record,
+            host.uid,
+            new Date().toISOString(),
+          );
+          assert.equal(
+            await eventTransaction((store) =>
+              createEventReminder(
+                store,
+                eventId,
+                host.uid,
+                new Date().toISOString(),
+              ),
+            ),
+            false,
+          );
+          await command(host, {
+            type: "event.edit",
+            eventId,
+            expectedSequence: 0,
+            event: {
+              startAt: new Date(Date.now() + 1500000).toISOString(),
+              endAt: new Date(Date.now() + 2700000).toISOString(),
+            },
+          });
+          assert.equal(
+            await eventTransaction((store) =>
+              createEventReminder(
+                store,
+                eventId,
+                host.uid,
+                new Date().toISOString(),
+              ),
+            ),
+            true,
+          );
+          record = (await db.doc(`events/${eventId}`).get()).data()!;
+          assert.equal(
+            eventNoticeCurrent(
+              original,
+              record,
+              host.uid,
+              { preferences: {} },
+              new Date().toISOString(),
+            ),
+            false,
+          );
+          const moved = eventReminderNotice(
+            record,
+            host.uid,
+            new Date().toISOString(),
+          );
+          assert.notEqual(original.id, moved.id);
+          await command(host, {
+            type: "event.cancel",
+            eventId,
+            expectedSequence: 1,
+          });
+          assert.equal(
+            await eventTransaction((store) =>
+              createEventReminder(
+                store,
+                eventId,
+                host.uid,
+                new Date().toISOString(),
+              ),
+            ),
+            false,
+          );
+          record = (await db.doc(`events/${eventId}`).get()).data()!;
+          assert.equal(
+            eventNoticeCurrent(
+              moved,
+              record,
+              host.uid,
+              { preferences: {} },
+              new Date().toISOString(),
+            ),
+            false,
+          );
+        },
+      );
+
+      await t.test(
+        "real account deletion removes event queue identity and check-in references without promoting a cancelled waitlist",
+        async () => {
+          const retiring = await createActor("retiring-event-host");
+          const eventId = remember("events", nextId()),
+            jobId = remember("eventChangeJobs", nextId());
+          await db.doc(`events/${eventId}`).set({
+            id: eventId,
+            conferenceId: conference,
+            hostId: retiring.uid,
+            cancelledBy: retiring.uid,
+            status: "cancelled",
+            sequence: 1,
+            title: "Cancelled privacy fixture",
+            description: "",
+            startAt: new Date(Date.now() + 3600000).toISOString(),
+            endAt: new Date(Date.now() + 7200000).toISOString(),
+            capacity: 2,
+            attendeeIds: [retiring.uid, alice.uid],
+            waitlistIds: [bob.uid],
+          });
+          await db.doc(`events/${eventId}/checkins/${retiring.uid}`).set({
+            userId: retiring.uid,
+            confirmedBy: alice.uid,
+            createdAt: new Date().toISOString(),
+          });
+          await db.doc(`events/${eventId}/checkins/${alice.uid}`).set({
+            userId: alice.uid,
+            confirmedBy: retiring.uid,
+            createdAt: new Date().toISOString(),
+          });
+          await db.doc(`eventChangeJobs/${jobId}`).set({
+            id: jobId,
+            eventId,
+            sequence: 1,
+            actorId: retiring.uid,
+            kind: "cancelled",
+            recipientIds: [retiring.uid, alice.uid, bob.uid],
+            promotedIds: [retiring.uid, bob.uid],
+            changedFields: ["status"],
+            createdAt: new Date().toISOString(),
+            cursor: 1,
+            processed: 0,
+            status: "pending",
+          });
+          remember("deletionJobs", retiring.uid);
+          await callable(retiring, "deleteAccount", { confirmation: "DELETE" });
+          for (let retry = 0; retry < 300; retry++) {
+            const status = await db.doc(`deletionJobs/${retiring.uid}`).get();
+            if (status.get("status") === "complete") break;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          assert.equal(
+            (await db.doc(`deletionJobs/${retiring.uid}`).get()).get("status"),
+            "complete",
+            "actual Firestore account-deletion trigger completes",
+          );
+          assert.equal(
+            (await db.doc(`users/${retiring.uid}`).get()).exists,
+            false,
+          );
+          const retained = (await db.doc(`events/${eventId}`).get()).data()!;
+          assert.equal(retained.hostId, "deleted-member");
+          assert.equal(retained.cancelledBy, "deleted-member");
+          assert.deepEqual(retained.attendeeIds, [alice.uid]);
+          assert.deepEqual(retained.waitlistIds, [bob.uid]);
+          assert.equal(
+            (await db.doc(`events/${eventId}/checkins/${retiring.uid}`).get())
+              .exists,
+            false,
+          );
+          assert.equal(
+            (await db.doc(`events/${eventId}/checkins/${alice.uid}`).get()).get(
+              "confirmedBy",
+            ),
+            "deleted-member",
+          );
+          assert.ok(
+            !JSON.stringify(
+              (await db.doc(`eventChangeJobs/${jobId}`).get()).data(),
+            ).includes(retiring.uid),
+          );
+          assert.equal(
+            (
+              await db
+                .collection("notifications")
+                .where("eventActorId", "==", retiring.uid)
+                .get()
+            ).size,
+            0,
+          );
+        },
+      );
+
+      await t.test(
         "blocking revokes profile grants, both follow edges, and messages in both directions",
         async () => {
           const pendingSquad = remember(
@@ -1788,6 +2221,7 @@ test(
           ["reports", "reporterId", "=="],
           ["follows", "participantIds", "array-contains"],
           ["connections", "participantIds", "array-contains"],
+          ["eventChangeJobs", "actorId", "=="],
           ["directConversations", "participantIds", "array-contains"],
         ] as const) {
           const rows = await db

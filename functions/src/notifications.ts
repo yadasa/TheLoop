@@ -60,7 +60,13 @@ export function shouldDeliverPush(
   now: Date,
 ): boolean {
   if (inQuietHours(preferences, now)) return false;
-  if (notification.kind === "event" && preferences.eventReminders === false)
+  if (
+    notification.kind === "event" &&
+    !["updated", "cancelled", "promoted"].includes(
+      notification.eventNoticeType,
+    ) &&
+    preferences.eventReminders === false
+  )
     return false;
   if (
     notification.kind === "squad" &&
