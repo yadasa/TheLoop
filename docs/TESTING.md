@@ -12,6 +12,8 @@ CI runs these inside a dedicated Firebase emulator process. Do not point tests a
 
 For a long-lived local test server, build Functions and run `firebase emulators:start --config firebase.integration.json --project demo-theloop-integration --only auth,firestore,functions,storage`. This root-level config keeps rules and source paths inside the Firebase project directory. It binds only loopback, using Firestore53991,Auth9098,Functions5019 andStorage9198. Set `FUNCTIONS_DISCOVERY_TIMEOUT=120` for a cold Windows start. The test runners still require their explicit demo-namespace/loopback flags; this config does not deploy anything.
 
+The production predeploy hook runs `node scripts/build-functions.mjs`, which invokes the project compiler directly and propagates its exit status. This avoids a workspace filter reporting success without compiling in an isolated Windows release checkout. Set `FUNCTIONS_DISCOVERY_TIMEOUT=120` for cold Windows deployment analysis as well as emulator startup.
+
 ## Real callable integration
 
 Build Functions and start loopback Auth, Firestore and Functions emulators under `demo-theloop-integration`. The test is disabled unless `THELOOP_INTEGRATION=1`. Supply `THELOOP_INTEGRATION_FUNCTIONS_HOST`, `THELOOP_INTEGRATION_AUTH_HOST` and `THELOOP_INTEGRATION_FIRESTORE_HOST` explicitly, then run `pnpm --filter @theloop/functions exec tsx --test test/integration.test.ts`. Only the exact demo namespace and loopback addresses are accepted. Tests create temporary accounts and fixture IDs, then clean up those IDs.

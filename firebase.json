@@ -5,7 +5,7 @@
       "codebase": "theloop",
       "runtime": "nodejs22",
       "ignore": ["node_modules", ".git", "test", "scripts", "*.log"],
-      "predeploy": ["pnpm --filter @theloop/functions build"]
+      "predeploy": ["node scripts/build-functions.mjs"]
     }
   ],
   "firestore": {
