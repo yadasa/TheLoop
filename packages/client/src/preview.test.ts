@@ -34,3 +34,14 @@ test("saved preview images preserve only validated local WebP payloads and targe
   assert.throws(() => restorePreview({ ...state, previewImages: { [id]: { ...entry, target: { kind: "channel", id: "not/a/document" } } } }), /scope/);
   assert.throws(() => restorePreview({ ...state, previewImages: { "different-id": entry } }), /image ID/);
 });
+
+test("legacy direct histories keep their messages and gain empty mute defaults", () => {
+  const state = initialState();
+  const legacy = { id: "legacy-direct", fromId: state.currentUserId, toId: "peer", body: "Existing history", createdAt: "2026-10-26T00:00:00.000Z", read: true };
+  const preferences = { ...state.preferences }; delete preferences.dmMutedIds;
+  const restored = restorePreview({ ...state, directMessages: [legacy], preferences });
+  assert.deepEqual(restored.directMessages, [legacy]);
+  assert.deepEqual(restored.preferences.dmMutedIds, []);
+  assert.throws(() => restorePreview({ ...state, directMessages: [{ ...legacy, conversationId: "unrelated-pair" }] }), /conversation/);
+  assert.throws(() => restorePreview({ ...state, preferences: { ...preferences, dmMutedIds: "peer" } } as unknown as LoopState), /mutes/);
+});

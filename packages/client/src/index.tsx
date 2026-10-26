@@ -64,10 +64,14 @@ import {
 import { documentIdBatches, matchesDirectory, mergeMessages, mergeSquadInvites, normalizeDirectoryQuery, previewChannelIds, revokePrivateProfiles, visibleSquadMessages } from "./data";
 import { directoryPageQuery, messagePageQuery, squadMessagePageQuery, squadMembershipQuery, squadParticipantInvitesQuery, squadIncomingInvitesQuery, squadOwnerInvitesQuery } from "./queries";
 import { MessagePages } from "./messagePages";
+import { directConversationId, isDirectConversation, mergeDirectMessages, type DirectSnapshot } from "./directData";
+import { directMessagePageQuery } from "./directQueries";
+import { drainDirectRead } from "./directRead";
 import { encodeImageBase64, imageMetadata, imageUploadBytes, ImageMemoryCache, MediaScopeChanged, mediaAuthority, mediaScope, previewImageData, safeMediaId, type ImageUploadInput, type ImageDataResult } from "./media";
 export { useGuideEvents, type GuideEventsState } from "./guide";
 export type { ImageUploadInput, ImageDataResult } from "./media";
 export { stripWebPMetadata } from "./media";
+export { directParticipantSnapshot, type DirectSnapshot } from "./directData";
 export type StorageDriver = {
   load(): Promise<LoopState | null>;
   save(state: LoopState): Promise<void>;
@@ -122,6 +126,9 @@ type LoopContextValue = {
   getImage(mediaId: string, reportId?: string): Promise<ImageDataResult>;
   discardImage(mediaId: string): void;
   mediaRevision: number;
+  watchDirectConversation(userId: string | null): void;
+  loadOlderDirectMessages(): Promise<void>;
+  directHistory: { loading: boolean; hasMore: boolean };
 };
 const Context = createContext<LoopContextValue | null>(null);
 let cloud: { auth: Auth; db: Firestore; functions: Functions } | undefined;
@@ -181,6 +188,7 @@ export function restorePreview(saved: LoopState): LoopState {
   if (!object(preferences.readChannels) || Object.values(preferences.readChannels).some(value => typeof value !== "string")) throw new Error("Invalid saved read markers.");
   if (preferences.squadReadAt !== undefined && (!object(preferences.squadReadAt) || Object.values(preferences.squadReadAt).some(value => typeof value !== "string"))) throw new Error("Invalid saved squad read markers.");
   if (preferences.squadMutedIds !== undefined && !strings(preferences.squadMutedIds)) throw new Error("Invalid saved squad mutes.");
+  if (preferences.dmMutedIds !== undefined && !strings(preferences.dmMutedIds)) throw new Error("Invalid saved direct-message mutes.");
   for (const profile of saved.profiles) if (typeof profile.name !== "string" || typeof profile.initials !== "string" || !strings(profile.skills) || !strings(profile.interests) || !strings(profile.openTo) || !Array.isArray(profile.links) || !object(profile.trust) || !Number.isFinite(profile.trust.score) || !strings(profile.trust.reasons)) throw new Error("Invalid saved profile.");
   for (const channel of saved.channels) if (typeof channel.name !== "string" || !strings(channel.topics)) throw new Error("Invalid saved channel.");
   for (const message of saved.messages) if (typeof message.body !== "string" || !Number.isFinite(Date.parse(message.createdAt)) || !object(message.reactions) || Object.values(message.reactions).some(value => !strings(value))) throw new Error("Invalid saved message.");
@@ -190,6 +198,11 @@ export function restorePreview(saved: LoopState): LoopState {
   for (const squad of saved.squads ?? []) if (typeof squad.name !== "string" || !strings(squad.memberIds) || !strings(squad.pendingInviteeIds) || !object(squad.memberProfiles)) throw new Error("Invalid saved squad.");
   for (const invite of saved.squadInvites ?? []) if (typeof invite.squadId !== "string" || !strings(invite.participantIds) || !Number.isFinite(Date.parse(invite.expiresAt))) throw new Error("Invalid saved squad invitation.");
   for (const message of saved.squadMessages ?? []) if (typeof message.body !== "string" || !strings(message.audienceIds) || !Number.isFinite(Date.parse(message.createdAt)) || !object(message.reactions)) throw new Error("Invalid saved squad message.");
+  for (const message of saved.directMessages) {
+    if (typeof message.fromId !== "string" || typeof message.toId !== "string" || typeof message.body !== "string" || !Number.isFinite(Date.parse(message.createdAt)) || typeof message.read !== "boolean" || (message.participantIds !== undefined && !strings(message.participantIds))) throw new Error("Invalid saved direct message.");
+    for (const key of ["fromName", "fromInitials", "toName", "toInitials"] as const) if (message[key] !== undefined && typeof message[key] !== "string") throw new Error("Invalid saved direct-message identity.");
+    if (message.conversationId !== undefined && message.conversationId !== directConversationId(message.fromId, message.toId)) throw new Error("Invalid saved direct-message conversation.");
+  }
   if (saved.previewImages !== undefined) {
     if (!object(saved.previewImages) || Object.keys(saved.previewImages).length > 64) throw new Error("Invalid saved preview images.");
     let total = 0;
@@ -202,7 +215,7 @@ export function restorePreview(saved: LoopState): LoopState {
     }
     if (total > 2 * 1024 * 1024) throw new Error("Saved preview images exceed 2 MB.");
   }
-  return { ...saved, follows: saved.follows ?? [], squads: saved.squads ?? [], squadInvites: saved.squadInvites ?? [], squadMessages: saved.squadMessages ?? [], preferences: { ...preferences, squadReadAt: preferences.squadReadAt ?? {}, squadMutedIds: preferences.squadMutedIds ?? [] } };
+  return { ...saved, follows: saved.follows ?? [], squads: saved.squads ?? [], squadInvites: saved.squadInvites ?? [], squadMessages: saved.squadMessages ?? [], preferences: { ...preferences, squadReadAt: preferences.squadReadAt ?? {}, squadMutedIds: preferences.squadMutedIds ?? [], dmMutedIds: preferences.dmMutedIds ?? [] } };
 }
 export function LoopProvider({
   children,
@@ -238,11 +251,13 @@ export function LoopProvider({
   const [hasMore, setHasMore] = useState({ posts: false, events: false });
   const [history, setHistory] = useState({ loading: false, hasMore: false });
   const [squadHistory, setSquadHistory] = useState({ loading: false, hasMore: false });
+  const [directHistory, setDirectHistory] = useState({ loading: false, hasMore: false });
   const [directory, setDirectory] = useState<{ results: Profile[]; loading: boolean; hasMore: boolean }>({ results: [], loading: false, hasMore: false });
   const [directoryQuery, updateDirectoryQuery] = useState("");
   const directoryQueryRef = useRef("");
   const conversationRef = useRef<{ channelId: string | null; topic?: string }>({ channelId: null });
   const squadRef = useRef<string | null>(null);
+  const directRef = useRef<string | null>(null);
   const liveActions = useRef<Partial<{
     watchConversation(channelId: string | null, topic?: string): void;
     loadOlderMessages(): Promise<void>;
@@ -254,6 +269,8 @@ export function LoopProvider({
     loadOlderSquadMessages(): Promise<void>;
     uploadImage(payload: { target: MediaTarget; contentType: ImageUploadInput["contentType"]; base64: string; requestId: string }): Promise<unknown>;
     getImage(mediaId: string, reportId?: string): Promise<unknown>;
+    watchDirectConversation(userId: string | null): void;
+    loadOlderDirectMessages(): Promise<void>;
   }>>({});
   const watchConversation = useCallback((channelId: string | null, topic?: string) => {
     const previous = conversationRef.current;
@@ -272,6 +289,14 @@ export function LoopProvider({
     else setSquadHistory({ loading: false, hasMore: false });
   }, []);
   const loadOlderSquadMessages = useCallback(async () => { await liveActions.current.loadOlderSquadMessages?.(); }, []);
+  const watchDirectConversation = useCallback((userId: string | null) => {
+    if (directRef.current === userId) return;
+    directRef.current = userId;
+    synchronizeMedia();
+    if (liveActions.current.watchDirectConversation) liveActions.current.watchDirectConversation(userId);
+    else setDirectHistory({ loading: false, hasMore: false });
+  }, []);
+  const loadOlderDirectMessages = useCallback(async () => { await liveActions.current.loadOlderDirectMessages?.(); }, []);
   const setDirectoryQuery = useCallback((value: string) => {
     const normalized = normalizeDirectoryQuery(value);
     if (directoryQueryRef.current === normalized) return;
@@ -295,11 +320,11 @@ export function LoopProvider({
   }, []);
   const currentMediaAuthority = useCallback(() => {
     const selected = conversationRef.current;
-    return mediaAuthority(currentMediaState(), { mode: modeRef.current, role: roleRef.current, conversation: selected.channelId ? `${selected.channelId}\u0000${selected.topic ?? ""}` : null, squad: squadRef.current });
+    return mediaAuthority(currentMediaState(), { mode: modeRef.current, role: roleRef.current, conversation: selected.channelId ? `${selected.channelId}\u0000${selected.topic ?? ""}` : null, squad: squadRef.current, direct: directRef.current });
   }, [currentMediaState]);
   const synchronizeMedia = useCallback(() => {
     const selected = conversationRef.current;
-    if (imageCache.current.setContext(mediaScope(currentMediaState(), { mode: modeRef.current, role: roleRef.current, conversation: selected.channelId ? `${selected.channelId}\u0000${selected.topic ?? ""}` : null, squad: squadRef.current }))) setMediaRevision(value => value + 1);
+    if (imageCache.current.setContext(mediaScope(currentMediaState(), { mode: modeRef.current, role: roleRef.current, conversation: selected.channelId ? `${selected.channelId}\u0000${selected.topic ?? ""}` : null, squad: squadRef.current, direct: directRef.current }))) setMediaRevision(value => value + 1);
     return imageCache.current.revision;
   }, [currentMediaState]);
   const uploadImage = useCallback(async (target: MediaTarget, input: ImageUploadInput): Promise<ImageAttachment> => {
@@ -385,6 +410,7 @@ export function LoopProvider({
     setReady(false);
     setHistory({ loading: false, hasMore: false });
     setSquadHistory({ loading: false, hasMore: false });
+    setDirectHistory({ loading: false, hasMore: false });
     if (mode === "demo") {
       setState(initialState());
       storageRef.current
@@ -429,6 +455,7 @@ export function LoopProvider({
       setHasMore({ posts: false, events: false });
       setHistory({ loading: false, hasMore: false });
       setSquadHistory({ loading: false, hasMore: false });
+      setDirectHistory({ loading: false, hasMore: false });
       setDirectory({ results: [], loading: false, hasMore: false });
       setRole("member");
       setEmailVerified(user?.emailVerified ?? false);
@@ -520,6 +547,7 @@ export function LoopProvider({
         let subscriptions = defaultPreferences().subscriptions;
         let savedPostIds: string[] = [];
         let refreshMessageSubscriptions = () => {};
+        let refreshDirectSubscriptions = () => {};
         const peerProfiles = new Map<string, Profile>(),
           peerListeners = new Map<string, () => void>();
         const targetedProfiles = new Map<string, Profile>(),
@@ -807,6 +835,7 @@ export function LoopProvider({
                 setState((s) => ({ ...s, preferences }));
                 refreshPeers();
                 refreshMessageSubscriptions();
+                refreshDirectSubscriptions();
                 publishPosts();
               } else loaded("reports");
               loaded("preferences");
@@ -847,15 +876,92 @@ export function LoopProvider({
             limit(300),
           ),
         );
-        listen(
-          "directMessages",
-          query(
-            collection(c.db, "directMessages"),
-            where("participantIds", "array-contains", user.uid),
-            orderBy("createdAt", "desc"),
-            limit(200),
-          ),
-        );
+        let directPreviewRows: DirectSnapshot[] = [], directRows: DirectSnapshot[] = [];
+        let directWindow: MessagePages<DirectSnapshot> | undefined, offDirectPreview: (() => void) | undefined;
+        let directGeneration = 0, directPreviewGeneration = 0, directBlockScope = JSON.stringify([...blockedIds].sort());
+        const publishDirectMessages = () => {
+          if (!current()) return;
+          const messages = mergeDirectMessages([directPreviewRows, directRows], user.uid, new Set(blockedIds));
+          setState(s => ({ ...s, directMessages: messages }));
+        };
+        const stopDirectWindow = () => {
+          directGeneration++;
+          directWindow?.stop();
+          directWindow = undefined;
+          directRows = [];
+          setDirectHistory({ loading: false, hasMore: false });
+        };
+        liveActions.current.watchDirectConversation = peerId => {
+          if (!current()) return;
+          stopDirectWindow();
+          publishDirectMessages();
+          if (!peerId || blockedIds.includes(peerId)) return;
+          try { directConversationId(user.uid, peerId); }
+          catch (error) { failure(error); return; }
+          const requestGeneration = directGeneration;
+          directWindow = new MessagePages<DirectSnapshot>({
+            subscribe: (cursor, success, error) => onSnapshot(directMessagePageQuery(c.db, user.uid, peerId, cursor), snap => success(snap.docs.map(record => ({ ...record.data(), id: record.id }) as DirectSnapshot)), error),
+            publish: (rows, history) => {
+              if (!current() || requestGeneration !== directGeneration || blockedIds.includes(peerId)) return;
+              directRows = rows.filter(message => isDirectConversation(message, user.uid, peerId));
+              setDirectHistory(history);
+              publishDirectMessages();
+            },
+            failure: error => {
+              if (!current() || requestGeneration !== directGeneration) return;
+              if ((error as { code?: string }).code === "permission-denied") {
+                stopDirectWindow();
+                directPreviewRows = [];
+                directPreviewGeneration++;
+                offDirectPreview?.(); offDirectPreview = undefined;
+                loaded("directMessages");
+                imageCache.current.clear(); setMediaRevision(value => value + 1);
+              }
+              publishDirectMessages();
+              failure(error);
+            },
+          });
+          directWindow.start();
+        };
+        liveActions.current.loadOlderDirectMessages = () => current() ? directWindow?.loadMore() ?? Promise.resolve() : Promise.resolve();
+        const subscribeDirectPreviews = () => {
+          offDirectPreview?.();
+          const requestGeneration = ++directPreviewGeneration;
+          offDirectPreview = onSnapshot(query(collection(c.db, "directMessages"), where("participantIds", "array-contains", user.uid), orderBy("createdAt", "desc"), orderBy(documentId(), "desc"), limit(200)), snap => {
+            if (!current() || requestGeneration !== directPreviewGeneration) return;
+            directPreviewRows = mergeDirectMessages([snap.docs.map(record => ({ ...record.data(), id: record.id }) as DirectSnapshot)], user.uid, new Set(blockedIds));
+            publishDirectMessages();
+            loaded("directMessages");
+          }, error => {
+            if (!current() || requestGeneration !== directPreviewGeneration) return;
+            directPreviewRows = [];
+            offDirectPreview = undefined;
+            if ((error as { code?: string }).code === "permission-denied") stopDirectWindow();
+            publishDirectMessages();
+            failure(error, "directMessages");
+          });
+        };
+        refreshDirectSubscriptions = () => {
+          if (!current()) return;
+          const scope = JSON.stringify([...blockedIds].sort());
+          if (scope !== directBlockScope) {
+            directBlockScope = scope;
+            directPreviewRows = mergeDirectMessages([directPreviewRows], user.uid, new Set(blockedIds));
+            const selected = directRef.current;
+            if (selected && (blockedIds.includes(selected) || !directWindow)) liveActions.current.watchDirectConversation?.(selected);
+            subscribeDirectPreviews();
+          } else if (!offDirectPreview) subscribeDirectPreviews();
+          publishDirectMessages();
+        };
+        subscribeDirectPreviews();
+        liveActions.current.watchDirectConversation(directRef.current);
+        dispose.push(() => {
+          directPreviewGeneration++;
+          offDirectPreview?.(); offDirectPreview = undefined;
+          directGeneration++;
+          directWindow?.stop(); directWindow = undefined;
+          directPreviewRows = []; directRows = [];
+        });
         listen(
           "notifications",
           query(
@@ -1401,10 +1507,15 @@ export function LoopProvider({
         } else {
           const c = setup(firebaseConfig!, useEmulators, authPersistence, emulators);
           if (!c.auth.currentUser) throw new Error("Sign in to continue.");
-          await httpsCallable(
-            c.functions,
-            "executeCommand",
-          )({ command, requestId: requestId() });
+          const actorId = c.auth.currentUser.uid;
+          const execute = httpsCallable(c.functions, "executeCommand");
+          if (command.type === "dm.read") {
+            await drainDirectRead({
+              send: async id => (await execute({ command, requestId: id })).data,
+              requestId,
+              current: () => modeRef.current === "live" && c.auth.currentUser?.uid === actorId && directRef.current === command.userId && !stateRef.current.preferences.blockedIds.includes(command.userId),
+            });
+          } else await execute({ command, requestId: requestId() });
         }
       } catch (e) {
         const m = readableError(e);
@@ -1553,6 +1664,9 @@ export function LoopProvider({
         getImage,
         discardImage,
         mediaRevision,
+        watchDirectConversation,
+        loadOlderDirectMessages,
+        directHistory,
         clearError: () => setError(null),
         resetDemo: () => {
           setState(initialState());

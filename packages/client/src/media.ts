@@ -121,10 +121,10 @@ export async function imageUploadBytes(input: ImageUploadInput, demo = false): P
   return bytes;
 }
 
-type MediaContext = { mode: string; role: string; conversation: string | null; squad: string | null };
+type MediaContext = { mode: string; role: string; conversation: string | null; squad: string | null; direct?: string | null };
 export function mediaAuthority(state: LoopState, options: MediaContext): string {
   const members = [...state.channels.filter(channel => channel.visibility === "private").map(channel => JSON.stringify([channel.id, (channel.memberIds ?? []).slice().sort()])), ...state.squads.map(squad => JSON.stringify([squad.id, squad.ownerId, squad.archived, squad.memberIds.slice().sort()]))].sort();
-  return JSON.stringify([state.currentUserId, options.mode, options.role, options.conversation, options.squad, state.preferences.blockedIds.slice().sort(), members]);
+  return JSON.stringify([state.currentUserId, options.mode, options.role, options.conversation, options.squad, options.direct ?? null, state.preferences.blockedIds.slice().sort(), members]);
 }
 /** Permission-relevant context only; ordinary text edits do not discard image bytes. */
 export function mediaScope(state: LoopState, options: MediaContext): string {

@@ -109,6 +109,7 @@ test("media context changes for membership, blocks and deleted sources, not ordi
   assert.notEqual(mediaScope({ ...state, messages: [] }, options), scope);
   assert.notEqual(mediaScope({ ...state, preferences: { ...state.preferences, blockedIds: ["other"] } }, options), scope);
   assert.notEqual(mediaScope(state, { ...options, conversation: "other-room" }), scope);
+  assert.notEqual(mediaScope(state, { ...options, direct: "private-peer" }), scope);
   const added = { ...state, messages: [...state.messages, { ...state.messages[0], id: "new-message", image: { ...payload().image, id: "new-image" } }] };
   assert.equal(mediaAuthority(state, options), mediaAuthority(added, options));
   const cache = new ImageMemoryCache(); cache.setContext(scope);
