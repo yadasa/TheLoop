@@ -294,17 +294,17 @@ function LoopApp() {
   const renderRoute = (route: Route) => {
     switch (route.kind) {
       case "post":
-        return <PostDetail id={route.id} nav={nav} />;
+        return <PostDetail key={route.id} id={route.id} nav={nav} />;
       case "edit-post":
-        return <EditPost id={route.id} nav={nav} />;
+        return <EditPost key={route.id} id={route.id} nav={nav} />;
       case "channel":
-        return <ChannelDetail id={route.id} nav={nav} />;
+        return <ChannelDetail key={route.id} id={route.id} nav={nav} />;
       case "event":
-        return <EventDetail id={route.id} nav={nav} />;
+        return <EventDetail key={route.id} id={route.id} nav={nav} />;
       case "profile":
-        return <ProfileDetail id={route.id} nav={nav} />;
+        return <ProfileDetail key={route.id} id={route.id} nav={nav} />;
       case "dm":
-        return <DirectChat id={route.id} nav={nav} />;
+        return <DirectChat key={route.id} id={route.id} nav={nav} />;
       case "compose":
         return <Compose nav={nav} />;
       case "communities":
@@ -340,9 +340,9 @@ function LoopApp() {
       case "create-squad":
         return <CreateSquad nav={nav} />;
       case "squad":
-        return <SquadDetail id={route.id} nav={nav} />;
+        return <SquadDetail key={route.id} id={route.id} nav={nav} />;
       case "squad-members":
-        return <SquadMembers id={route.id} nav={nav} />;
+        return <SquadMembers key={route.id} id={route.id} nav={nav} />;
       case "guide":
         return <PublicGuide nav={nav} />;
     }

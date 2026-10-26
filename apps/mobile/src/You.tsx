@@ -375,8 +375,9 @@ export function EditProfile({ nav }: { nav: Nav }) {
         />
       </View>
       <Text style={s.small}>
-        Your name and headline remain visible for introductions. Trust signals
-        are managed by the platform.
+        Your name and initials can appear with content you share. Professional
+        details follow this visibility setting. Trust signals are managed by the
+        platform.
       </Text>
       <Button
         title={busy ? "Saving…" : "Save your story ↗"}
@@ -585,12 +586,18 @@ export function Settings({ nav }: { nav: Nav }) {
         a.m. in your saved timezone. Quiet hours keep your evenings yours.
       </Text>
       <Section title="Who gets in" />
-      <Text style={s.label}>Who can send you a private message?</Text>
+      <Text style={s.label}>Who can start private conversations with you?</Text>
       <Horizontal>
         {(["connections", "everyone", "nobody"] as const).map((value) => (
           <Chip
             key={value}
-            title={value}
+            title={
+              value === "nobody"
+                ? "No new conversations"
+                : value === "connections"
+                  ? "Connections"
+                  : "Everyone"
+            }
             selected={p.dmPolicy === value}
             onPress={() =>
               void nav.run({
@@ -601,6 +608,10 @@ export function Settings({ nav }: { nav: Nav }) {
           />
         ))}
       </Horizontal>
+      <Text style={s.small}>
+        People you message can reply. Block a member to stop future messages, or
+        mute a conversation to keep it quiet.
+      </Text>
       <Text style={s.small}>
         Blocking overrides connections and follows. Hidden content stays hidden
         until you choose to bring it back.

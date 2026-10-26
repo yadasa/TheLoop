@@ -8,7 +8,7 @@ import {
   View,
   type ScrollViewInstance,
 } from "react-native";
-import { useLoop } from "@theloop/client";
+import { directParticipantSnapshot, useLoop } from "@theloop/client";
 import type { Message, Subscription } from "@theloop/core";
 import { channelUnread } from "@theloop/core";
 import {
@@ -16,6 +16,7 @@ import {
   Button,
   Chip,
   color,
+  displayIdentity,
   Empty,
   Field,
   Horizontal,
@@ -234,16 +235,26 @@ export function Chats({ nav }: { nav: Nav }) {
                   (m.toId === id && m.fromId === state.currentUserId),
               )
               .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+            const participant = directParticipantSnapshot(
+              state.directMessages,
+              state.currentUserId,
+              id,
+            );
+            const identity = displayIdentity(
+              person,
+              participant?.name,
+              participant?.initials,
+            );
             return (
               <Touch
                 key={id}
-                label={`Message ${person?.name || "member"}`}
+                label={`Message ${identity.name}`}
                 onPress={() => nav.open({ kind: "dm", id })}
                 style={[s.row, { paddingVertical: 7 }]}
               >
-                <Avatar profile={person} size={45} />
+                <Avatar profile={identity} size={45} />
                 <View style={s.grow}>
-                  <Text style={s.h3}>{person?.name || "Loop member"}</Text>
+                  <Text style={s.h3}>{identity.name}</Text>
                   <Text numberOfLines={1} style={s.small}>
                     {last?.body}
                   </Text>
@@ -569,7 +580,11 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
           </Text>
         )}
         {messages.map((m, i) => {
-          const author = state.profiles.find((p) => p.id === m.authorId);
+          const author = displayIdentity(
+            state.profiles.find((p) => p.id === m.authorId),
+            m.authorName,
+            m.authorInitials,
+          );
           const mine = m.authorId === state.currentUserId;
           const quoted = m.replyTo
             ? state.messages.find((q) => q.id === m.replyTo)

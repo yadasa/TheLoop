@@ -7,6 +7,7 @@ import {
   Button,
   Chip,
   color,
+  displayIdentity,
   Empty,
   Field,
   Horizontal,
@@ -336,7 +337,11 @@ export function PostCard({
   detail?: boolean;
 }) {
   const { state } = useLoop();
-  const author = state.profiles.find((p) => p.id === post.authorId);
+  const author = displayIdentity(
+    state.profiles.find((p) => p.id === post.authorId),
+    post.authorName,
+    post.authorInitials,
+  );
   const community = state.communities.find((c) => c.id === post.communityId);
   const votes = Object.values(post.votes).reduce((a, b) => a + b, 0);
   const saved = state.preferences.savedPostIds.includes(post.id);
@@ -824,7 +829,11 @@ function CommentItem({
   const [body, setBody] = useState(comment.body);
   const [busy, setBusy] = useState(false);
   const mine = comment.authorId === state.currentUserId;
-  const author = state.profiles.find((p) => p.id === comment.authorId);
+  const author = displayIdentity(
+    state.profiles.find((p) => p.id === comment.authorId),
+    comment.authorName,
+    comment.authorInitials,
+  );
   return (
     <View style={[s.row, { alignItems: "flex-start" }]}>
       <Avatar profile={author} size={32} />

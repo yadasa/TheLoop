@@ -10,19 +10,21 @@ import {
   View,
   type ScrollViewInstance,
 } from "react-native";
-import { useLoop } from "@theloop/client";
+import { directParticipantSnapshot, useLoop } from "@theloop/client";
 import {
   connected,
   suggestedConnections,
   trustLabel,
   safeURL,
   type Profile,
+  type DirectMessage,
 } from "@theloop/core";
 import {
   Avatar,
   Button,
   Chip,
   color,
+  displayIdentity,
   Empty,
   Field,
   Horizontal,
@@ -584,55 +586,105 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
 }
 
 export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
-  const { state } = useLoop();
+  const {
+    state,
+    watchDirectConversation,
+    loadOlderDirectMessages,
+    directHistory,
+  } = useLoop();
   const attachment = useImageAttachment(nav);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<DirectMessage | null>(null);
   const scroll = useRef<ScrollViewInstance>(null);
   const stickToBottom = useRef(true);
   const firstLayout = useRef(true);
+  const loadingOlder = useRef(false);
   const [showJump, setShowJump] = useState(false);
   const reducedMotion = useReducedMotion();
   const p = state.profiles.find((p) => p.id === id);
   const blocked = state.preferences.blockedIds.includes(id);
-  const messages = state.directMessages
+  const conversation = state.directMessages
     .filter(
       (m) =>
         (m.fromId === id && m.toId === state.currentUserId) ||
         (m.toId === id && m.fromId === state.currentUserId),
     )
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const participant = directParticipantSnapshot(
+    state.directMessages,
+    state.currentUserId,
+    id,
+  );
+  const identity = displayIdentity(p, participant?.name, participant?.initials);
+  const messages = blocked ? [] : conversation;
+  const muted = state.preferences.dmMutedIds?.includes(id) || false;
   useEffect(() => {
-    if (!blocked) void nav.run({ type: "dm.read", userId: id });
-  }, [id, messages.length, blocked]);
+    if (blocked) {
+      attachment.clear();
+      setEditing(null);
+      setBody("");
+    }
+    stickToBottom.current = true;
+    firstLayout.current = true;
+    loadingOlder.current = false;
+    setShowJump(false);
+    watchDirectConversation(blocked ? null : id);
+    return () => watchDirectConversation(null);
+  }, [id, blocked, watchDirectConversation]);
+  useEffect(() => {
+    if (!blocked && !showJump) void nav.run({ type: "dm.read", userId: id });
+  }, [id, messages.at(-1)?.id, blocked, showJump]);
   return (
     <KeyboardAvoidingView
       style={s.page}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={65}
     >
-      <Touch
-        label={`View ${p?.name || "member"} profile`}
-        onPress={() => nav.open({ kind: "profile", id })}
+      <View
         style={[
           s.row,
           { padding: 19, borderBottomWidth: 1, borderColor: color.line },
         ]}
       >
-        <Avatar profile={p} />
-        <View>
-          <Text style={s.h3}>{p?.name || "Loop member"}</Text>
-          <Text style={s.small}>
-            {connected(state, id)
-              ? "In your circle"
-              : "A new connection starts with a hello"}
-          </Text>
+        <View style={s.grow}>
+          <Touch
+            label={`View ${identity.name} profile`}
+            onPress={() => nav.open({ kind: "profile", id })}
+            style={s.row}
+          >
+            <Avatar profile={identity} />
+            <View style={s.grow}>
+              <Text style={s.h3}>{identity.name}</Text>
+              <Text style={s.small}>
+                {connected(state, id)
+                  ? "In your circle"
+                  : "A new connection starts with a hello"}
+              </Text>
+            </View>
+          </Touch>
         </View>
-      </Touch>
+        {!blocked && (
+          <Button
+            small
+            secondary
+            title={muted ? "Muted" : "Alerts on"}
+            disabled={busy}
+            onPress={() =>
+              void nav.run(
+                { type: "dm.mute", userId: id, muted: !muted },
+                muted ? "Message alerts on" : "Message alerts muted",
+              )
+            }
+          />
+        )}
+      </View>
       <ScrollView
         ref={scroll}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         scrollEventThrottle={64}
         onScroll={(event) => {
+          if (loadingOlder.current) return;
           const { layoutMeasurement, contentOffset, contentSize } =
             event.nativeEvent;
           stickToBottom.current =
@@ -641,6 +693,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
           setShowJump(!stickToBottom.current);
         }}
         onContentSizeChange={() => {
+          if (loadingOlder.current) return;
           if (stickToBottom.current)
             scroll.current?.scrollToEnd({
               animated: !firstLayout.current && !reducedMotion,
@@ -650,7 +703,44 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
         }}
         contentContainerStyle={{ padding: 20, gap: 15, paddingBottom: 30 }}
       >
-        {messages.length === 0 && (
+        {!blocked && directHistory.hasMore && (
+          <Button
+            secondary
+            small
+            title={
+              directHistory.loading
+                ? "Loading earlier messages…"
+                : "Earlier in your conversation ↑"
+            }
+            disabled={directHistory.loading}
+            onPress={() => {
+              loadingOlder.current = true;
+              stickToBottom.current = false;
+              setShowJump(true);
+              void loadOlderDirectMessages()
+                .catch(() =>
+                  nav.toast("Could not load earlier private messages."),
+                )
+                .finally(() =>
+                  requestAnimationFrame(() =>
+                    requestAnimationFrame(() => {
+                      loadingOlder.current = false;
+                    }),
+                  ),
+                );
+            }}
+          />
+        )}
+        {blocked && (
+          <Empty
+            title="Your boundaries are respected"
+            body="This member's conversation is hidden. You can manage blocked members in Privacy & notifications."
+          />
+        )}
+        {!blocked && directHistory.loading && !messages.length && (
+          <Text style={s.small}>Opening your conversation…</Text>
+        )}
+        {!blocked && !directHistory.loading && messages.length === 0 && (
           <Empty
             title="A real hello goes a long way"
             body="Introduce yourself, share what brought you here, and keep it thoughtful."
@@ -691,7 +781,61 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                 ]}
               >
                 <RelativeTime date={m.createdAt} />
-                {!mine && (
+                {!!m.editedAt && (
+                  <Text style={[s.small, { fontSize: 10 }]}>edited</Text>
+                )}
+                {mine ? (
+                  <>
+                    <Touch
+                      label="Edit your private message"
+                      disabled={busy}
+                      onPress={() => {
+                        attachment.clear();
+                        setEditing(m);
+                        setBody(m.body);
+                      }}
+                      style={{ paddingVertical: 8 }}
+                    >
+                      <Text style={[s.small, { fontSize: 10 }]}>Edit</Text>
+                    </Touch>
+                    <Touch
+                      label="Delete your private message"
+                      disabled={busy}
+                      onPress={() =>
+                        Alert.alert(
+                          "Delete your message?",
+                          "Your message and any attached image will be removed from this conversation.",
+                          [
+                            { text: "Keep it", style: "cancel" },
+                            {
+                              text: "Delete message",
+                              style: "destructive",
+                              onPress: () => {
+                                setBusy(true);
+                                void nav
+                                  .run(
+                                    { type: "dm.delete", messageId: m.id },
+                                    "Private message deleted",
+                                  )
+                                  .then((ok) => {
+                                    if (ok && editing?.id === m.id) {
+                                      setEditing(null);
+                                      setBody("");
+                                    }
+                                  })
+                                  .finally(() => setBusy(false));
+                              },
+                            },
+                          ],
+                          { cancelable: true },
+                        )
+                      }
+                      style={{ paddingVertical: 8 }}
+                    >
+                      <Text style={[s.small, { fontSize: 10 }]}>Delete</Text>
+                    </Touch>
+                  </>
+                ) : (
                   <Touch
                     label="Report this private message"
                     style={{ paddingVertical: 8 }}
@@ -734,6 +878,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
             small
             title="Jump to latest ↓"
             onPress={() => {
+              loadingOlder.current = false;
               stickToBottom.current = true;
               setShowJump(false);
               scroll.current?.scrollToEnd({ animated: !reducedMotion });
@@ -757,7 +902,24 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
           </Text>
         ) : (
           <>
-            <ImageAttachmentPicker attachment={attachment} disabled={busy} />
+            {editing && (
+              <View style={s.between}>
+                <Text style={s.small}>Editing your message</Text>
+                <Button
+                  small
+                  secondary
+                  title="Cancel"
+                  disabled={busy}
+                  onPress={() => {
+                    setEditing(null);
+                    setBody("");
+                  }}
+                />
+              </View>
+            )}
+            {!editing && (
+              <ImageAttachmentPicker attachment={attachment} disabled={busy} />
+            )}
             <View style={s.row}>
               <View style={s.grow}>
                 <Field
@@ -771,25 +933,34 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                 />
               </View>
               <Button
-                title={busy ? "…" : "Send ↗"}
+                title={busy ? "…" : editing ? "Save changes" : "Send ↗"}
                 disabled={busy || attachment.busy || !body.trim()}
                 onPress={() => {
+                  loadingOlder.current = false;
                   stickToBottom.current = true;
                   setShowJump(false);
                   setBusy(true);
-                  void attachment
-                    .resolve({ kind: "directMessage", id })
+                  void (
+                    editing
+                      ? Promise.resolve(null)
+                      : attachment.resolve({ kind: "directMessage", id })
+                  )
                     .then((image) =>
-                      nav.run({
-                        type: "dm.send",
-                        userId: id,
-                        body,
-                        ...(image ? { imageId: image.id } : {}),
-                      }),
+                      nav.run(
+                        editing
+                          ? { type: "dm.edit", messageId: editing.id, body }
+                          : {
+                              type: "dm.send",
+                              userId: id,
+                              body,
+                              ...(image ? { imageId: image.id } : {}),
+                            },
+                      ),
                     )
                     .then((ok) => {
                       if (ok) {
                         setBody("");
+                        setEditing(null);
                         attachment.clear();
                       }
                     })

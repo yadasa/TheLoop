@@ -275,12 +275,29 @@ export function Horizontal({ children }: { children: React.ReactNode }) {
     </ScrollView>
   );
 }
+export function displayIdentity(
+  profile: Pick<Profile, "name" | "initials"> | undefined,
+  name?: string,
+  initials?: string,
+): Pick<Profile, "name" | "initials"> {
+  return {
+    name:
+      profile?.name ||
+      (typeof name === "string" && name.trim()) ||
+      "Loop member",
+    initials:
+      profile?.initials ||
+      (typeof initials === "string" && initials.trim()) ||
+      "LP",
+  };
+}
+
 export function Avatar({
   profile,
   size = 40,
   inverse = false,
 }: {
-  profile?: Profile;
+  profile?: Pick<Profile, "name" | "initials">;
   size?: number;
   inverse?: boolean;
 }) {

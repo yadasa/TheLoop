@@ -4,6 +4,7 @@ import { useLoop } from "@theloop/client";
 import { subscriptionFor } from "@theloop/core";
 import {
   Avatar,
+  displayIdentity,
   Chip,
   Empty,
   Field,
@@ -151,8 +152,13 @@ export function Search({ nav }: { nav: Nav }) {
                   {m.body}
                 </Text>
                 <Text style={s.small}>
-                  {state.profiles.find((p) => p.id === m.authorId)?.name ||
-                    "Loop member"}
+                  {
+                    displayIdentity(
+                      state.profiles.find((p) => p.id === m.authorId),
+                      m.authorName,
+                      m.authorInitials,
+                    ).name
+                  }
                 </Text>
               </Touch>
             ))}
