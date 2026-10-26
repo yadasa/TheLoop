@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Linking,
@@ -25,6 +25,8 @@ import {
   Touch,
 } from "./ui";
 import type { Nav } from "./navigation";
+import { DetailState } from "./DetailState";
+import { shareTargetURL } from "./sharedLinks";
 
 const dayKey = (d: string | Date) => new Date(d).toLocaleDateString("en-CA");
 export function Events({ nav }: { nav: Nav }) {
@@ -394,11 +396,28 @@ export function EventCard({ event: e, nav }: { event: LoopEvent; nav: Nav }) {
 }
 
 export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
-  const { state, role } = useLoop();
+  const { state, role, watchEvent, eventStatus } = useLoop();
+  useEffect(() => {
+    watchEvent(id);
+    return () => watchEvent(null);
+  }, [id, watchEvent]);
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
   const event = state.events.find((e) => e.id === id);
-  if (!event)
-    return <Empty title="Event unavailable" body="It may have been removed." />;
+  if (
+    eventStatus.id !== id ||
+    eventStatus.loading ||
+    eventStatus.error ||
+    eventStatus.notFound ||
+    !event
+  )
+    return (
+      <DetailState
+        kind="event"
+        id={id}
+        status={eventStatus}
+        retry={() => watchEvent(id)}
+      />
+    );
   const going = event.attendeeIds.includes(state.currentUserId);
   const waiting = event.waitlistIds.includes(state.currentUserId);
   const full = event.capacity > 0 && event.attendeeIds.length >= event.capacity;
@@ -422,7 +441,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
         startDate: new Date(event.startAt),
         endDate: new Date(event.endAt),
         location: event.location,
-        notes: `${event.description}\n\nTheLoop: theloop://event/${event.id}`,
+        notes: `${event.description}\n\nTheLoop: ${shareTargetURL({ kind: "event", id: event.id })}`,
         timeZone: event.timezone,
         alarms: state.preferences.eventReminders
           ? [{ relativeOffset: -30 }]
@@ -576,7 +595,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
             title="Share ↗"
             onPress={() =>
               void Share.share({
-                message: `${event.title}\n${new Date(event.startAt).toLocaleString()}\n${event.location}\n\n${event.description}\n\ntheloop://event/${event.id}`,
+                message: `${event.title}\n${new Date(event.startAt).toLocaleString()}\n${event.location}\n\n${event.description}\n\n${shareTargetURL({ kind: "event", id: event.id })}`,
               })
             }
           />

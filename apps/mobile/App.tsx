@@ -20,13 +20,19 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
 import { authPersistence } from "./src/authPersistence";
 import { LoopProvider, useLoop } from "@theloop/client";
-import type { Command, LoopState } from "@theloop/core";
+import {
+  parseSharedTarget,
+  type Command,
+  type LoopState,
+  type SharedTarget,
+} from "@theloop/core";
 import {
   Feed,
   PostDetail,
   EditPost,
   Compose,
   Communities,
+  CommunityDetail,
   CreateCommunity,
 } from "./src/Feed";
 import { Chats, ChannelDetail } from "./src/Chat";
@@ -119,6 +125,7 @@ function LoopApp() {
   const reducedMotion = useReducedMotion();
   const [tab, setTab] = useState<Tab>("Home");
   const [stack, setStack] = useState<Route[]>([]);
+  const [pendingLink, setPendingLink] = useState<SharedTarget | null>(null);
   const [toast, setToast] = useState("");
   const fade = useRef(new Animated.Value(1)).current;
   const transition = useRef(0);
@@ -218,28 +225,44 @@ function LoopApp() {
     }
   }, [ready, state.currentUserId, state.preferences.onboardingComplete]);
   useEffect(() => {
+    let active = true;
+    let receivedEvent = false;
     const handle = (url: string) => {
-      const parsed = Linking.parse(url);
-      const parts = [parsed.hostname, ...(parsed.path || "").split("/")].filter(
-        Boolean,
-      );
-      const kind = parts[0];
-      const id = parts[1];
-      if (
-        id &&
-        ["post", "channel", "event", "profile", "squad"].includes(kind || "")
-      )
-        open({
-          kind: kind as "post" | "channel" | "event" | "profile" | "squad",
-          id,
-        });
+      const target = parseSharedTarget(url);
+      if (active && target) setPendingLink(target);
     };
-    void Linking.getInitialURL().then((url) => {
-      if (url) handle(url);
+    void Linking.getInitialURL()
+      .then((url) => {
+        if (url && !receivedEvent) handle(url);
+      })
+      .catch(() => {});
+    const listener = Linking.addEventListener("url", ({ url }) => {
+      receivedEvent = true;
+      handle(url);
     });
-    const listener = Linking.addEventListener("url", ({ url }) => handle(url));
-    return () => listener.remove();
-  }, [open]);
+    return () => {
+      active = false;
+      listener.remove();
+    };
+  }, []);
+  useEffect(() => {
+    if (
+      !pendingLink ||
+      !ready ||
+      !state.currentUserId ||
+      !state.preferences.onboardingComplete
+    )
+      return;
+    // A link is an intent to view, never permission to join a private space.
+    // Keep it across startup/sign-in; show it after initial onboarding completes.
+    setStack([{ ...pendingLink }]);
+    setPendingLink(null);
+  }, [
+    pendingLink,
+    ready,
+    state.currentUserId,
+    state.preferences.onboardingComplete,
+  ]);
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const listener = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -265,6 +288,7 @@ function LoopApp() {
   const title = (route: Route) =>
     ({
       post: "The conversation",
+      community: "Your kind of people",
       "edit-post": "Your perspective",
       channel: "The room",
       event: "The plan",
@@ -292,21 +316,53 @@ function LoopApp() {
       guide: "Explore AfroTech.guide",
     })[route.kind];
   const renderRoute = (route: Route) => {
+    const scope = state.currentUserId || "signed-out";
     switch (route.kind) {
       case "post":
-        return <PostDetail key={route.id} id={route.id} nav={nav} />;
+        return (
+          <PostDetail key={`${scope}:${route.id}`} id={route.id} nav={nav} />
+        );
       case "edit-post":
-        return <EditPost key={route.id} id={route.id} nav={nav} />;
+        return (
+          <EditPost key={`${scope}:${route.id}`} id={route.id} nav={nav} />
+        );
+      case "community":
+        return (
+          <CommunityDetail
+            key={`${scope}:${route.id}`}
+            id={route.id}
+            nav={nav}
+          />
+        );
       case "channel":
-        return <ChannelDetail key={route.id} id={route.id} nav={nav} />;
+        return (
+          <ChannelDetail
+            key={`${scope}:${route.id}:${route.topic || "all"}`}
+            id={route.id}
+            initialTopic={route.topic}
+            nav={nav}
+          />
+        );
       case "event":
-        return <EventDetail key={route.id} id={route.id} nav={nav} />;
+        return (
+          <EventDetail key={`${scope}:${route.id}`} id={route.id} nav={nav} />
+        );
       case "profile":
-        return <ProfileDetail key={route.id} id={route.id} nav={nav} />;
+        return (
+          <ProfileDetail key={`${scope}:${route.id}`} id={route.id} nav={nav} />
+        );
       case "dm":
-        return <DirectChat key={route.id} id={route.id} nav={nav} />;
+        return (
+          <DirectChat key={`${scope}:${route.id}`} id={route.id} nav={nav} />
+        );
       case "compose":
-        return <Compose nav={nav} />;
+        return (
+          <Compose
+            key={`${scope}:${route.communityId || "default"}`}
+            initialCommunityId={route.communityId}
+            nav={nav}
+          />
+        );
       case "communities":
         return <Communities nav={nav} />;
       case "create-community":
@@ -340,14 +396,25 @@ function LoopApp() {
       case "create-squad":
         return <CreateSquad nav={nav} />;
       case "squad":
-        return <SquadDetail key={route.id} id={route.id} nav={nav} />;
+        return (
+          <SquadDetail key={`${scope}:${route.id}`} id={route.id} nav={nav} />
+        );
       case "squad-members":
-        return <SquadMembers key={route.id} id={route.id} nav={nav} />;
+        return (
+          <SquadMembers key={`${scope}:${route.id}`} id={route.id} nav={nav} />
+        );
       case "guide":
         return <PublicGuide nav={nav} />;
     }
   };
-  const active = stack[stack.length - 1];
+  const requestedRoute = stack[stack.length - 1];
+  const active =
+    mode === "live" &&
+    !state.currentUserId &&
+    requestedRoute?.kind !== "auth" &&
+    requestedRoute?.kind !== "guide"
+      ? undefined
+      : requestedRoute;
   const tabs: { name: Tab; symbol: string }[] = [
     { name: "Home", symbol: "◈" },
     { name: "Chat", symbol: "◌" },
@@ -436,7 +503,27 @@ function LoopApp() {
         </Pressable>
       )}
       {mode === "live" && !state.currentUserId ? (
-        <Auth nav={nav} />
+        <View style={{ flex: 1 }}>
+          {pendingLink && (
+            <View style={{ paddingHorizontal: 22, paddingTop: 15, gap: 6 }}>
+              <Text style={s.small}>
+                Sign in to open the shared{" "}
+                {pendingLink.kind === "post"
+                  ? "conversation"
+                  : pendingLink.kind}
+                .
+              </Text>
+              <Touch
+                label="Cancel shared link"
+                onPress={() => setPendingLink(null)}
+                style={{ alignSelf: "flex-start", paddingVertical: 5 }}
+              >
+                <Text style={s.small}>Cancel shared link ×</Text>
+              </Touch>
+            </View>
+          )}
+          <Auth nav={nav} />
+        </View>
       ) : (
         <Animated.View style={{ flex: 1, opacity: fade }}>
           {tab === "Home" ? (

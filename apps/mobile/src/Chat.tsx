@@ -276,11 +276,27 @@ export function Chats({ nav }: { nav: Nav }) {
   );
 }
 
-export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
+export function ChannelDetail({
+  id,
+  initialTopic,
+  nav,
+}: {
+  id: string;
+  initialTopic?: string;
+  nav: Nav;
+}) {
   const { state, watchConversation, loadOlderMessages, history } = useLoop();
   const attachment = useImageAttachment(nav);
   const channel = state.channels.find((c) => c.id === id);
-  const [topic, setTopic] = useState("all");
+  const [topic, setTopic] = useState(() =>
+    initialTopic &&
+    (channel?.topics.includes(initialTopic) ||
+      state.messages.some(
+        (m) => m.channelId === id && m.topic === initialTopic,
+      ))
+      ? initialTopic
+      : "all",
+  );
   const [newTopic, setNewTopic] = useState("");
   const [addingTopic, setAddingTopic] = useState(false);
   const [showHiddenTopics, setShowHiddenTopics] = useState(false);
@@ -306,7 +322,11 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
   useEffect(() => {
     void nav.run({ type: "channel.read", channelId: id });
   }, [id, state.messages.length]);
-  if (!channel)
+  if (
+    !channel ||
+    (channel.visibility === "private" &&
+      !channel.memberIds?.includes(state.currentUserId))
+  )
     return (
       <Empty
         title="Room unavailable"
@@ -322,6 +342,7 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
   const topicNames = allTopicNames.filter(
     (t) =>
       showHiddenTopics ||
+      t === topic ||
       state.preferences.subscriptions[`${id}:${t}`] !== "hidden",
   );
   const messages = state.messages

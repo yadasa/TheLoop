@@ -37,6 +37,7 @@ import {
   useReducedMotion,
 } from "./ui";
 import type { Nav } from "./navigation";
+import { shareTargetURL } from "./sharedLinks";
 import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
 
 export function People({ nav }: { nav: Nav }) {
@@ -540,7 +541,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
             title="Share profile ↗"
             onPress={() =>
               void Share.share({
-                message: `Meet ${p.name} on TheLoop\n${p.headline}\ntheloop://profile/${id}`,
+                message: `Meet ${p.name} on TheLoop\n${shareTargetURL({ kind: "profile", id })}`,
               })
             }
           />

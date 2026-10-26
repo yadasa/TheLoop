@@ -5,7 +5,7 @@ export type Route =
       kind:
         | "post"
         | "edit-post"
-        | "channel"
+        | "community"
         | "event"
         | "profile"
         | "dm"
@@ -13,9 +13,10 @@ export type Route =
         | "squad-members";
       id: string;
     }
+  | { kind: "channel"; id: string; topic?: string }
+  | { kind: "compose"; communityId?: string }
   | {
       kind:
-        | "compose"
         | "communities"
         | "create-community"
         | "create-event"

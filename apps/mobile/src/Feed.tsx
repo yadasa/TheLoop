@@ -20,6 +20,8 @@ import {
   Touch,
 } from "./ui";
 import type { Nav } from "./navigation";
+import { DetailState } from "./DetailState";
+import { shareTargetURL } from "./sharedLinks";
 import {
   confirmContentReport,
   ImageAttachmentPicker,
@@ -509,7 +511,7 @@ export function PostCard({
                         text: "Share",
                         onPress: () =>
                           void Share.share({
-                            message: `${post.title}\n\nJoin the conversation on TheLoop: theloop://post/${post.id}`,
+                            message: `${post.title}\n\nJoin the conversation on TheLoop: ${shareTargetURL({ kind: "post", id: post.id })}`,
                           }),
                       },
                       {
@@ -608,15 +610,36 @@ function PollBlock({ post, nav }: { post: Post; nav: Nav }) {
 }
 
 export function PostDetail({ id, nav }: { id: string; nav: Nav }) {
-  const { state } = useLoop();
+  const { state, watchPost, postStatus } = useLoop();
+  useEffect(() => {
+    watchPost(id);
+    return () => watchPost(null);
+  }, [id, watchPost]);
   const post = state.posts.find((p) => p.id === id);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
-  if (!post)
+  if (
+    postStatus.id !== id ||
+    postStatus.loading ||
+    postStatus.error ||
+    postStatus.notFound ||
+    !post
+  )
+    return (
+      <DetailState
+        kind="post"
+        id={id}
+        status={postStatus}
+        retry={() => watchPost(id)}
+      />
+    );
+  if (state.preferences.blockedIds.includes(post.authorId))
     return (
       <Empty
-        title="Conversation unavailable"
-        body="It may have been removed or you may no longer have access."
+        title="Conversation hidden"
+        body="You have blocked this member. Manage blocked members in your privacy settings."
+        action="Your boundaries"
+        onPress={() => nav.open({ kind: "settings" })}
       />
     );
   return (
@@ -648,7 +671,7 @@ export function PostDetail({ id, nav }: { id: string; nav: Nav }) {
         title="Share conversation ↗"
         onPress={() =>
           void Share.share({
-            message: `${post.title}\n\ntheloop://post/${post.id}`,
+            message: `${post.title}\n\n${shareTargetURL({ kind: "post", id: post.id })}`,
           })
         }
       />
@@ -715,20 +738,44 @@ function confirmPostDelete(post: Post, nav: Nav) {
 }
 
 export function EditPost({ id, nav }: { id: string; nav: Nav }) {
-  const { state } = useLoop();
+  const { state, watchPost, postStatus } = useLoop();
+  useEffect(() => {
+    watchPost(id);
+    return () => watchPost(null);
+  }, [id, watchPost]);
   const post = state.posts.find((p) => p.id === id);
-  const [title, setTitle] = useState(post?.title || "");
-  const [body, setBody] = useState(post?.body || "");
-  const [tags, setTags] = useState(post?.tags.join(", ") || "");
-  const [url, setUrl] = useState(post?.url || "");
-  const [busy, setBusy] = useState(false);
-  if (!post || post.authorId !== state.currentUserId)
+  if (
+    postStatus.id !== id ||
+    postStatus.loading ||
+    postStatus.error ||
+    postStatus.notFound ||
+    !post
+  )
+    return (
+      <DetailState
+        kind="post"
+        id={id}
+        status={postStatus}
+        retry={() => watchPost(id)}
+      />
+    );
+  if (post.authorId !== state.currentUserId)
     return (
       <Empty
         title="This edit belongs to its author"
         body="You can edit your own posts. Report a concern on someone else's conversation."
       />
     );
+  return <PostEditor key={id} post={post} nav={nav} />;
+}
+
+function PostEditor({ post, nav }: { post: Post; nav: Nav }) {
+  const id = post.id;
+  const [title, setTitle] = useState(post.title);
+  const [body, setBody] = useState(post.body);
+  const [tags, setTags] = useState(post.tags.join(", "));
+  const [url, setUrl] = useState(post.url || "");
+  const [busy, setBusy] = useState(false);
   return (
     <ScrollView
       keyboardShouldPersistTaps="handled"
@@ -970,11 +1017,23 @@ function CommentItem({
   );
 }
 
-export function Compose({ nav }: { nav: Nav }) {
+export function Compose({
+  nav,
+  initialCommunityId,
+}: {
+  nav: Nav;
+  initialCommunityId?: string;
+}) {
   const { state } = useLoop();
   const attachment = useImageAttachment(nav);
   const [communityId, setCommunity] = useState(
-    state.preferences.joinedCommunityIds[0] || state.communities[0]?.id || "",
+    (initialCommunityId &&
+    state.communities.some((c) => c.id === initialCommunityId)
+      ? initialCommunityId
+      : "") ||
+      state.preferences.joinedCommunityIds[0] ||
+      state.communities[0]?.id ||
+      "",
   );
   const [kind, setKind] = useState<Post["kind"]>("discussion");
   const [title, setTitle] = useState("");
@@ -1141,6 +1200,12 @@ export function Communities({ nav }: { nav: Nav }) {
               <Label>{c.members.toLocaleString()} MEMBERS</Label>
             </View>
             <Text style={s.h2}>l/{c.slug}</Text>
+            <Button
+              secondary
+              small
+              title="Explore community ↗"
+              onPress={() => nav.open({ kind: "community", id: c.id })}
+            />
             <Text style={s.body}>{c.description}</Text>
             <Text style={s.small}>
               {c.rules[0] || "Be kind. Share generously. Respect the room."}
@@ -1183,6 +1248,103 @@ export function Communities({ nav }: { nav: Nav }) {
     </ScrollView>
   );
 }
+
+export function CommunityDetail({ id, nav }: { id: string; nav: Nav }) {
+  const { state, hasMore, loadMore } = useLoop();
+  const community = state.communities.find((c) => c.id === id);
+  if (!community)
+    return (
+      <Empty
+        title="Community unavailable"
+        body="This community is not in your current directory. Browse the available communities or reopen the link later."
+        action="Browse communities"
+        onPress={() => nav.open({ kind: "communities" })}
+      />
+    );
+  const joined = state.preferences.joinedCommunityIds.includes(id);
+  const preference = state.preferences.subscriptions[id] || "following";
+  const posts = state.posts
+    .filter(
+      (p) =>
+        p.communityId === id &&
+        !state.preferences.blockedIds.includes(p.authorId),
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return (
+    <ScrollView contentContainerStyle={s.content}>
+      <Text style={{ fontSize: 38 }}>{community.icon || "◎"}</Text>
+      <Text style={s.title}>l/{community.slug}</Text>
+      <Label>{community.members.toLocaleString()} MEMBERS</Label>
+      <Text style={s.body}>{community.description}</Text>
+      <Button
+        title={joined ? "Joined ✓ · Leave community" : "Join community"}
+        secondary={joined}
+        onPress={() =>
+          void nav.run({ type: "community.join", communityId: id })
+        }
+      />
+      <Button
+        secondary
+        title={`Notifications: ${preference} ▾`}
+        onPress={() =>
+          pickSubscription(
+            community.name,
+            preference,
+            (value) =>
+              void nav.run({ type: "subscription.set", targetId: id, value }),
+          )
+        }
+      />
+      <Button
+        secondary
+        title="Share community ↗"
+        onPress={() =>
+          void Share.share({
+            message: `${community.name}\n${shareTargetURL({ kind: "community", id })}`,
+          })
+        }
+      />
+      <View style={s.card}>
+        <Text style={s.h3}>The tone we set together</Text>
+        {(community.rules.length
+          ? community.rules
+          : ["Be kind. Share generously. Respect the room."]
+        ).map((rule, i) => (
+          <Text key={`${i}:${rule}`} style={s.small}>
+            {i + 1}. {rule}
+          </Text>
+        ))}
+      </View>
+      <Section
+        title="Community conversations"
+        subtitle="Recent conversations in your loaded feed"
+      />
+      {posts.map((post) => (
+        <PostCard key={post.id} post={post} nav={nav} />
+      ))}
+      {!posts.length && (
+        <Text style={s.small}>
+          No conversations from this community in the current feed. Load more or
+          share a perspective with your people.
+        </Text>
+      )}
+      {hasMore.posts && (
+        <Button
+          secondary
+          title="Load more conversations ↓"
+          onPress={() => loadMore("posts")}
+        />
+      )}
+      {joined && (
+        <Button
+          title="Share a perspective ↗"
+          onPress={() => nav.open({ kind: "compose", communityId: id })}
+        />
+      )}
+    </ScrollView>
+  );
+}
+
 export function CreateCommunity({ nav }: { nav: Nav }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");

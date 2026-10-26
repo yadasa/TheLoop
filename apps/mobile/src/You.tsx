@@ -840,7 +840,7 @@ export function Onboarding({ nav }: { nav: Nav }) {
                         Intl.DateTimeFormat().resolvedOptions().timeZone,
                     },
                   })
-                  .then(() => nav.close());
+                  .then(() => nav.closeIfTop("onboarding"));
             })
             .finally(() => setBusy(false));
         }}
