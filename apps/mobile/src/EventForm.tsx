@@ -41,6 +41,18 @@ function localEventTime(instant: string, timezone: string): string {
 }
 
 export function CreateEvent({ nav }: { nav: Nav }) {
+  const { state } = useLoop();
+  if (!state.conferences.length)
+    return (
+      <ScrollView contentContainerStyle={s.content}>
+        <Empty
+          title="No conferences yet"
+          body="An organizer needs to add a conference before you can create an event. You can still browse public AfroTech events."
+          action="Browse AfroTech.guide"
+          onPress={() => nav.open({ kind: "guide" })}
+        />
+      </ScrollView>
+    );
   return <EventEditor nav={nav} />;
 }
 

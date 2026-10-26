@@ -92,21 +92,19 @@ export function Events({ nav }: { nav: Nav }) {
         </Touch>
       </View>
       <Text style={s.body}>
-        Find conference sessions, dinners, and meetups. RSVP to keep track of
-        the events you plan to attend.
+        Find events and keep your RSVPs in one place.
       </Text>
-      <View style={[s.card, { backgroundColor: color.soft }]}>
-        <Label>PUBLIC EVENTS · AFROTECH.GUIDE</Label>
-        <Text style={s.h2}>AfroTech side events</Text>
-        <Text style={s.small}>
-          Explore public conference side events and meetups from the Guide.
-        </Text>
-        <Button
-          secondary
-          title="Browse AfroTech.guide"
-          onPress={() => nav.open({ kind: "guide" })}
-        />
-      </View>
+      <Touch
+        label="Browse public AfroTech side events from AfroTech.guide"
+        onPress={() => nav.open({ kind: "guide" })}
+        style={[s.card, s.between, { backgroundColor: color.soft, paddingVertical: 15 }]}
+      >
+        <View style={{ flex: 1, gap: 5 }}>
+          <Text style={[s.overline, { fontSize: 9, letterSpacing: 1 }]}>PUBLIC · AFROTECH.GUIDE</Text>
+          <Text style={s.h3}>AfroTech side events</Text>
+        </View>
+        <Text style={[s.h2, { marginLeft: 10 }]} accessibilityElementsHidden>›</Text>
+      </Touch>
       <Horizontal>
         <Chip
           title="Global calendar"
@@ -132,18 +130,12 @@ export function Events({ nav }: { nav: Nav }) {
         onChangeText={setSearch}
         placeholder="Search events by name, location, or tag"
       />
-      <Button
-        small
-        secondary
-        title="Import events from a spreadsheet"
-        onPress={() => nav.open({ kind: "import-events" })}
-      />
       <View style={s.between}>
         <Horizontal>
           {["all", "conference", "meetup", "workshop", "social"].map((v) => (
             <Chip
               key={v}
-              title={v === "all" ? "Everything" : v}
+              title={v === "all" ? "Everything" : v.charAt(0).toUpperCase() + v.slice(1)}
               selected={kind === v}
               onPress={() => setKind(v)}
             />
@@ -157,6 +149,7 @@ export function Events({ nav }: { nav: Nav }) {
             <Touch
               key={v}
               label={`${v} view`}
+              selected={mode === v}
               onPress={() => {
                 setMode(v);
                 setSelected("");
@@ -241,6 +234,7 @@ export function Events({ nav }: { nav: Nav }) {
                 <View key={i} style={{ width: "14.285%" }}>
                   <Touch
                     label={`${date.toLocaleDateString()}, ${has ? "has events" : "no events"}`}
+                    selected={selected === key}
                     onPress={() => setSelected(selected === key ? "" : key)}
                     style={{
                       height: 42,
@@ -308,6 +302,12 @@ export function Events({ nav }: { nav: Nav }) {
           onPress={() => nav.open({ kind: "create-event" })}
         />
       )}
+      <Button
+        small
+        secondary
+        title="Import events from a spreadsheet"
+        onPress={() => nav.open({ kind: "import-events" })}
+      />
       <Text style={[s.small, { textAlign: "center" }]}>
         Times shown in your device timezone. Event details include the host
         timezone.
