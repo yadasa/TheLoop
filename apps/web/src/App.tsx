@@ -46,6 +46,7 @@ import { useLoop } from "@theloop/client";
 import {Avatar,Empty,Field,Logo,ModalShell} from "./ui";
 import {ContentDialog,type ContentMode,type ContentTarget} from "./ContentDialog";
 import Squads from './Squads';
+import GuideDialog from './GuideDialog';
 import {
   channelUnread,
   connected,
@@ -93,6 +94,7 @@ type Modal =
   | "organize"
   | "topic"
   | "followers"
+  | 'guide'
   | null;
 const nav = [
   ["home", Home, "Your loop"],
@@ -1624,6 +1626,7 @@ export default function App() {
                   </p>
                 </div>
                 <div className="heading-actions">
+                  <button className="button subtle" onClick={()=>setModal('guide')}><Globe size={15}/>AfroTech guide<ArrowUpRight size={14}/></button>
                   <button
                     className="button subtle"
                     onClick={() => setModal("import")}
@@ -2348,7 +2351,7 @@ export default function App() {
           <span>THE LOOP © {new Date().getFullYear()}</span>
           <span>
             {mode === "demo"
-              ? "Interactive preview · all people, counts and events are fictional samples."
+              ? "Fictional sample community · live Guide listings show their source."
               : "Your attention belongs to you."}
           </span>
           <button onClick={() => setModal("settings")}>
@@ -3644,6 +3647,7 @@ export default function App() {
           </form>
         </ModalShell>
       )}
+      {modal==='guide'&&<GuideDialog close={()=>setModal(null)} notify={toast}/>}
       {modal === "import" && (
         <ImportDialog
           close={() => setModal(null)}
