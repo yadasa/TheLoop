@@ -40,10 +40,12 @@ import {
   Menu,
   CheckCheck,
   Copy,
+  UsersRound,
 } from "lucide-react";
 import { useLoop } from "@theloop/client";
 import {Avatar,Empty,Field,Logo,ModalShell} from "./ui";
 import {ContentDialog,type ContentMode,type ContentTarget} from "./ContentDialog";
+import Squads from './Squads';
 import {
   channelUnread,
   connected,
@@ -75,6 +77,7 @@ type Page =
   | "saved"
   | "profile"
   | "inbox";
+type SquadPage = 'squads';
 type Modal =
   | "compose"
   | "event"
@@ -98,6 +101,7 @@ const nav = [
   ["calendar", CalendarDays, "Calendar"],
   ["people", Users, "People"],
   ["inbox", Mail, "Inbox"],
+  ["squads", UsersRound, "Squads"],
 ] as const;
 export default function App() {
   const {
@@ -124,13 +128,14 @@ export default function App() {
     refreshVerification,
     watchConversation,loadOlderMessages,history,directory,setDirectoryQuery,loadMoreDirectory,loadSavedPosts,loadProfile,
   } = useLoop();
-  const [page, setPage] = useState<Page>("home"),
+  const [page, setPage] = useState<Page|SquadPage>("home"),
     [modal, setModal] = useState<Modal>(null),
     [channelId, setChannelId] = useState("the-lobby"),
     [topic, setTopic] = useState("All topics"),
     [communityId, setCommunityId] = useState("all"),
     [profileId, setProfileId] = useState(""),
     [dmId, setDmId] = useState(""),
+    [squadId,setSquadId]=useState(''),
     [query, setQuery] = useState(""),
     [searchOpen, setSearchOpen] = useState(false),
     [feedTab, setFeedTab] = useState("For you"),
@@ -160,7 +165,8 @@ export default function App() {
   const activeChannel =
     availableChannels.find((c) => c.id === channelId) ?? availableChannels[0];
   const activeCommunity = s.communities.find((c) => c.id === communityId);
-  const unread = s.notifications.filter((n) => !n.read).length;
+  const myNotifications=s.notifications.filter(n=>n.userId===s.currentUserId);
+  const unread = myNotifications.filter((n) => !n.read).length;
   const toast = (text: string) => {
     setNotice(text);
   };
@@ -178,8 +184,11 @@ export default function App() {
       return false;
     }
   };
-  const navigate = (target: Page) => {
+  const navigate = (target: Page|SquadPage) => {
     setPage(target);
+    setModal(null);
+    setPostDetail(null);
+    setContentTarget(null);
     setMobileNav(false);
     setSearchOpen(false);
     setQuery("");
@@ -191,7 +200,7 @@ export default function App() {
   };
   const showContent=(target:ContentTarget,mode:ContentMode='menu')=>{setContentTarget(target);setContentMode(mode);};
   const accountId=useRef(s.currentUserId);
-  useEffect(()=>{if(accountId.current===s.currentUserId)return;accountId.current=s.currentUserId;welcomed.current=false;setModal(null);setContentTarget(null);setPostDetail(null);setReplyTo(null);setDmId('');setProfileId('');setPage('home');setQuery('');setSearchOpen(false);setMobileNav(false);},[s.currentUserId]);
+  useEffect(()=>{if(accountId.current===s.currentUserId)return;accountId.current=s.currentUserId;welcomed.current=false;setModal(null);setContentTarget(null);setPostDetail(null);setReplyTo(null);setDmId('');setSquadId('');setProfileId('');setPage('home');setQuery('');setSearchOpen(false);setMobileNav(false);},[s.currentUserId]);
   useEffect(()=>{watchConversation(page==='chat'?activeChannel?.id??null:null,topic==='All topics'?undefined:topic);return()=>watchConversation(null);},[page,activeChannel?.id,topic,watchConversation]);
   useEffect(()=>{if(page==='saved')void loadSavedPosts().catch(()=>{});},[page,loadSavedPosts,s.preferences.savedPostIds.join('|')]);
   useEffect(()=>{const timer=setTimeout(()=>setDirectoryQuery(page==='people'||searchOpen?query:''),300);return()=>clearTimeout(timer);},[query,page,searchOpen,setDirectoryQuery]);
@@ -2205,6 +2214,7 @@ export default function App() {
                 </>
               );
             })()}
+          {page==='squads'&&<Squads selectedId={squadId} select={setSquadId} openProfile={openProfile} run={act} report={target=>{setReportTarget(target);setModal('report');}}/>}
           {page === "inbox" && (
             <>
               <div className="page-heading">
@@ -2935,7 +2945,7 @@ export default function App() {
               <CheckCheck size={14} />
               Mark all read
             </button>
-            {s.notifications.map((n) => (
+            {myNotifications.map((n) => (
               <button
                 className={`notification-item ${!n.read ? "unread" : ""}`}
                 key={n.id}
@@ -2944,6 +2954,7 @@ export default function App() {
                   setModal(null);
                   if (n.kind === "connection") navigate("people");
                   else if (n.kind === "event") navigate("calendar");
+                  else if(n.kind==='squad'){setSquadId(s.squads.some(g=>g.id===n.targetId&&g.memberIds.includes(s.currentUserId))?n.targetId:'');navigate('squads');}
                   else if (n.kind === "community") {
                     const post = s.posts.find((p) => p.id === n.targetId);
                     if (post) setPostDetail(post.id);
@@ -2975,7 +2986,7 @@ export default function App() {
                 {!n.read && <i />}
               </button>
             ))}
-            {!s.notifications.length && (
+            {!myNotifications.length && (
               <Empty
                 title="A little peace and quiet."
                 body="Your notifications will show up here."
@@ -3305,7 +3316,9 @@ export default function App() {
                 className="text-button"
                 onClick={() => {
                   resetDemo();
-                  setModal(null);
+                  welcomed.current=true;
+                  navigate('home');
+                  setModal('interests');
                   toast("A fresh sample is ready.");
                 }}
               >
@@ -3614,7 +3627,7 @@ export default function App() {
                 setModal(null);
             }}
           >
-            {reportTarget.type==='directMessage'&&<div className="callout"><strong>Share this message with community care?</strong><p>Sending this report shares an excerpt of the selected private message with moderators. It does not open the rest of your conversation.</p><blockquote>{s.directMessages.find(d=>d.id===reportTarget.id)?.body??'This message is no longer loaded.'}</blockquote></div>}
+            {(reportTarget.type==='directMessage'||reportTarget.type==='squadMessage')&&<div className="callout"><strong>Share this message with community care?</strong><p>Sending this report shares an excerpt of the selected private message with moderators. It does not open the rest of your conversation.</p><blockquote>{(reportTarget.type==='directMessage'?s.directMessages.find(d=>d.id===reportTarget.id)?.body:s.squadMessages.find(m=>m.id===reportTarget.id)?.body)??'This message is no longer loaded.'}</blockquote></div>}
             <Field label="What should we know?">
               <textarea
                 name="reason"

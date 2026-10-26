@@ -450,3 +450,55 @@
 .dm-report:hover{opacity:1}
 .dm-messages{overflow-y:auto;min-height:0}
 @media(max-width:760px){.chat-layout{height:calc(100dvh - 144px);min-height:350px}.chat-heading{padding:15px 0}.chat-heading h1{font-size:20px}.chat-composer{margin-top:4px}.action-row{padding:16px}.message-list{padding-right:3px}}
+.squads-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:24px;min-height:460px;height:calc(100dvh - 280px)}
+.squad-catalog{overflow-y:auto;min-height:0;scrollbar-width:thin}
+.squad-card{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:16px 12px;border-radius:12px;margin:5px 0;transition:background .15s}
+.squad-card:hover,.squad-card.active{background:#ebebea}
+.squad-symbol,.squad-avatar{display:grid;place-items:center;flex-shrink:0;width:40px;height:40px;border:1px solid #d7d7d4;background:#f3f3f0;border-radius:12px;font-size:15px;font-weight:600;color:#555}
+.squad-avatar{width:36px;height:36px;font-size:11px;border-radius:50%}
+.squad-card>span:nth-child(2){flex:1;min-width:0;display:grid;gap:6px}
+.squad-card strong{font-size:13px;overflow-wrap:anywhere}
+.squad-card small{font-size:11px;color:#777}
+.squad-assurance{display:flex;gap:12px;color:#888;margin:26px 12px;align-items:flex-start}
+.squad-assurance p,.squad-note{font-size:11px;line-height:1.7}
+.squad-note{color:#777;padding:20px 12px}
+.squad-invitations{margin-top:26px}
+.squad-invitations article{padding:18px 14px;border:1px solid var(--line);border-radius:14px;background:#fff;margin-top:14px}
+.squad-invitations h3{font-size:16px;letter-spacing:-.03em;margin-top:10px}
+.squad-invitations p{font-size:12px;color:#737373;line-height:1.6;margin:10px 0}
+.squad-invitations small{font-size:10px;color:#888;display:block;line-height:1.7}
+.squad-invitations article>div{display:flex;align-items:center;gap:14px;margin-top:16px}
+.squad-conversation{border:1px solid var(--line);border-radius:18px;display:flex;flex-direction:column;min-width:0;min-height:0;background:#fdfdfb;overflow:hidden;position:relative}
+.squad-conversation>.empty{flex:1}
+.squad-chat-heading{display:flex;align-items:center;gap:13px;padding:18px 22px;border-bottom:1px solid var(--line);flex-shrink:0}
+.squad-chat-heading>div{flex:1;min-width:0}
+.squad-chat-heading h2{font-size:19px;font-weight:600;letter-spacing:-.04em;overflow-wrap:anywhere}
+.squad-chat-heading p{font-size:11px;color:#888;margin-top:5px}
+.squad-back{display:none}
+.squad-history{flex:1;min-height:0;overflow-y:auto;padding:8px 20px 16px;scrollbar-width:thin;overflow-anchor:none;overscroll-behavior:contain}
+.squad-history-note{font-size:10px;color:#888;text-align:center;padding:16px 7px;line-height:1.7}
+.squad-history-note svg{vertical-align:-2px;margin-right:5px}
+.squad-message{padding:17px 0}
+.squad-message p{font-size:13px;line-height:1.75}
+.squad-message .name-button{font-size:12px}
+.squad-message time{font-size:10px}
+.squad-message .reactions>button{font-size:10px;min-height:26px}
+.squad-composer{padding:16px;border-top:1px solid var(--line);background:#fff;flex-shrink:0}
+.squad-composer>div:not(.reply-preview){display:flex;align-items:flex-end;gap:12px}
+.squad-composer textarea{font-size:13px;resize:none;min-height:54px;padding:10px 12px;background:#f6f6f3;border:1px solid #e7e7e2;border-radius:11px;line-height:1.6}
+.squad-composer>small{display:block;font-size:9px;color:#999;margin:9px 2px 0}
+.squad-composer .reply-preview{margin-bottom:10px}
+.squad-composer .reply-preview button{float:right;min-height:24px;min-width:24px}
+.squad-jump{align-self:center;position:absolute;bottom:125px;z-index:2;display:flex;align-items:center;gap:8px;background:#242424;color:#fff;padding:10px 16px;border-radius:30px;font-size:11px;box-shadow:0 4px 15px #0002}
+.squad-details{display:grid;gap:16px}
+.squad-member{display:flex;align-items:center;gap:12px;min-height:48px}
+.squad-member>div{flex:1;min-width:0;display:grid;gap:5px}
+.squad-member strong{font-size:13px}
+.squad-member small{font-size:11px;line-height:1.5;color:#888}
+.squad-member .text-button{font-size:10px}
+.squad-pending{padding:16px;background:#f3f3ef;border-radius:12px}
+.squad-pending>div{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:16px;font-size:12px}
+.squad-pending small{display:block;color:#888;font-size:10px;margin-top:5px}
+.squad-edit{display:grid;gap:16px;padding-top:12px;border-top:1px solid var(--line)}
+@media(max-width:1050px) and (min-width:761px){.squads-layout{grid-template-columns:210px minmax(0,1fr);gap:14px}.squad-chat-heading{padding:16px}.squad-symbol{width:34px;height:34px}}
+@media(max-width:760px){.squads-layout{display:block;height:auto;min-height:0}.squads-layout.has-active{height:calc(100dvh - 260px);min-height:350px}.squads-layout.has-active .squad-catalog{display:none}.squad-conversation{height:100%}.squads-layout:not(.has-active) .squad-conversation{display:none}.squad-back{display:grid}.squad-chat-heading{gap:9px;padding:14px 12px}.squad-chat-heading h2{font-size:17px}.squad-chat-heading>.squad-symbol{display:none}.squad-chat-heading p{font-size:10px}.squad-history{padding:7px 13px 12px}.squad-composer{padding:12px}.squad-message .name-button{font-size:12px}.squad-message time{font-size:9px}.squad-invitations article{padding:18px}.squad-card{padding:16px}.squad-member .text-button{font-size:9px}}
