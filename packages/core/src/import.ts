@@ -134,7 +134,7 @@ export function previewEventCSV(input: string, options: EventCSVOptions): EventC
       if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(value)) row.errors.push(`${key}: remove unsupported control characters.`);
       return value;
     };
-    const title = text('title', 160, true), description = text('description', 3000, false), location = text('location', 300, true);
+    const title = text('title', 160, true), description = text('description', 3000, false), location = text('location', 240, true);
     const timezone = data.timezone || options.defaultTimezone || 'UTC';
     const timezoneOK = zoneValid(timezone);
     if (!timezoneOK) row.errors.push('timezone: use an IANA timezone such as America/Chicago.');
@@ -143,11 +143,11 @@ export function previewEventCSV(input: string, options: EventCSVOptions): EventC
     const kind = (data.kind || 'meetup') as LoopEvent['kind'];
     if (!['conference', 'meetup', 'workshop', 'social'].includes(kind)) row.errors.push('kind: choose conference, meetup, workshop, or social.');
     const capacityText = data.capacity || '0', capacity = Number(capacityText);
-    if (!/^\d+$/.test(capacityText) || !Number.isInteger(capacity) || capacity > 10000) row.errors.push('capacity: use a whole number from 0 to 10,000 (0 means unlimited).');
+    if (!/^\d+$/.test(capacityText) || !Number.isInteger(capacity) || capacity > 1000) row.errors.push('capacity: use a whole number from 0 to 1,000 (0 means unlimited).');
     const tags = (data.tags || '').split('|').map(tag => tag.trim()).filter(Boolean);
-    if (tags.length > 12 || tags.some(tag => tag.length > 50)) row.errors.push('tags: add at most 12 tags of up to 50 characters, separated by |.');
+    if (tags.length > 6 || tags.some(tag => tag.length > 30)) row.errors.push('tags: add at most 6 tags of up to 30 characters, separated by |.');
     const url = data.url || undefined;
-    if (url && (url.length > 2048 || !safeURL(url))) row.errors.push('url: use a valid http or https link without credentials.');
+    if (url && (url.length > 2048 || !safeURL(url) || !/^https:/i.test(url))) row.errors.push('url: use a valid HTTPS link without credentials.');
     let startAt = '', endAt = '';
     if (timezoneOK) for (const key of ['startAt', 'endAt'] as const) {
       try { const value = parseInstant(data[key] || '', timezone); if (key === 'startAt') startAt = value; else endAt = value; }

@@ -68,6 +68,11 @@ test("manual entries cannot bypass duplicate, capacity, or link validation", () 
     { capacity: "10001" },
     { url: "javascript:alert(1)" },
     { timezone: "Unknown/Place" },
+    { capacity: "1001" },
+    { location: "x".repeat(241) },
+    { tags: ["x".repeat(31)] },
+    { tags: ["a", "b", "c", "d", "e", "f", "g"] },
+    { url: "http://example.com/event" },
   ])
     assert.equal(
       previewEventDraft({ ...values, ...patch }, options).event,
