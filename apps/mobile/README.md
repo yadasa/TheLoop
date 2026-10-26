@@ -29,6 +29,8 @@ For local Firebase emulator testing, set `EXPO_PUBLIC_EMULATOR_HOST` to your com
 
 ## Build an installable preview
 
+The verified Android preview is [0.3.0, build 3](https://expo.dev/artifacts/eas/3myzZDxLMUjtLFFnIkTnXffLjtNtVuHAincGf7euhj0.apk), built from `46c7bee99363b8237ab555fd07c09d16eab65085`. [EAS build details](https://expo.dev/accounts/keithazodeh/projects/theloop-community/builds/c8b628c7-b12c-4286-a7a1-a622d52d5619) confirm completion on October 26, 2026. The downloaded APK passed ZIP integrity, manifest version/package, Hermes and four native ABI checks. Its SHA256 is `54ADF39C89A8770EC624E798DBA2C5E0C1E30BB51EF304FCFCB598EDA5B7A274`. This establishes the artifact contents; installed-device behavior still needs the checks below.
+
 If Metro file watching times out on Windows, run `pnpm --filter @theloop/mobile start:stable` from the repository root. This optional preview mode uses two workers and disables file watching through Expo's CI mode. Restart it after source changes. It uses port 8097 and Expo Go; enter `exp://YOUR_COMPUTER_LAN_IP:8097` on your phone. The normal `pnpm mobile` command retains hot reload. Preview metadata is version **0.3.0**, Android version code **3**, and iOS build number **3**.
 
 ```sh
