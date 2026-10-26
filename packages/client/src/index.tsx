@@ -60,12 +60,15 @@ import {
   type SquadMessage,
   type MediaTarget,
   type ImageAttachment,
+  type DirectConversation,
+  type DirectCatalogProgress,
 } from "@theloop/core";
 import { documentIdBatches, matchesDirectory, mergeMessages, mergeSquadInvites, normalizeDirectoryQuery, previewChannelIds, revokePrivateProfiles, visibleSquadMessages } from "./data";
 import { directoryPageQuery, messagePageQuery, squadMessagePageQuery, squadMembershipQuery, squadParticipantInvitesQuery, squadIncomingInvitesQuery, squadOwnerInvitesQuery } from "./queries";
 import { MessagePages } from "./messagePages";
 import { directConversationId, isDirectConversation, mergeDirectMessages, type DirectSnapshot } from "./directData";
-import { directMessagePageQuery } from "./directQueries";
+import { directMessagePageQuery, directCatalogPageQuery } from "./directQueries";
+import { deriveDirectCatalog, emptyDirectCatalog, mergeDirectWatermark, newerDirectCatalogProgress, normalizeDirectConversation, normalizeDirectRead, parseDirectCatalogProgress, parseDirectConversation, type DirectCatalogState, type DirectWatermark } from "./directCatalog";
 import { drainDirectRead } from "./directRead";
 import { DocumentWatch, type DocumentStatus } from "./documentWatch";
 import { DocumentCache, updateEventBuckets, type DocumentRead } from "./documentCache";
@@ -75,6 +78,7 @@ export type { ImageUploadInput, ImageDataResult } from "./media";
 export { stripWebPMetadata } from "./media";
 export { directParticipantSnapshot, type DirectSnapshot } from "./directData";
 export type { DocumentStatus } from "./documentWatch";
+export type { DirectCatalogState } from "./directCatalog";
 export type StorageDriver = {
   load(): Promise<LoopState | null>;
   save(state: LoopState): Promise<void>;
@@ -136,6 +140,9 @@ type LoopContextValue = {
   watchEvent(id: string | null): void;
   postStatus: DocumentStatus;
   eventStatus: DocumentStatus;
+  directCatalog: DirectCatalogState;
+  loadMoreDirectConversations(): void;
+  syncDirectConversations(): Promise<void>;
 };
 const Context = createContext<LoopContextValue | null>(null);
 let cloud: { auth: Auth; db: Firestore; functions: Functions } | undefined;
@@ -210,6 +217,7 @@ export function restorePreview(saved: LoopState): LoopState {
     for (const key of ["fromName", "fromInitials", "toName", "toInitials"] as const) if (message[key] !== undefined && typeof message[key] !== "string") throw new Error("Invalid saved direct-message identity.");
     if (message.conversationId !== undefined && message.conversationId !== directConversationId(message.fromId, message.toId)) throw new Error("Invalid saved direct-message conversation.");
   }
+  if (saved.directConversations !== undefined && (!Array.isArray(saved.directConversations) || saved.directConversations.some(conversation => !parseDirectConversation(conversation, conversation.id, saved.currentUserId)))) throw new Error("Invalid saved private conversation catalog.");
   if (saved.previewImages !== undefined) {
     if (!object(saved.previewImages) || Object.keys(saved.previewImages).length > 64) throw new Error("Invalid saved preview images.");
     let total = 0;
@@ -262,6 +270,7 @@ export function LoopProvider({
   const [directHistory, setDirectHistory] = useState({ loading: false, hasMore: false });
   const [postStatus, setPostStatus] = useState<DocumentStatus>({ id: null, loading: false, notFound: false, error: null });
   const [eventStatus, setEventStatus] = useState<DocumentStatus>({ id: null, loading: false, notFound: false, error: null });
+  const [directCatalog, setDirectCatalog] = useState<DirectCatalogState>(emptyDirectCatalog);
   const [directory, setDirectory] = useState<{ results: Profile[]; loading: boolean; hasMore: boolean }>({ results: [], loading: false, hasMore: false });
   const [directoryQuery, updateDirectoryQuery] = useState("");
   const directoryQueryRef = useRef("");
@@ -284,6 +293,8 @@ export function LoopProvider({
     loadOlderDirectMessages(): Promise<void>;
     watchPost(id: string | null): void;
     watchEvent(id: string | null): void;
+    loadMoreDirectConversations(): void;
+    syncDirectConversations(): Promise<void>;
   }>>({});
   const watchConversation = useCallback((channelId: string | null, topic?: string) => {
     const previous = conversationRef.current;
@@ -324,6 +335,13 @@ export function LoopProvider({
     eventRef.current = id;
     if (liveActions.current.watchEvent) liveActions.current.watchEvent(id);
     else setEventStatus(localDocumentStatus(id, "event"));
+  }, []);
+  const loadMoreDirectConversations = useCallback(() => liveActions.current.loadMoreDirectConversations?.(), []);
+  const syncDirectConversations = useCallback(async () => {
+    if (modeRef.current === "demo") return;
+    const action = liveActions.current.syncDirectConversations;
+    if (!action) throw new Error("Sign in to find earlier conversations.");
+    await action();
   }, []);
   const setDirectoryQuery = useCallback((value: string) => {
     const normalized = normalizeDirectoryQuery(value);
@@ -431,6 +449,11 @@ export function LoopProvider({
     if (mode === "demo") { setPostStatus(localDocumentStatus(postRef.current, "post")); setEventStatus(localDocumentStatus(eventRef.current, "event")); }
   }, [mode, ready, state.posts, state.events]);
   useEffect(() => {
+    if (mode !== "demo") return;
+    const results = deriveDirectCatalog(state);
+    setDirectCatalog({ results, loading: !ready, hasMore: false, progress: ready ? { complete: true, processed: state.directMessages.filter(message => [message.fromId, message.toId].includes(state.currentUserId)).length, cursor: null, updatedAt: new Date().toISOString() } : null, syncing: false, error: null });
+  }, [mode, ready, state.directMessages, state.profiles, state.connections, state.preferences.blockedIds]);
+  useEffect(() => {
     if (mode === "demo") setDirectory({ results: state.profiles.filter(profile => matchesDirectory(profile, directoryQuery)), loading: false, hasMore: false });
   }, [mode, state.profiles, directoryQuery]);
   useEffect(() => {
@@ -444,6 +467,7 @@ export function LoopProvider({
     setDirectHistory({ loading: false, hasMore: false });
     setPostStatus({ id: postRef.current, loading: Boolean(postRef.current), notFound: false, error: null });
     setEventStatus({ id: eventRef.current, loading: Boolean(eventRef.current), notFound: false, error: null });
+    setDirectCatalog(emptyDirectCatalog());
     if (mode === "demo") {
       setState(initialState());
       storageRef.current
@@ -491,6 +515,7 @@ export function LoopProvider({
       setDirectHistory({ loading: false, hasMore: false });
       setPostStatus({ id: postRef.current, loading: Boolean(user && postRef.current), notFound: false, error: !user && postRef.current ? "Sign in to open this post." : null });
       setEventStatus({ id: eventRef.current, loading: Boolean(user && eventRef.current), notFound: false, error: !user && eventRef.current ? "Sign in to open this event." : null });
+      setDirectCatalog(emptyDirectCatalog());
       setDirectory({ results: [], loading: false, hasMore: false });
       setRole("member");
       setEmailVerified(user?.emailVerified ?? false);
@@ -519,6 +544,7 @@ export function LoopProvider({
           "connections",
           "follows",
           "directMessages",
+          "directCatalog",
           "notifications",
           "publicChannels",
           "privateChannels",
@@ -583,6 +609,12 @@ export function LoopProvider({
         let savedPostIds: string[] = [];
         let refreshMessageSubscriptions = () => {};
         let refreshDirectSubscriptions = () => {};
+        let refreshDirectSummary = (_peerId: string | null) => {};
+        let refreshDirectCatalog = () => {};
+        let publishDirectCatalog = () => {};
+        let maybeBootstrapDirectCatalog = () => {};
+        let directCatalogProgress: DirectCatalogProgress | null = null;
+        const directWatermarks = new Map<string, DirectWatermark>();
         const peerProfiles = new Map<string, Profile>(),
           peerListeners = new Map<string, () => void>();
         const targetedProfiles = new Map<string, Profile>(),
@@ -866,11 +898,15 @@ export function LoopProvider({
                 blockedIds = preferences.blockedIds;
                 subscriptions = preferences.subscriptions;
                 savedPostIds = preferences.savedPostIds;
+                directCatalogProgress = newerDirectCatalogProgress(directCatalogProgress, parseDirectCatalogProgress(data.directCatalog));
                 savedPosts.forEach((_, id) => { if (!savedPostIds.includes(id)) savedPosts.delete(id); });
                 setState((s) => ({ ...s, preferences }));
                 refreshPeers();
                 refreshMessageSubscriptions();
                 refreshDirectSubscriptions();
+                refreshDirectCatalog();
+                publishDirectCatalog();
+                maybeBootstrapDirectCatalog();
                 publishPosts();
               } else loaded("reports");
               loaded("preferences");
@@ -916,7 +952,7 @@ export function LoopProvider({
         let directGeneration = 0, directPreviewGeneration = 0, directBlockScope = JSON.stringify([...blockedIds].sort());
         const publishDirectMessages = () => {
           if (!current()) return;
-          const messages = mergeDirectMessages([directPreviewRows, directRows], user.uid, new Set(blockedIds));
+          const messages = normalizeDirectRead(mergeDirectMessages([directPreviewRows, directRows], user.uid, new Set(blockedIds)), directWatermarks);
           setState(s => ({ ...s, directMessages: messages }));
         };
         const stopDirectWindow = () => {
@@ -929,6 +965,7 @@ export function LoopProvider({
         liveActions.current.watchDirectConversation = peerId => {
           if (!current()) return;
           stopDirectWindow();
+          refreshDirectSummary(peerId);
           publishDirectMessages();
           if (!peerId || blockedIds.includes(peerId)) return;
           try { directConversationId(user.uid, peerId); }
@@ -997,6 +1034,122 @@ export function LoopProvider({
           directWindow?.stop(); directWindow = undefined;
           directPreviewRows = []; directRows = [];
         });
+
+        let catalogRows: DirectConversation[] = [], activeSummary: DirectConversation | undefined;
+        let catalogHistory = { loading: false, hasMore: false }, catalogQueryError: string | null = null, catalogSyncError: string | null = null;
+        let catalogSyncing = false, catalogSyncPromise: Promise<void> | undefined, catalogAutoTried = false;
+        let summaryScopeId: string | null = null, catalogBlockScope = JSON.stringify([...blockedIds].sort()), catalogProgressVersion = "";
+        const visibleConversation = (conversation: DirectConversation) => conversation.participantIds.includes(user.uid) && conversation.participantIds.every(id => !blockedIds.includes(id));
+        const rememberWatermark = (conversation: DirectConversation) => directWatermarks.set(conversation.id, mergeDirectWatermark(conversation, directWatermarks.get(conversation.id)));
+        publishDirectCatalog = () => {
+          if (!current()) return;
+          const rows = new Map(catalogRows.filter(visibleConversation).map(conversation => [conversation.id, conversation]));
+          // The point listener supplies off-page peers; it must not replace a
+          // catalog row with an older cached preview from its own first snapshot.
+          if (activeSummary && visibleConversation(activeSummary) && !rows.has(activeSummary.id)) rows.set(activeSummary.id, activeSummary);
+          const results = [...rows.values()].map(conversation => normalizeDirectConversation(conversation, directWatermarks.get(conversation.id))).sort((a, b) => b.lastAt.localeCompare(a.lastAt) || b.id.localeCompare(a.id));
+          setDirectCatalog({ results, ...catalogHistory, progress: directCatalogProgress, syncing: catalogSyncing, error: catalogQueryError ?? catalogSyncError });
+          setState(s => ({ ...s, directConversations: results }));
+          publishDirectMessages();
+        };
+        const summaryWatch = new DocumentWatch<DirectConversation>({
+          current,
+          subscribe: (id, success, error) => onSnapshot(doc(c.db, "directConversations", id), { includeMetadataChanges: true }, snap => {
+            const conversation = snap.exists() ? parseDirectConversation(snap.data(), snap.id, user.uid) : undefined;
+            if (snap.exists() && !conversation) { error(new Error("This conversation summary is unavailable.")); return; }
+            success(conversation, snap.metadata.fromCache);
+          }, error),
+          publish: update => {
+            if (!current()) return;
+            activeSummary = update.record && visibleConversation(update.record) ? update.record : undefined;
+            if (activeSummary) rememberWatermark(activeSummary);
+            // A missing legacy summary may be permission-denied; no private record
+            // or professional profile is fetched to manufacture a replacement.
+            if ((update.status.error || update.status.notFound) && update.status.id) directWatermarks.delete(update.status.id);
+            publishDirectCatalog();
+          },
+        });
+        refreshDirectSummary = peerId => {
+          if (!current()) return;
+          let id: string | null = null;
+          if (peerId && !blockedIds.includes(peerId)) try { id = directConversationId(user.uid, peerId); } catch {}
+          if (summaryScopeId !== id) { summaryScopeId = id; activeSummary = undefined; }
+          summaryWatch.watch(id);
+          publishDirectCatalog();
+        };
+        const catalogWindow = new MessagePages<DirectConversation>({
+          pageSize: 50, sortAt: conversation => conversation.lastAt, filter: visibleConversation,
+          subscribe: (cursor, success, error) => onSnapshot(directCatalogPageQuery(c.db, user.uid, cursor), snap => {
+            if (!current()) return;
+            const rows = snap.docs.map(record => parseDirectConversation(record.data(), record.id, user.uid));
+            if (rows.some(conversation => !conversation)) { error(new Error("Some conversation summaries could not be loaded. Try again.")); loaded("directCatalog"); return; }
+            catalogQueryError = null;
+            success(rows as DirectConversation[]);
+            loaded("directCatalog");
+          }, error),
+          publish: (rows, history) => {
+            if (!current()) return;
+            catalogRows = rows; catalogHistory = history;
+            rows.filter(visibleConversation).forEach(rememberWatermark);
+            publishDirectCatalog();
+          },
+          failure: error => {
+            if (!current()) return;
+            catalogQueryError = readableError(error);
+            if ((error as { code?: string }).code === "permission-denied") { catalogRows = []; activeSummary = undefined; directWatermarks.clear(); summaryWatch.stop(); catalogWindow.stop(); }
+            publishDirectCatalog(); loaded("directCatalog");
+          },
+        });
+        liveActions.current.loadMoreDirectConversations = () => {
+          if (!current()) return;
+          if (catalogQueryError) { catalogQueryError = null; catalogWindow.restart(); }
+          else if (catalogSyncError) void liveActions.current.syncDirectConversations?.().catch(() => {});
+          else void catalogWindow.loadMore().catch(() => {});
+        };
+        liveActions.current.syncDirectConversations = () => {
+          if (!current()) return Promise.reject(new MediaScopeChanged());
+          if (catalogSyncPromise) return catalogSyncPromise;
+          catalogSyncing = true; catalogSyncError = null; publishDirectCatalog();
+          const request = Promise.resolve().then(async () => {
+            try {
+              if (!current()) throw new MediaScopeChanged();
+              const value = (await httpsCallable(c.functions, "syncDirectConversations")({})).data;
+              if (!current()) throw new MediaScopeChanged();
+              const progress = parseDirectCatalogProgress(value);
+              if (!progress) throw new Error("Conversation discovery returned invalid progress. Try again.");
+              directCatalogProgress = newerDirectCatalogProgress(directCatalogProgress, progress);
+              refreshDirectSummary(directRef.current);
+              if (catalogQueryError) { catalogQueryError = null; catalogWindow.restart(); }
+            } catch (error) {
+              if (current()) catalogSyncError = (error as { code?: string }).code === "functions/aborted" ? "Another conversation refresh is running. Try again in a moment." : readableError(error);
+              throw error;
+            } finally {
+              if (current()) { catalogSyncing = false; publishDirectCatalog(); }
+              catalogSyncPromise = undefined;
+            }
+          });
+          catalogSyncPromise = request; return request;
+        };
+        maybeBootstrapDirectCatalog = () => {
+          if (!current() || catalogAutoTried || directCatalogProgress) return;
+          catalogAutoTried = true;
+          void liveActions.current.syncDirectConversations?.().catch(() => {});
+        };
+        refreshDirectCatalog = () => {
+          if (!current()) return;
+          const progressVersion = JSON.stringify(directCatalogProgress);
+          if (progressVersion !== catalogProgressVersion) { catalogProgressVersion = progressVersion; if (directCatalogProgress) catalogSyncError = null; }
+          const scope = JSON.stringify([...blockedIds].sort());
+          if (scope !== catalogBlockScope) {
+            catalogBlockScope = scope;
+            directWatermarks.forEach((value, id) => { if (value.participantIds.some(peer => blockedIds.includes(peer))) directWatermarks.delete(id); });
+            catalogWindow.restart();
+          }
+          refreshDirectSummary(directRef.current);
+        };
+        catalogWindow.start();
+        refreshDirectSummary(directRef.current);
+        dispose.push(() => { catalogWindow.stop(); summaryWatch.stop(); catalogRows = []; activeSummary = undefined; directWatermarks.clear(); });
         listen(
           "notifications",
           query(
@@ -1771,6 +1924,9 @@ export function LoopProvider({
         watchEvent,
         postStatus,
         eventStatus,
+        directCatalog,
+        loadMoreDirectConversations,
+        syncDirectConversations,
         clearError: () => setError(null),
         resetDemo: () => {
           setState(initialState());

@@ -8,6 +8,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { squadInviteId } from "../src/squads";
 import { drainDirectRead } from "../../packages/client/src/directRead";
+import { directMessageRead } from "../src/directConversations";
 
 /**
  * Run only against a dedicated emulator project, never production.
@@ -1291,8 +1292,17 @@ test(
             "createdAt",
           ])
             assert.deepEqual(edited[field], before[field]);
-          assert.equal(edited.read, true);
-          assert.equal(edited.unreadRecipientId, "");
+          assert.equal(
+            directMessageRead(
+              edited,
+              (
+                await db
+                  .doc(`directConversations/${edited.conversationId}`)
+                  .get()
+              ).data(),
+            ),
+            true,
+          );
           assert.ok(edited.editedAt);
           await command(reader, {
             type: "dm.mute",
@@ -1347,22 +1357,25 @@ test(
       );
 
       await t.test(
-        "the real client read drain marks 205 selected unread messages past 205 unrelated messages",
+        "one real client read call covers 1205 sequenced messages past 205 unrelated messages",
         async () => {
           const reader = await createActor("dm-scale");
           const selected: string[] = [],
             unrelated: string[] = [],
-            batch = db.batch();
+            batches = [db.batch()];
+          let writes = 0;
           const conversation = (a: string, b: string) =>
             [a, b].sort().join("~");
-          for (let n = 0; n < 205; n++) {
+          for (let n = 0; n < 1205; n++) {
             for (const [sender, ids] of [
               [actors[2], unrelated],
               [alice, selected],
             ] as const) {
+              if (sender === actors[2] && n >= 205) continue;
               const id = remember("directMessages", nextId());
               ids.push(id);
-              batch.set(db.doc(`directMessages/${id}`), {
+              if (writes && writes % 400 === 0) batches.push(db.batch());
+              batches.at(-1)!.set(db.doc(`directMessages/${id}`), {
                 id,
                 fromId: sender.uid,
                 toId: reader.uid,
@@ -1372,10 +1385,26 @@ test(
                 body: "Disposable read-marker scale fixture.",
                 createdAt: new Date().toISOString(),
                 read: false,
+                ...(sender === alice ? { sequence: n + 1 } : {}),
               });
+              writes++;
             }
           }
-          await batch.commit();
+          for (const batch of batches) await batch.commit();
+          await db
+            .doc(`directConversations/${conversation(alice.uid, reader.uid)}`)
+            .set({
+              id: conversation(alice.uid, reader.uid),
+              participantIds: [alice.uid, reader.uid],
+              memberNames: { [alice.uid]: "Sender", [reader.uid]: "Reader" },
+              memberInitials: { [alice.uid]: "S", [reader.uid]: "R" },
+              createdAt: new Date().toISOString(),
+              lastAt: new Date().toISOString(),
+              sequence: 1205,
+              readAt: {},
+              readThrough: {},
+              unreadCounts: { [reader.uid]: 1205 },
+            });
           const pages: number[] = [],
             receipts: string[] = [];
           await drainDirectRead({
@@ -1395,16 +1424,213 @@ test(
               return result;
             },
           });
-          assert.deepEqual(pages, [200, 5]);
-          assert.equal(new Set(receipts).size, 2);
+          assert.deepEqual(pages, [1205]);
+          assert.equal(new Set(receipts).size, 1);
           const selectedDocs = await db.getAll(
             ...selected.map((id) => db.doc(`directMessages/${id}`)),
           );
           const unrelatedDocs = await db.getAll(
             ...unrelated.map((id) => db.doc(`directMessages/${id}`)),
           );
-          assert.ok(selectedDocs.every((row) => row.get("read") === true));
+          const summary = (
+            await db
+              .doc(`directConversations/${conversation(alice.uid, reader.uid)}`)
+              .get()
+          ).data();
+          assert.ok(
+            selectedDocs.every((row) =>
+              directMessageRead(row.data()!, summary),
+            ),
+          );
           assert.ok(unrelatedDocs.every((row) => row.get("read") === false));
+        },
+      );
+
+      await t.test(
+        "private conversation discovery resumes legacy pages without corrupting watermarks, counts, edits or deletion",
+        async () => {
+          const reader = await createActor("catalog");
+          await command(reader, {
+            type: "preferences.update",
+            preferences: { dmPolicy: "everyone" },
+          });
+          const fixture = db.batch(),
+            peers: string[] = [],
+            sourceIds: string[] = [];
+          for (let n = 0; n < 55; n++) {
+            const peerId = n === 54 ? alice.uid : `catalog-peer-${runId}-${n}`;
+            peers.push(peerId);
+            if (peerId !== alice.uid) {
+              remember("users", peerId);
+              remember("profiles", peerId);
+              fixture.set(db.doc(`users/${peerId}`), {
+                id: peerId,
+                preferences: {},
+              });
+              fixture.set(db.doc(`profiles/${peerId}`), {
+                id: peerId,
+                name: `Private member ${n}`,
+                visibility: "connections",
+                company: "NEVER_COPY_PROFESSIONAL_INFO",
+              });
+            }
+            const id = remember(
+              "directMessages",
+              `catalog-${runId}-${String(n).padStart(3, "0")}`,
+            );
+            sourceIds.push(id);
+            fixture.set(db.doc(`directMessages/${id}`), {
+              id,
+              fromId: peerId,
+              toId: reader.uid,
+              participantIds: [peerId, reader.uid],
+              conversationId: [peerId, reader.uid].sort().join("~"),
+              createdAt: "2025-01-01T00:00:00.000Z",
+              body: `Legacy ${n}`,
+              read: n === 51,
+            });
+          }
+          await fixture.commit();
+          const first = await callable(reader, "syncDirectConversations", {});
+          assert.equal(first.complete, false);
+          assert.equal(first.processed, 50);
+          assert.equal(
+            (await db.doc(`users/${reader.uid}`).get()).get(
+              "directCatalog.complete",
+            ),
+            false,
+          );
+          await command(reader, { type: "dm.read", userId: alice.uid });
+          const live = remember(
+            "directMessages",
+            (
+              await command(alice, {
+                type: "dm.send",
+                userId: reader.uid,
+                body: "Live during legacy discovery",
+              })
+            ).id,
+          );
+          await db.doc(`directMessages/${sourceIds[52]}`).delete();
+          await db
+            .doc(`directMessages/${sourceIds[53]}`)
+            .update({ body: "Latest legacy edit before migration" });
+          const second = await callable(reader, "syncDirectConversations", {});
+          assert.equal(second.complete, true);
+          assert.equal(second.processed, 55);
+          assert.equal(second.cursor, null);
+          const retry = await callable(reader, "syncDirectConversations", {});
+          assert.deepEqual(retry, second);
+          const pair = (peer: string) => [peer, reader.uid].sort().join("~");
+          const summaries = await db
+            .collection("directConversations")
+            .where("participantIds", "array-contains", reader.uid)
+            .get();
+          assert.equal(
+            summaries.size,
+            54,
+            "all historical peers are discoverable independently of a global recent-message limit",
+          );
+          assert.ok(
+            !JSON.stringify(summaries.docs.map((row) => row.data())).includes(
+              "NEVER_COPY_PROFESSIONAL_INFO",
+            ),
+          );
+          assert.equal(
+            (await db.doc(`directConversations/${pair(peers[51])}`).get()).get(
+              `unreadCounts.${reader.uid}`,
+            ) || 0,
+            0,
+          );
+          assert.equal(
+            (await db.doc(`directConversations/${pair(peers[50])}`).get()).get(
+              `unreadCounts.${reader.uid}`,
+            ),
+            1,
+          );
+          assert.equal(
+            (await db.doc(`directConversations/${pair(peers[53])}`).get()).get(
+              "lastMessage.body",
+            ),
+            "Latest legacy edit before migration",
+          );
+          const aliceSummary = (
+            await db.doc(`directConversations/${pair(alice.uid)}`).get()
+          ).data()!;
+          assert.equal(aliceSummary.unreadCounts[reader.uid], 1);
+          assert.equal(
+            directMessageRead(
+              (await db.doc(`directMessages/${sourceIds[54]}`).get()).data()!,
+              aliceSummary,
+            ),
+            true,
+          );
+          assert.equal(
+            directMessageRead(
+              (await db.doc(`directMessages/${live}`).get()).data()!,
+              aliceSummary,
+            ),
+            false,
+          );
+          assert.equal(
+            (
+              await readDocument(
+                actors[2],
+                `directConversations/${pair(alice.uid)}`,
+              )
+            ).response.status,
+            403,
+          );
+          assert.equal(
+            (
+              await readDocument(
+                reader,
+                `directConversations/${pair(alice.uid)}`,
+              )
+            ).response.status,
+            200,
+          );
+          const exported = await callable(reader, "exportAccount", {
+            collection: "directMessages",
+          });
+          assert.equal(
+            exported.records.find((row: any) => row.id === sourceIds[54]).read,
+            true,
+          );
+          assert.equal(
+            exported.records.find((row: any) => row.id === live).read,
+            false,
+          );
+          const [, racingSend] = await Promise.all([
+            command(reader, { type: "dm.read", userId: alice.uid }),
+            command(alice, {
+              type: "dm.send",
+              userId: reader.uid,
+              body: "Racing a read transaction",
+            }),
+          ]);
+          remember("directMessages", racingSend.id);
+          const racedMessage = (
+            await db.doc(`directMessages/${racingSend.id}`).get()
+          ).data()!;
+          const racedSummary = (
+            await db.doc(`directConversations/${pair(alice.uid)}`).get()
+          ).data()!;
+          assert.equal(
+            racedSummary.unreadCounts[reader.uid],
+            directMessageRead(racedMessage, racedSummary) ? 0 : 1,
+          );
+          assert.equal(
+            directMessageRead(
+              (await db.doc(`directMessages/${live}`).get()).data()!,
+              racedSummary,
+            ),
+            true,
+          );
+          await db.doc(`users/${reader.uid}`).update({ deletionPending: true });
+          await denied(callable(reader, "syncDirectConversations", {}), [
+            "FAILED_PRECONDITION",
+          ]);
         },
       );
 
@@ -1562,6 +1788,7 @@ test(
           ["reports", "reporterId", "=="],
           ["follows", "participantIds", "array-contains"],
           ["connections", "participantIds", "array-contains"],
+          ["directConversations", "participantIds", "array-contains"],
         ] as const) {
           const rows = await db
             .collection(collection)

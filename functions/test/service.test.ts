@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { bootstrap, execute, Actor, TransactionStore } from "../src/service";
 import { Doc, DomainError } from "../src/policy";
+import { directMessageRead } from "../src/directConversations";
 
 const now = "2026-10-26T12:00:00Z";
 const actor = (uid: string): Actor => ({ uid, name: uid, emailVerified: true });
@@ -357,8 +358,14 @@ test("DM read receipts can only mark received messages for the opened peer", asy
   assert.equal(db.get(`directMessages/${sent.id}`).read, false);
   const read = await db.command("bob", { type: "dm.read", userId: "alice" });
   assert.equal(read.marked, 1);
-  assert.equal(db.get(`directMessages/${sent.id}`).read, true);
-  assert.equal(db.get(`directMessages/${sent.id}`).unreadRecipientId, "");
+  assert.equal(
+    directMessageRead(
+      db.get(`directMessages/${sent.id}`),
+      db.get("directConversations/alice~bob"),
+    ),
+    true,
+  );
+  assert.equal(read.hasMore, false);
 });
 test("conference creation requires a server-owned administrator role", async () => {
   const db = await database();

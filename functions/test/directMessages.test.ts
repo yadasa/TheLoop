@@ -9,6 +9,12 @@ import {
   authorizeMediaRead,
 } from "../src/media";
 import { shouldDeliverPush } from "../src/notifications";
+import {
+  catalogDirectMessage,
+  directMessageRead,
+  migrateDirectMessage,
+} from "../src/directConversations";
+import { effectiveDirectRead } from "../../packages/core/src/directConversations";
 
 const now = "2026-10-26T12:00:00.000Z";
 class Database {
@@ -123,6 +129,22 @@ test("participation snapshots are bounded minimal identities and safely preserve
     "authorName",
   ]);
   assert.ok(participationIdentity({ name: "x".repeat(200) }).name.length <= 80);
+});
+
+test("client and server read projections agree, with live sequence taking precedence over timestamp cutoffs", () => {
+  const conversation = { readAt: { bob: now }, readThrough: { bob: 5 } };
+  for (const [fields, expected] of [
+    [{ read: true, sequence: 99 }, true],
+    [{ sequence: 5 }, true],
+    [{ sequence: 6 }, false],
+    [{}, true],
+    [{ createdAt: "2026-10-26T12:00:00.001Z" }, false],
+    [{ createdAt: "invalid" }, false],
+  ] as const) {
+    const message = { toId: "bob", read: false, createdAt: now, ...fields };
+    assert.equal(directMessageRead(message, conversation), expected);
+    assert.equal(effectiveDirectRead(message, conversation), expected);
+  }
 });
 
 test("channel, post and reply identities come from the author without disclosing professional profiles", async () => {
@@ -315,7 +337,13 @@ test("muting suppresses new DM notices and delayed push while keeping message hi
     true,
   );
   await db.command("bob", { type: "dm.read", userId: "alice" });
-  assert.equal(db.get(`directMessages/${sent}`).read, true);
+  assert.equal(
+    directMessageRead(
+      db.get(`directMessages/${sent}`),
+      db.get(`directConversations/${pairId("alice", "bob")}`),
+    ),
+    true,
+  );
   await db.command("bob", { type: "dm.mute", userId: "alice", muted: false });
   await db.command("alice", {
     type: "dm.send",
@@ -332,22 +360,120 @@ test("muting suppresses new DM notices and delayed push while keeping message hi
   );
 });
 
-test("conversation-scoped unread pages progress beyond 200 unrelated messages without marking another peer", async () => {
+test("one conversation watermark covers more than 1000 legacy messages without marking another peer", async () => {
   const db = await fixture();
   for (let n = 0; n < 205; n++) db.message(`other-${n}`, "eve", "bob");
-  for (let n = 0; n < 205; n++) db.message(`selected-${n}`, "alice", "bob");
+  for (let n = 0; n < 1205; n++) db.message(`selected-${n}`, "alice", "bob");
   db.message("own-outgoing", "bob", "alice");
   const first = await db.command("bob", { type: "dm.read", userId: "alice" });
-  assert.equal(first.marked, 200);
-  assert.equal(first.hasMore, true);
-  const second = await db.command("bob", { type: "dm.read", userId: "alice" });
-  assert.equal(second.marked, 5);
-  assert.equal(second.hasMore, false);
+  assert.equal(first.hasMore, false);
+  const conversation = db.get(`directConversations/${pairId("alice", "bob")}`);
+  for (let n = 0; n < 1205; n++) {
+    assert.equal(
+      directMessageRead(db.get(`directMessages/selected-${n}`), conversation),
+      true,
+    );
+  }
   for (let n = 0; n < 205; n++) {
-    assert.equal(db.get(`directMessages/selected-${n}`).read, true);
     assert.equal(db.get(`directMessages/other-${n}`).read, false);
   }
   assert.equal(db.get("directMessages/own-outgoing").read, false);
+});
+
+test("catalog migration preserves already-read history and resumes idempotently around read watermarks and new sends", async () => {
+  const db = await fixture();
+  db.message("legacy-unread", "alice", "bob");
+  db.message("legacy-read", "alice", "bob");
+  db.get("directMessages/legacy-read").read = true;
+  for (const key of ["legacy-unread", "legacy-read"])
+    await db.tx((store) => migrateDirectMessage(store, "bob", key));
+  const path = `directConversations/${pairId("alice", "bob")}`;
+  assert.equal(db.get(path).unreadCounts.bob, 1);
+  assert.equal(db.get(path).sequence, 2);
+  await db.tx((store) => migrateDirectMessage(store, "alice", "legacy-unread"));
+  assert.equal(db.get(path).sequence, 2);
+  await db.command("bob", { type: "dm.read", userId: "alice" });
+  // A legacy page discovered after the read cutoff remains read; retrying cannot resurrect it.
+  db.message("late-page", "alice", "bob");
+  await db.tx((store) => migrateDirectMessage(store, "bob", "late-page"));
+  assert.equal(db.get(path).unreadCounts.bob, 0);
+  assert.equal(db.get("directMessages/late-page").read, true);
+  const live = await db.command("alice", {
+    type: "dm.send",
+    userId: "bob",
+    body: "Concurrent new send at the same server timestamp",
+  });
+  assert.equal(db.get(path).unreadCounts.bob, 1);
+  assert.equal(
+    directMessageRead(db.get(`directMessages/${live.id}`), db.get(path)),
+    false,
+  );
+  assert.equal(
+    effectiveDirectRead(
+      db.get(`directMessages/${live.id}`) as any,
+      db.get(path) as any,
+    ),
+    false,
+  );
+  for (const key of ["legacy-unread", "legacy-read", "late-page"])
+    assert.equal(
+      directMessageRead(db.get(`directMessages/${key}`), db.get(path)),
+      true,
+    );
+  const before = structuredClone(db.get(path));
+  await db.tx((store) => migrateDirectMessage(store, "bob", "late-page"));
+  assert.deepEqual(db.get(path), before);
+});
+
+test("catalog preview edits and deletions remove text and unread counts without changing audience or history authority", async () => {
+  const db = await fixture(),
+    path = `directConversations/${pairId("alice", "bob")}`;
+  const first = await db.command("alice", {
+    type: "dm.send",
+    userId: "bob",
+    body: "First",
+  });
+  const second = await db.command("alice", {
+    type: "dm.send",
+    userId: "bob",
+    body: "Second",
+  });
+  assert.equal(db.get(path).unreadCounts.bob, 2);
+  await db.command("alice", {
+    type: "dm.edit",
+    messageId: second.id,
+    body: "Updated",
+  });
+  assert.equal(db.get(path).lastMessage.body, "Updated");
+  await db.command("alice", { type: "dm.delete", messageId: first.id });
+  assert.equal(db.get(path).unreadCounts.bob, 1);
+  assert.equal(db.get(path).lastMessage.body, "Updated");
+  await db.command("bob", { type: "dm.read", userId: "alice" });
+  await db.command("bob", { type: "profile.block", userId: "alice" });
+  await db.command("alice", { type: "dm.delete", messageId: second.id });
+  assert.equal(db.get(path).unreadCounts.bob, 0);
+  assert.equal(db.get(path).lastMessage, undefined);
+  assert.deepEqual(db.get(path).participantIds, ["alice", "bob"]);
+});
+
+test("migration rereads deleted sources and stops at deletion-pending identities without granting professional profiles", async () => {
+  const db = await fixture();
+  db.message("gone", "alice", "bob");
+  db.docs.delete("directMessages/gone");
+  await db.tx((store) => migrateDirectMessage(store, "bob", "gone"));
+  assert.equal(
+    db.get(`directConversations/${pairId("alice", "bob")}`),
+    undefined,
+  );
+  db.message("retained", "alice", "bob");
+  db.get("users/alice").deletionPending = true;
+  await db.tx((store) => migrateDirectMessage(store, "bob", "retained"));
+  assert.equal(db.get(`directMessages/retained`).sequence, undefined);
+  db.get("users/bob").deletionPending = true;
+  await rejects(
+    db.tx((store) => migrateDirectMessage(store, "bob", "retained")),
+    "failed-precondition",
+  );
 });
 
 test("only recipient-authored directional history grants replies, including media, and blocks always win", async () => {

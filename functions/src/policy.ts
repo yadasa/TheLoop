@@ -6,6 +6,7 @@ export class DomainError extends Error {
       | "not-found"
       | "failed-precondition"
       | "resource-exhausted"
+      | "aborted"
       | "already-exists",
     message: string,
   ) {

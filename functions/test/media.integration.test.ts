@@ -482,6 +482,12 @@ test(
     } finally {
       // Cleanup only disposable UID namespaces and IDs created by this exact run.
       for (const actor of actors) {
+        const conversations = await db
+          .collection("directConversations")
+          .where("participantIds", "array-contains", actor.uid)
+          .get();
+        for (const conversation of conversations.docs)
+          await conversation.ref.delete();
         await bucket.deleteFiles({
           prefix: `sanitized/${actor.uid}/`,
           force: true,

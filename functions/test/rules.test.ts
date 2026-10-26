@@ -17,6 +17,10 @@ import {
   setDoc,
   updateDoc,
   where,
+  orderBy,
+  documentId,
+  limit,
+  startAfter,
 } from "firebase/firestore";
 
 let env: RulesTestEnvironment;
@@ -107,6 +111,14 @@ before(async () => {
         participantIds: ["alice", "bob"],
         body: "Private DM",
       },
+      "directConversations/alice~bob": {
+        id: "alice~bob",
+        participantIds: ["alice", "bob"],
+        lastAt: "2026-10-26T12:00:00Z",
+        memberNames: { alice: "Alice", bob: "Bob" },
+        readThrough: { alice: 0 },
+        unreadCounts: { alice: 1 },
+      },
       "follows/alice~bob": {
         id: "alice~bob",
         followerId: "alice",
@@ -140,6 +152,12 @@ before(async () => {
       "users/alice/requests/request": { result: {} },
       "deletionJobs/alice": { userId: "alice", status: "pending" },
     };
+    for (let n = 0; n < 111; n++)
+      rows[`directConversations/catalog-${String(n).padStart(3, "0")}`] = {
+        id: `catalog-${n}`,
+        participantIds: ["alice", `peer-${n}`],
+        lastAt: "2027-01-01T00:00:00.000Z",
+      };
     await Promise.all(
       Object.entries(rows).map(([path, data]) => setDoc(doc(db, path), data)),
     );
@@ -280,6 +298,65 @@ test("follow relations are participant-private and cannot be forged", async () =
       participantIds: ["alice", "eve"],
     }),
   );
+});
+
+test("conversation catalogs require participant-scoped queries and server-owned watermarks", async () => {
+  const alice = env.authenticatedContext("alice").firestore();
+  await assertSucceeds(
+    getDocs(
+      query(
+        collection(alice, "directConversations"),
+        where("participantIds", "array-contains", "alice"),
+      ),
+    ),
+  );
+  await assertFails(getDocs(collection(alice, "directConversations")));
+  for (const uid of ["eve", "mod", "disabled"])
+    await assertFails(
+      getDoc(
+        doc(
+          env.authenticatedContext(uid).firestore(),
+          "directConversations/alice~bob",
+        ),
+      ),
+    );
+  await assertFails(
+    updateDoc(doc(alice, "directConversations/alice~bob"), {
+      readThrough: { alice: 999 },
+    }),
+  );
+  await assertFails(
+    setDoc(doc(alice, "directConversations/alice~eve"), {
+      participantIds: ["alice", "eve"],
+    }),
+  );
+});
+
+test("conversation catalog pages enumerate old peers beyond the global message window with stable tie cursors", async () => {
+  const alice = env.authenticatedContext("alice").firestore(),
+    ids: string[] = [],
+    sizes: number[] = [];
+  let cursor: [string, string] | undefined;
+  for (;;) {
+    const constraints = [
+      where("participantIds", "array-contains", "alice"),
+      orderBy("lastAt", "desc"),
+      orderBy(documentId(), "desc"),
+      limit(50),
+    ];
+    if (cursor) constraints.push(startAfter(...cursor));
+    const page = await assertSucceeds(
+      getDocs(query(collection(alice, "directConversations"), ...constraints)),
+    );
+    sizes.push(page.size);
+    ids.push(...page.docs.map((row) => row.id));
+    if (page.size < 50) break;
+    const last = page.docs.at(-1)!;
+    cursor = [last.get("lastAt"), last.id];
+  }
+  assert.deepEqual(sizes, [50, 50, 12]);
+  assert.equal(new Set(ids).size, 112);
+  assert.equal(ids.at(-1), "alice~bob");
 });
 test("all client content writes are denied, including votes and RSVP capacity", async () => {
   const alice = env.authenticatedContext("alice").firestore();

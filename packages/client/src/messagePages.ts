@@ -20,6 +20,8 @@ export class MessagePages<T extends TimelineRecord> {
     publish(rows: T[], history: History): void;
     failure(error: unknown): void;
     pageSize?: number;
+    sortAt?(row: T): string;
+    filter?(row: T): boolean;
   }) {}
 
   start(): void {
@@ -27,6 +29,10 @@ export class MessagePages<T extends TimelineRecord> {
     this.active = true;
     this.desiredPages = 1;
     this.attach(0);
+  }
+  restart(): void {
+    const desired = this.desiredPages;
+    this.stop(); this.active = true; this.desiredPages = desired; this.attach(0);
   }
 
   stop(): void {
@@ -58,7 +64,10 @@ export class MessagePages<T extends TimelineRecord> {
     const pages = [...this.pages.entries()].sort(([a], [b]) => b - a);
     const records = new Map<string, T>();
     for (const [, page] of pages) for (const row of page.rows) records.set(row.id, row);
-    const rows = [...records.values()].sort((a, b) => a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    const rows = [...records.values()].sort((a, b) => {
+      const first = this.options.sortAt?.(a) ?? a.createdAt, second = this.options.sortAt?.(b) ?? b.createdAt;
+      return first < second ? -1 : first > second ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
     const last = pages[0]?.[1];
     this.options.publish(rows, { loading: this.pending.size > 0, hasMore: last?.full ?? false });
   }
@@ -73,7 +82,7 @@ export class MessagePages<T extends TimelineRecord> {
     this.publish();
     const unsubscribe = this.options.subscribe(cursor, rows => {
       if (!current()) return;
-      const nextCursor = messageCursor(rows) ?? cursor;
+      const nextCursor = messageCursor(rows.map(row => ({ id: row.id, createdAt: this.options.sortAt?.(row) ?? row.createdAt }))) ?? cursor;
       const previous = this.pages.get(page)?.cursor;
       if (previous && (previous.createdAt !== nextCursor?.createdAt || previous.id !== nextCursor?.id)) {
         for (const [number, stop] of this.listeners) if (number > page) {
@@ -85,7 +94,7 @@ export class MessagePages<T extends TimelineRecord> {
         }
       }
       const full = rows.length === (this.options.pageSize ?? 100);
-      this.pages.set(page, { rows, cursor: nextCursor, full });
+      this.pages.set(page, { rows: this.options.filter ? rows.filter(this.options.filter) : rows, cursor: nextCursor, full });
       this.pending.delete(page);
       this.requests.get(page)?.resolve();
       this.requests.delete(page);
@@ -97,6 +106,7 @@ export class MessagePages<T extends TimelineRecord> {
       this.publish();
     }, error => {
       if (!current()) return;
+      this.listeners.get(page)?.();
       this.listeners.delete(page);
       this.tickets.delete(page);
       this.pages.delete(page);

@@ -48,6 +48,7 @@ import {
   mediaUploadInput,
 } from "./media";
 import { sanitizeImage } from "./imageCodec";
+import { directMessageRead, migrateDirectMessage } from "./directConversations";
 
 export { sendCommunityDigests, sendEventReminders } from "./workers";
 
@@ -646,6 +647,10 @@ export const exportAccount = onCall(callableOptions, async (request) => {
       squadInvites: { field: "participantIds", operator: "array-contains" },
       squadMessages: { field: "authorId", operator: "==" },
       directMessages: { field: "participantIds", operator: "array-contains" },
+      directConversations: {
+        field: "participantIds",
+        operator: "array-contains",
+      },
       notifications: { field: "userId", operator: "==" },
       reports: { field: "reporterId", operator: "==" },
     };
@@ -679,13 +684,43 @@ export const exportAccount = onCall(callableOptions, async (request) => {
     if (request.data.cursor)
       query = query.startAfter(exportCursor(request.data.cursor));
     const snapshot = await query.get();
+    const conversationIds =
+      collection === "directMessages"
+        ? [
+            ...new Set(
+              snapshot.docs.map((doc) =>
+                pairId(doc.get("fromId"), doc.get("toId")),
+              ),
+            ),
+          ]
+        : [];
+    const conversations = conversationIds.length
+      ? await db.getAll(
+          ...conversationIds.map((value) =>
+            db.doc(`directConversations/${value}`),
+          ),
+        )
+      : [];
+    const conversationMap = new Map(
+      conversations.map((doc) => [doc.id, doc.data()]),
+    );
     return {
       collection,
       records: snapshot.docs
         .map((doc) =>
           collection === "contributions"
             ? projectContribution(doc.data(), identity.uid)
-            : doc.data(),
+            : collection === "directMessages"
+              ? {
+                  ...doc.data(),
+                  read: directMessageRead(
+                    doc.data(),
+                    conversationMap.get(
+                      pairId(doc.get("fromId"), doc.get("toId")),
+                    ),
+                  ),
+                }
+              : doc.data(),
         )
         .filter((record) => record !== undefined),
       nextCursor: snapshot.size === 100 ? snapshot.docs.at(-1)!.id : null,
@@ -694,6 +729,118 @@ export const exportAccount = onCall(callableOptions, async (request) => {
     return domainError(error);
   }
 });
+
+/** Server-held cursor resumes exactly this participant's legacy history; no public backfill. */
+export const syncDirectConversations = onCall(
+  { ...callableOptions, timeoutSeconds: 120 },
+  async (request) => {
+    const identity = actor(request),
+      leaseId = randomUUID(),
+      now = new Date().toISOString();
+    let claimed = false;
+    try {
+      const progress = await transaction(async (store) => {
+        const path = `users/${identity.uid}`,
+          user = await store.get(path);
+        assert(
+          user && !user.disabled && !user.deletionPending,
+          "failed-precondition",
+          "Complete account setup before continuing.",
+        );
+        const previous = user.directCatalog || {
+          complete: false,
+          cursor: null,
+          processed: 0,
+        };
+        if (previous.complete) return previous;
+        assert(
+          !previous.leaseUntil || previous.leaseUntil <= now,
+          "aborted",
+          "Conversation discovery is already running. Please retry shortly.",
+        );
+        const bucket = Math.floor(Date.parse(now) / 60000);
+        const count =
+          previous.bucket === bucket ? Number(previous.count || 0) : 0;
+        assert(
+          count < 30,
+          "resource-exhausted",
+          "Conversation discovery is progressing. Please retry in a minute.",
+        );
+        const next = {
+          ...previous,
+          bucket,
+          count: count + 1,
+          leaseId,
+          leaseUntil: new Date(Date.parse(now) + 180000).toISOString(),
+          updatedAt: now,
+        };
+        store.set(path, { ...user, directCatalog: next });
+        return next;
+      });
+      if (progress.complete)
+        return {
+          complete: true,
+          processed: progress.processed,
+          cursor: null,
+          updatedAt: progress.updatedAt,
+        };
+      claimed = true;
+      let query = db
+        .collection("directMessages")
+        .where("participantIds", "array-contains", identity.uid)
+        .orderBy(FieldPath.documentId())
+        .limit(50);
+      if (progress.cursor)
+        query = query.startAfter(exportCursor(progress.cursor));
+      const page = await query.get();
+      for (const source of page.docs)
+        await transaction((store) =>
+          migrateDirectMessage(store, identity.uid, source.id),
+        );
+      return await transaction(async (store) => {
+        const path = `users/${identity.uid}`,
+          user = await store.get(path);
+        assert(
+          user &&
+            !user.disabled &&
+            !user.deletionPending &&
+            user.directCatalog?.leaseId === leaseId,
+          "aborted",
+          "Conversation discovery changed. Please retry.",
+        );
+        const next = {
+          ...user.directCatalog,
+          cursor: page.size === 50 ? page.docs.at(-1)!.id : null,
+          processed: Number(user.directCatalog.processed || 0) + page.size,
+          complete: page.size < 50,
+          updatedAt: new Date().toISOString(),
+        };
+        delete next.leaseId;
+        delete next.leaseUntil;
+        store.set(path, { ...user, directCatalog: next });
+        claimed = false;
+        return {
+          complete: next.complete,
+          processed: next.processed,
+          cursor: next.cursor,
+          updatedAt: next.updatedAt,
+        };
+      });
+    } catch (error) {
+      if (claimed)
+        await transaction(async (store) => {
+          const path = `users/${identity.uid}`,
+            user = await store.get(path);
+          if (user?.directCatalog?.leaseId !== leaseId) return;
+          const progress = { ...user.directCatalog };
+          delete progress.leaseId;
+          delete progress.leaseUntil;
+          store.set(path, { ...user, directCatalog: progress });
+        }).catch(() => undefined);
+      return domainError(error);
+    }
+  },
+);
 
 export const deleteAccount = onCall(callableOptions, async (request) => {
   const identity = actor(request);
@@ -927,6 +1074,7 @@ export const processAccountDeletion = onDocumentCreated(
       ["messages", "authorId", "=="],
       ["posts", "authorId", "=="],
       ["directMessages", "participantIds", "array-contains"],
+      ["directConversations", "participantIds", "array-contains"],
       ["notifications", "userId", "=="],
       ["reports", "reporterId", "=="],
       ["trustAppeals", "userId", "=="],

@@ -1,6 +1,15 @@
 {
   "indexes": [
     {
+      "collectionGroup": "directConversations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participantIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "lastAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "directMessages",
       "queryScope": "COLLECTION",
       "fields": [

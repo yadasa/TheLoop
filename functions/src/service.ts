@@ -21,6 +21,11 @@ import { linkImage } from "./media";
 import { authorSnapshot, participationIdentity } from "./identity";
 import { canSendDirectMessage } from "./directMessages";
 import {
+  catalogDirectMessage,
+  readDirectConversation,
+  updateDirectPreview,
+} from "./directConversations";
+import {
   executeSquad,
   readableSquadMessage,
   revokeBlockedSquadInvites,
@@ -275,7 +280,7 @@ export async function execute(
     prefsChanged = true;
   }
   function auditRemoval(
-    targetType: "post" | "comment",
+    targetType: "post" | "comment" | "directMessage",
     targetId: string,
     subjectAuthorId: string,
     postId: string,
@@ -1426,7 +1431,7 @@ export async function execute(
       if (image) savePreferences();
       const from = participationIdentity(profile),
         to = participationIdentity(peer.profile);
-      store.set(`directMessages/${entityId}`, {
+      await catalogDirectMessage(store, {
         id: entityId,
         fromId: actor.uid,
         toId: peer.userId,
@@ -1483,12 +1488,15 @@ export async function execute(
           "permission-denied",
           "This person's current privacy settings do not allow editing this message.",
         );
-        store.set(`directMessages/${message.id}`, {
+        const edited = {
           ...message,
           body: text(command.body, "Message", 4000),
           editedAt: now,
-        });
+        };
+        store.set(`directMessages/${message.id}`, edited);
+        await updateDirectPreview(store, edited);
       } else {
+        await updateDirectPreview(store, message, true);
         store.remove(`directMessages/${message.id}`);
         store.set(`moderationAudit/${requestId}`, {
           id: requestId,
@@ -1533,24 +1541,10 @@ export async function execute(
     case "dm.read": {
       commandFields(command, ["type", "userId"]);
       const peer = await requirePeer(command.userId);
-      const unread = await store.find(
-        "directMessages",
-        "unreadRecipientId",
-        actor.uid,
-        200,
-        { field: "conversationId", value: pairId(actor.uid, peer.userId) },
-      );
-      let marked = 0;
-      for (const message of unread)
-        if (message.fromId === peer.userId) {
-          store.set(`directMessages/${message.id}`, {
-            ...message,
-            read: true,
-            unreadRecipientId: "",
-          });
-          marked++;
-        }
-      result = { ...result, marked, hasMore: unread.length === 200 };
+      result = {
+        ...result,
+        ...(await readDirectConversation(store, actor.uid, peer.userId, now)),
+      };
       break;
     }
     case "notification.read": {
@@ -1732,6 +1726,18 @@ export async function execute(
         command.outcome === "remove" &&
         report.targetType !== "profile"
       ) {
+        if (report.targetType === "directMessage") {
+          const message = await store.get(
+            `directMessages/${id(report.targetId)}`,
+          );
+          if (message) await updateDirectPreview(store, message, true);
+          auditRemoval(
+            "directMessage",
+            report.targetId,
+            message?.fromId || report.targetAuthorId || "unavailable",
+            report.targetId,
+          );
+        }
         if (report.targetType === "post") {
           const post = await store.get(`posts/${id(report.targetId)}`);
           auditRemoval(

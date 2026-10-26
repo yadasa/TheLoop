@@ -48,6 +48,7 @@ service cloud.firestore {
     match /connections/{connectionId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
     match /follows/{followId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
     match /directMessages/{messageId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
+    match /directConversations/{conversationId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
     match /squads/{squadId} { allow read: if active() && request.auth.uid in resource.data.memberIds; allow write: if false; }
     match /squadInvites/{inviteId} {
       allow read: if active() && (request.auth.uid in resource.data.get('participantIds', []) || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid || squadOwner(resource.data.squadId));
