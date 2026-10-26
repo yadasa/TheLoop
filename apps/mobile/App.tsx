@@ -1,0 +1,520 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Animated,
+  BackHandler,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StatusBar as NativeStatusBar,
+  Text,
+  View,
+} from "react-native";
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Linking from "expo-linking";
+import { authPersistence } from "./src/authPersistence";
+import { LoopProvider, useLoop } from "@theloop/client";
+import type { Command, LoopState } from "@theloop/core";
+import {
+  Feed,
+  PostDetail,
+  Compose,
+  Communities,
+  CreateCommunity,
+} from "./src/Feed";
+import { Chats, ChannelDetail } from "./src/Chat";
+import { Events, EventDetail, CreateEvent } from "./src/Events";
+import { People, ProfileDetail, DirectChat } from "./src/People";
+import { Search } from "./src/Search";
+import { Safety } from "./src/Safety";
+import { Spaces } from "./src/Spaces";
+import { ImportEvents } from "./src/ImportEvents";
+import {
+  Auth,
+  EditProfile,
+  ExportData,
+  Notifications,
+  Onboarding,
+  Settings,
+  Trust,
+  You,
+} from "./src/You";
+import {
+  color,
+  Loading,
+  Logo,
+  MotionProvider,
+  s,
+  Touch,
+  useReducedMotion,
+} from "./src/ui";
+import type { Nav, Route, Tab } from "./src/navigation";
+
+declare const process: { env: Record<string, string | undefined> };
+const storage = {
+  async load(): Promise<LoopState | null> {
+    const raw = await AsyncStorage.getItem("theloop.preview.v1");
+    return raw ? JSON.parse(raw) : null;
+  },
+  async save(state: LoopState) {
+    await AsyncStorage.setItem("theloop.preview.v1", JSON.stringify(state));
+  },
+};
+const firebaseConfig = process.env.EXPO_PUBLIC_FIREBASE_API_KEY
+  ? {
+      apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+      authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+      projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+      storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+      appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+    }
+  : undefined;
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <LoopProvider
+        storage={storage}
+        firebaseConfig={firebaseConfig}
+        authPersistence={authPersistence}
+      >
+        <StatusBar style="dark" />
+        <MotionProvider>
+          <LoopApp />
+        </MotionProvider>
+      </LoopProvider>
+    </SafeAreaProvider>
+  );
+}
+
+function LoopApp() {
+  const { state, dispatch, mode, ready, error, clearError, pending } =
+    useLoop();
+  const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
+  const [tab, setTab] = useState<Tab>("Home");
+  const [stack, setStack] = useState<Route[]>([]);
+  const [toast, setToast] = useState("");
+  const fade = useRef(new Animated.Value(1)).current;
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onboarded = useRef(false);
+  const showToast = useCallback((text: string) => {
+    setToast(text);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(""), 4500);
+  }, []);
+  const open = useCallback(
+    (route: Route) => setStack((v) => [...v, route]),
+    [],
+  );
+  const close = useCallback(() => setStack((v) => v.slice(0, -1)), []);
+  const navigate = useCallback(
+    (target: Tab) => {
+      setStack([]);
+      if (reducedMotion) {
+        setTab(target);
+        return;
+      }
+      Animated.timing(fade, {
+        toValue: 0,
+        duration: 80,
+        useNativeDriver: true,
+      }).start(() => {
+        setTab(target);
+        Animated.timing(fade, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }).start();
+      });
+    },
+    [fade, reducedMotion],
+  );
+  const run = useCallback(
+    async (command: Command, success?: string) => {
+      try {
+        await dispatch(command);
+        if (success) showToast(success);
+        return true;
+      } catch (e) {
+        showToast(
+          e instanceof Error
+            ? e.message
+            : "Something went wrong. Please try again.",
+        );
+        return false;
+      }
+    },
+    [dispatch, showToast],
+  );
+  const nav: Nav = { open, close, navigate, run, toast: showToast };
+  useEffect(() => {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (
+      ready &&
+      state.currentUserId &&
+      (!state.preferences.timezone || state.preferences.timezone === "UTC") &&
+      timezone !== "UTC"
+    )
+      void run({ type: "preferences.update", preferences: { timezone } });
+  }, [ready, state.currentUserId, state.preferences.timezone, run]);
+  useEffect(() => {
+    if (
+      ready &&
+      state.currentUserId &&
+      !state.preferences.onboardingComplete &&
+      !onboarded.current
+    ) {
+      onboarded.current = true;
+      setStack([{ kind: "onboarding" }]);
+    }
+  }, [ready, state.currentUserId, state.preferences.onboardingComplete]);
+  useEffect(() => {
+    const handle = (url: string) => {
+      const parsed = Linking.parse(url);
+      const parts = [parsed.hostname, ...(parsed.path || "").split("/")].filter(
+        Boolean,
+      );
+      const kind = parts[0];
+      const id = parts[1];
+      if (id && ["post", "channel", "event", "profile"].includes(kind || ""))
+        open({ kind: kind as "post", id });
+    };
+    void Linking.getInitialURL().then((url) => {
+      if (url) handle(url);
+    });
+    const listener = Linking.addEventListener("url", ({ url }) => handle(url));
+    return () => listener.remove();
+  }, [open]);
+  useEffect(() => {
+    const listener = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (stack.length) {
+        close();
+        return true;
+      }
+      if (tab !== "Home") {
+        navigate("Home");
+        return true;
+      }
+      return false;
+    });
+    return () => listener.remove();
+  }, [stack.length, tab, close, navigate]);
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    },
+    [],
+  );
+  if (!ready) return <Loading />;
+  const title = (route: Route) =>
+    ({
+      post: "The conversation",
+      channel: "The room",
+      event: "The plan",
+      profile: "In the loop",
+      dm: "Just between us",
+      compose: "Share with your people",
+      communities: "Your communities",
+      "create-community": "A new corner",
+      "create-event": "Bring people together",
+      notifications: "In your loop",
+      "edit-profile": "Your story",
+      settings: "Your boundaries",
+      auth: "Welcome to TheLoop",
+      onboarding: "A loop of your own",
+      trust: "Community trust",
+      export: "Your information",
+      search: "Find your way around",
+      safety: "Community care",
+      spaces: "Community spaces",
+      "import-events": "Bring your plans into the loop",
+    })[route.kind];
+  const renderRoute = (route: Route) => {
+    switch (route.kind) {
+      case "post":
+        return <PostDetail id={route.id} nav={nav} />;
+      case "channel":
+        return <ChannelDetail id={route.id} nav={nav} />;
+      case "event":
+        return <EventDetail id={route.id} nav={nav} />;
+      case "profile":
+        return <ProfileDetail id={route.id} nav={nav} />;
+      case "dm":
+        return <DirectChat id={route.id} nav={nav} />;
+      case "compose":
+        return <Compose nav={nav} />;
+      case "communities":
+        return <Communities nav={nav} />;
+      case "create-community":
+        return <CreateCommunity nav={nav} />;
+      case "create-event":
+        return <CreateEvent nav={nav} />;
+      case "notifications":
+        return <Notifications nav={nav} />;
+      case "edit-profile":
+        return <EditProfile nav={nav} />;
+      case "settings":
+        return <Settings nav={nav} />;
+      case "auth":
+        return <Auth nav={nav} />;
+      case "onboarding":
+        return <Onboarding nav={nav} />;
+      case "trust":
+        return <Trust nav={nav} />;
+      case "export":
+        return <ExportData nav={nav} />;
+      case "search":
+        return <Search nav={nav} />;
+      case "safety":
+        return <Safety nav={nav} />;
+      case "spaces":
+        return <Spaces nav={nav} />;
+      case "import-events":
+        return <ImportEvents nav={nav} />;
+    }
+  };
+  const active = stack[stack.length - 1];
+  const tabs: { name: Tab; symbol: string }[] = [
+    { name: "Home", symbol: "◈" },
+    { name: "Chat", symbol: "◌" },
+    { name: "Events", symbol: "▦" },
+    { name: "People", symbol: "◎" },
+    { name: "You", symbol: "○" },
+  ];
+  return (
+    <SafeAreaView style={s.page} edges={["top", "left", "right"]}>
+      <View
+        style={{
+          paddingHorizontal: 22,
+          paddingVertical: 15,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottomWidth: 1,
+          borderColor: color.line,
+        }}
+      >
+        <View style={[s.row, { gap: 8 }]}>
+          <Logo size={23} />
+          <Text
+            style={{
+              fontSize: 22,
+              fontWeight: "700",
+              letterSpacing: -1.1,
+              color: color.ink,
+            }}
+          >
+            theloop<Text style={{ fontWeight: "400" }}>.</Text>
+          </Text>
+        </View>
+        <View style={s.row}>
+          {mode === "demo" ? (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: color.line,
+                paddingVertical: 5,
+                paddingHorizontal: 8,
+                borderRadius: 5,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 9,
+                  letterSpacing: 1,
+                  color: color.muted,
+                  fontWeight: "600",
+                }}
+              >
+                SAMPLE LOOP
+              </Text>
+            </View>
+          ) : (
+            <Text style={[s.small, { fontSize: 10 }]}>● COMMUNITY</Text>
+          )}
+          {pending > 0 && (
+            <View
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: 3,
+                backgroundColor: color.ink,
+              }}
+            />
+          )}
+        </View>
+      </View>
+      {error && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss error"
+          onPress={clearError}
+          style={{
+            paddingHorizontal: 22,
+            paddingVertical: 12,
+            backgroundColor: "#E3E0D9",
+          }}
+        >
+          <Text style={{ fontSize: 12, color: color.ink, lineHeight: 18 }}>
+            {error} ×
+          </Text>
+        </Pressable>
+      )}
+      {mode === "live" && !state.currentUserId ? (
+        <Auth nav={nav} />
+      ) : (
+        <Animated.View style={{ flex: 1, opacity: fade }}>
+          {tab === "Home" ? (
+            <Feed nav={nav} />
+          ) : tab === "Chat" ? (
+            <Chats nav={nav} />
+          ) : tab === "Events" ? (
+            <Events nav={nav} />
+          ) : tab === "People" ? (
+            <People nav={nav} />
+          ) : (
+            <You nav={nav} />
+          )}
+        </Animated.View>
+      )}
+      <View
+        style={{
+          flexDirection: "row",
+          paddingTop: 9,
+          paddingBottom: Math.max(10, insets.bottom),
+          paddingHorizontal: 14,
+          borderTopWidth: 1,
+          borderColor: color.line,
+          backgroundColor: color.paper,
+        }}
+      >
+        {tabs.map((t) => (
+          <View key={t.name} style={{ flex: 1 }}>
+            <Touch
+              label={`${t.name} tab${tab === t.name ? ", selected" : ""}`}
+              onPress={() => navigate(t.name)}
+              style={{ alignItems: "center", paddingVertical: 7, gap: 4 }}
+            >
+              <View
+                style={{
+                  width: 45,
+                  height: 26,
+                  borderRadius: 15,
+                  backgroundColor: tab === t.name ? color.ink : "transparent",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 21,
+                    lineHeight: 25,
+                    color: tab === t.name ? "#fff" : color.muted,
+                  }}
+                >
+                  {t.symbol}
+                </Text>
+              </View>
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: tab === t.name ? "700" : "400",
+                  color: tab === t.name ? color.ink : color.muted,
+                }}
+              >
+                {t.name}
+              </Text>
+            </Touch>
+          </View>
+        ))}
+      </View>
+      <Modal
+        visible={!!active}
+        animationType={reducedMotion ? "none" : "slide"}
+        presentationStyle="fullScreen"
+        onRequestClose={close}
+      >
+        <SafeAreaView style={s.page} edges={["top", "left", "right", "bottom"]}>
+          <StatusBar style="dark" />
+          {active && (
+            <>
+              <View
+                style={{
+                  height: 57,
+                  paddingHorizontal: 16,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  borderBottomWidth: 1,
+                  borderColor: color.line,
+                  gap: 10,
+                }}
+              >
+                <Touch
+                  label="Back"
+                  onPress={close}
+                  style={{ padding: 10, minWidth: 38 }}
+                >
+                  <Text style={{ fontSize: 23, color: color.ink }}>←</Text>
+                </Touch>
+                <Text style={[s.h3, { fontSize: 14, flex: 1 }]}>
+                  {title(active)}
+                </Text>
+                {mode === "demo" && (
+                  <Text style={[s.overline, { fontSize: 8, letterSpacing: 1 }]}>
+                    SAMPLE
+                  </Text>
+                )}
+              </View>
+              <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={
+                  Platform.OS === "ios" &&
+                  !["channel", "dm"].includes(active.kind)
+                    ? "padding"
+                    : undefined
+                }
+              >
+                {renderRoute(active)}
+              </KeyboardAvoidingView>
+            </>
+          )}
+          {toast && <Toast text={toast} dismiss={() => setToast("")} />}
+        </SafeAreaView>
+      </Modal>
+      {toast && !active && <Toast text={toast} dismiss={() => setToast("")} />}
+    </SafeAreaView>
+  );
+}
+function Toast({ text, dismiss }: { text: string; dismiss: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="alert"
+      onPress={dismiss}
+      style={{
+        position: "absolute",
+        bottom: 95,
+        left: 18,
+        right: 18,
+        padding: 16,
+        backgroundColor: color.ink,
+        borderRadius: 16,
+        shadowColor: "#000",
+        shadowOpacity: 0.16,
+        shadowRadius: 10,
+        elevation: 5,
+      }}
+    >
+      <Text style={{ fontSize: 13, lineHeight: 20, color: "#fff" }}>
+        {text}
+      </Text>
+    </Pressable>
+  );
+}

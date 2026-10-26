@@ -1,0 +1,29 @@
+import type { Command } from "@theloop/core";
+export type Tab = "Home" | "Chat" | "Events" | "People" | "You";
+export type Route =
+  | { kind: "post" | "channel" | "event" | "profile" | "dm"; id: string }
+  | {
+      kind:
+        | "compose"
+        | "communities"
+        | "create-community"
+        | "create-event"
+        | "notifications"
+        | "edit-profile"
+        | "settings"
+        | "auth"
+        | "onboarding"
+        | "trust"
+        | "export"
+        | "search"
+        | "safety"
+        | "spaces"
+        | "import-events";
+    };
+export type Nav = {
+  open: (route: Route) => void;
+  close: () => void;
+  navigate: (tab: Tab) => void;
+  run: (command: Command, success?: string) => Promise<boolean>;
+  toast: (text: string) => void;
+};
