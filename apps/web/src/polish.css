@@ -1348,3 +1348,137 @@
     padding: 12px;
   }
 }
+.direct-inbox {
+  height: calc(100dvh - 280px);
+  min-height: 450px;
+}
+.direct-inbox > aside {
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+.direct-inbox > aside > button > .avatar {
+  flex: 0 0 34px;
+}
+.direct-inbox > section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.direct-inbox > section > header {
+  flex-shrink: 0;
+}
+.direct-inbox > section > header > div {
+  flex: 1;
+  min-width: 0;
+}
+.direct-inbox h3 {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.direct-inbox > section > header > .icon-button {
+  flex-shrink: 0;
+}
+.direct-inbox .dm-messages {
+  display: block;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  overflow-anchor: none;
+}
+.direct-message-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+}
+.direct-message-content > .history-button {
+  align-self: center;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.direct-inbox .dm-composer {
+  flex-shrink: 0;
+}
+.direct-message-meta {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  align-items: center;
+}
+.direct-message-meta > small {
+  font-size: 10px;
+}
+.direct-message-meta > .dm-report {
+  margin: 0;
+  min-width: 22px;
+  min-height: 26px;
+}
+.direct-unread {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: #242424;
+  color: #fff;
+  font-size: 10px;
+}
+.direct-back {
+  display: none;
+}
+.direct-jump {
+  bottom: 145px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.direct-inbox .dm-bubble p {
+  font-size: 13px;
+  line-height: 1.75;
+}
+@media (max-width: 760px) {
+  .direct-inbox {
+    height: auto;
+    min-height: 0;
+  }
+  .direct-inbox.has-active {
+    height: calc(100dvh - 260px);
+    min-height: 350px;
+  }
+  .direct-inbox.has-active > aside {
+    display: none;
+  }
+  .direct-inbox:not(.has-active) > section {
+    display: none;
+  }
+  .direct-inbox.has-active > section {
+    height: 100%;
+  }
+  .direct-back {
+    display: grid;
+  }
+  .direct-inbox > section > header {
+    gap: 8px;
+    padding: 14px 10px;
+  }
+  .direct-inbox > section > header p {
+    font-size: 9px;
+  }
+  .direct-inbox .dm-messages {
+    padding: 17px 13px;
+  }
+  .direct-inbox .dm-bubble {
+    max-width: 90%;
+    padding: 12px 14px;
+  }
+  .direct-inbox .dm-bubble p {
+    font-size: 12px;
+  }
+  .direct-message-meta > small {
+    font-size: 9px;
+  }
+}

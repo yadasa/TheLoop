@@ -1,12 +1,20 @@
 import React from "react";
 import { ArrowUpRight, Check, Flag, Pencil, Trash2 } from "lucide-react";
 import { useLoop } from "@theloop/client";
-import type { Command, Message, Post, Comment, Report } from "@theloop/core";
+import type {
+  Command,
+  Message,
+  DirectMessage,
+  Post,
+  Comment,
+  Report,
+} from "@theloop/core";
 import { Field, ModalShell } from "./ui";
 export type ContentTarget =
   | { kind: "post"; post: Post }
   | { kind: "comment"; postId: string; comment: Comment }
-  | { kind: "message"; message: Message };
+  | { kind: "message"; message: Message }
+  | { kind: "directMessage"; message: DirectMessage };
 export type ContentMode = "menu" | "edit" | "delete";
 type Props = {
   target: ContentTarget;
@@ -37,8 +45,14 @@ export function ContentDialog({
       : target.kind === "comment"
         ? target.comment
         : target.message;
-  const noun = target.kind === "comment" ? "reply" : target.kind;
-  const mine = item.authorId === state.currentUserId;
+  const noun =
+    target.kind === "comment"
+      ? "reply"
+      : target.kind === "directMessage"
+        ? "message"
+        : target.kind;
+  const mine =
+    ("fromId" in item ? item.fromId : item.authorId) === state.currentUserId;
   const reportTarget = {
     id: item.id,
     type: target.kind,
@@ -116,7 +130,13 @@ export function ContentDialog({
                       postId: target.postId,
                       commentId: item.id,
                     }
-                  : { type: "message.delete", messageId: item.id };
+                  : {
+                      type:
+                        target.kind === "directMessage"
+                          ? "dm.delete"
+                          : "message.delete",
+                      messageId: item.id,
+                    };
             if (
               await run(
                 command,
@@ -179,7 +199,14 @@ export function ContentDialog({
                     commentId: target.comment.id,
                     body,
                   }
-                : { type: "message.edit", messageId: target.message.id, body };
+                : {
+                    type:
+                      target.kind === "directMessage"
+                        ? "dm.edit"
+                        : "message.edit",
+                    messageId: target.message.id,
+                    body,
+                  };
           if (
             await run(
               command,

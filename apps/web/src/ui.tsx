@@ -14,7 +14,7 @@ export function Avatar({
   size = "normal",
   onClick,
 }: {
-  person?: Profile;
+  person?: Pick<Profile, "name" | "initials">;
   size?: "tiny" | "normal" | "large";
   onClick?: () => void;
 }) {

@@ -57,6 +57,7 @@ import {
 } from "./ContentDialog";
 import Squads from "./Squads";
 import GuideDialog from "./GuideDialog";
+import DirectInbox from "./DirectInbox";
 import { ImageComposer, ProtectedImage, useImageDraft } from "./images";
 import {
   channelUnread,
@@ -186,6 +187,12 @@ export default function App() {
     );
   const me = s.profiles.find((p) => p.id === s.currentUserId);
   const person = (id: string) => s.profiles.find((p) => p.id === id);
+  const participant = (id: string, name?: string, initials?: string) =>
+    person(id) ?? {
+      name: name || "Community member",
+      initials: initials || "?",
+      verified: false,
+    };
   const availableChannels = visibleChannels(s);
   const activeChannel =
     availableChannels.find((c) => c.id === channelId) ?? availableChannels[0];
@@ -194,9 +201,6 @@ export default function App() {
     page === "chat" && activeChannel
       ? { kind: "channel", id: activeChannel.id }
       : null,
-  );
-  const dmImage = useImageDraft(
-    page === "inbox" && dmId ? { kind: "directMessage", id: dmId } : null,
   );
   const composeImage = useImageDraft(
     modal === "compose" && composeCommunityId
@@ -301,9 +305,6 @@ export default function App() {
     if (page === "chat" && activeChannel)
       void act({ type: "channel.read", channelId: activeChannel.id });
   }, [page, activeChannel?.id]);
-  useEffect(() => {
-    if (page === "inbox" && dmId) void act({ type: "dm.read", userId: dmId });
-  }, [page, dmId, s.directMessages.length]);
   useEffect(() => {
     setReplyTo(null);
     setTopic("All topics");
@@ -571,7 +572,11 @@ export default function App() {
       </div>
     );
   const postCard = (post: Post) => {
-    const author = person(post.authorId),
+    const author = participant(
+        post.authorId,
+        post.authorName,
+        post.authorInitials,
+      ),
       community = s.communities.find((c) => c.id === post.communityId);
     const score = postScore(post.votes);
     const selected = post.votes[s.currentUserId];
@@ -585,7 +590,11 @@ export default function App() {
               onClick={() => openProfile(post.authorId)}
             >
               {author?.name ?? "Community member"}
-              {author?.verified && <ShieldCheck size={13} />}
+              {author?.verified && (
+                <span title="Email verified" aria-label="Email verified">
+                  <ShieldCheck size={13} />
+                </span>
+              )}
             </button>
             <span>
               <button
@@ -1423,7 +1432,11 @@ export default function App() {
                       {activeMessages.map((m) => (
                         <article className="message" key={m.id}>
                           <Avatar
-                            person={person(m.authorId)}
+                            person={participant(
+                              m.authorId,
+                              m.authorName,
+                              m.authorInitials,
+                            )}
                             onClick={() => openProfile(m.authorId)}
                           />
                           <div className="message-content">
@@ -1432,7 +1445,13 @@ export default function App() {
                                 className="name-button"
                                 onClick={() => openProfile(m.authorId)}
                               >
-                                {person(m.authorId)?.name ?? "Member"}
+                                {
+                                  participant(
+                                    m.authorId,
+                                    m.authorName,
+                                    m.authorInitials,
+                                  ).name
+                                }
                               </button>
                               <time>
                                 {displayDate(m.createdAt, {
@@ -2468,163 +2487,18 @@ export default function App() {
             />
           )}
           {page === "inbox" && (
-            <>
-              <div className="page-heading">
-                <div>
-                  <span className="eyebrow">KEEP THE CONVERSATION GOING</span>
-                  <h1>A little closer.</h1>
-                  <p>Private conversations with people in your circle.</p>
-                </div>
-              </div>
-              <div className="dm-layout">
-                <aside>
-                  <div className="section-label">
-                    <span>YOUR CONNECTIONS</span>
-                    <MessageCircle size={14} />
-                  </div>
-                  {s.profiles
-                    .filter(
-                      (p) =>
-                        p.id !== s.currentUserId &&
-                        connected(s, p.id) &&
-                        !s.preferences.blockedIds.includes(p.id),
-                    )
-                    .map((p) => (
-                      <button
-                        className={dmId === p.id ? "active" : ""}
-                        key={p.id}
-                        onClick={() => setDmId(p.id)}
-                      >
-                        <Avatar person={p} />
-                        <span>
-                          <strong>{p.name}</strong>
-                          <small>
-                            {s.directMessages
-                              .filter((d) => [d.fromId, d.toId].includes(p.id))
-                              .sort((a, b) =>
-                                a.createdAt.localeCompare(b.createdAt),
-                              )
-                              .slice(-1)[0]?.body ?? "Say a little hello."}
-                          </small>
-                        </span>
-                        <ChevronRight size={14} />
-                      </button>
-                    ))}
-                </aside>
-                <section>
-                  {!dmId ? (
-                    <Empty
-                      title="The next conversation is yours."
-                      body="Choose a connection to send a private message."
-                      action={
-                        <button
-                          className="button subtle"
-                          onClick={() => navigate("people")}
-                        >
-                          Meet the community <ArrowUpRight size={14} />
-                        </button>
-                      }
-                    />
-                  ) : (
-                    <>
-                      <header>
-                        <Avatar
-                          person={person(dmId)}
-                          onClick={() => openProfile(dmId)}
-                        />
-                        <div>
-                          <h3>{person(dmId)?.name}</h3>
-                          <p>Good conversations, just between you.</p>
-                        </div>
-                      </header>
-                      <div className="dm-messages">
-                        {s.directMessages
-                          .filter(
-                            (d) =>
-                              [d.fromId, d.toId].includes(s.currentUserId) &&
-                              [d.fromId, d.toId].includes(dmId),
-                          )
-                          .sort((a, b) =>
-                            a.createdAt.localeCompare(b.createdAt),
-                          )
-                          .map((d) => (
-                            <div
-                              className={`dm-bubble ${d.fromId === s.currentUserId ? "mine" : ""}`}
-                              key={d.id}
-                            >
-                              <p>{d.body}</p>
-                              {d.image && (
-                                <ProtectedImage image={d.image} alt={d.body} />
-                              )}
-                              <small>
-                                {displayDate(d.createdAt, {
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                })}
-                              </small>
-                              {d.fromId !== s.currentUserId && (
-                                <button
-                                  className="dm-report"
-                                  aria-label="Report this private message"
-                                  onClick={() => {
-                                    setReportTarget({
-                                      id: d.id,
-                                      type: "directMessage",
-                                    });
-                                    setModal("report");
-                                  }}
-                                >
-                                  <Flag size={12} />
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                      </div>
-                      <form
-                        className="dm-composer"
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          if (pending > 0 || dmImage.busy) return;
-                          const form = e.currentTarget;
-                          const body = String(new FormData(form).get("body"));
-                          const uploaded = await dmImage.prepare();
-                          if (!uploaded.ok) return;
-                          if (
-                            await act({
-                              type: "dm.send",
-                              userId: dmId,
-                              body,
-                              ...(uploaded.imageId
-                                ? { imageId: uploaded.imageId }
-                                : {}),
-                            })
-                          ) {
-                            form.reset();
-                            dmImage.clear();
-                          }
-                        }}
-                      >
-                        <input
-                          name="body"
-                          placeholder="A good conversation starts here…"
-                          required
-                          maxLength={4000}
-                          aria-label="Private message"
-                        />
-                        <button
-                          className="send-button"
-                          aria-label="Send private message"
-                          disabled={pending > 0 || dmImage.busy}
-                        >
-                          <Send size={18} />
-                        </button>
-                        <ImageComposer value={dmImage} disabled={pending > 0} />
-                      </form>
-                    </>
-                  )}
-                </section>
-              </div>
-            </>
+            <DirectInbox
+              peerId={dmId}
+              select={setDmId}
+              openProfile={openProfile}
+              meetPeople={() => navigate("people")}
+              run={act}
+              showContent={showContent}
+              report={(target) => {
+                setReportTarget(target);
+                setModal("report");
+              }}
+            />
           )}
         </main>
         <footer className="workspace-footer">
@@ -3459,7 +3333,7 @@ export default function App() {
                 }
               />
             </Field>
-            <Field label="Who can send you a private message?">
+            <Field label="Who can start a private conversation with you?">
               <select
                 value={s.preferences.dmPolicy}
                 onChange={(e) =>
@@ -3476,9 +3350,13 @@ export default function App() {
               >
                 <option value="connections">My connections</option>
                 <option value="everyone">Everyone in the community</option>
-                <option value="nobody">No one</option>
+                <option value="nobody">No new conversations</option>
               </select>
             </Field>
+            <p className="muted privacy-help">
+              People you message can reply. Block a member to stop future
+              messages, or mute a conversation to keep it quiet.
+            </p>
             <Field label="A quieter way to catch up">
               <select
                 value={s.preferences.digest}
@@ -4075,19 +3953,31 @@ export default function App() {
                     .map((c) => (
                       <div className="comment" key={c.id}>
                         <Avatar
-                          person={person(c.authorId)}
+                          person={participant(
+                            c.authorId,
+                            c.authorName,
+                            c.authorInitials,
+                          )}
                           onClick={() => {
                             setPostDetail(null);
                             openProfile(c.authorId);
                           }}
                         />
                         <div>
-                          <strong>{person(c.authorId)?.name}</strong>
+                          <strong>
+                            {
+                              participant(
+                                c.authorId,
+                                c.authorName,
+                                c.authorInitials,
+                              ).name
+                            }
+                          </strong>
                           <p>{c.body}</p>
                           <small>{displayDate(c.createdAt)}</small>
                           <button
                             className="comment-options"
-                            aria-label={`More options for ${person(c.authorId)?.name ?? "member"}’s reply`}
+                            aria-label={`More options for ${participant(c.authorId, c.authorName, c.authorInitials).name}’s reply`}
                             onClick={() =>
                               showContent({
                                 kind: "comment",
