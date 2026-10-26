@@ -58,6 +58,7 @@ import {
 import Squads from "./Squads";
 import GuideDialog from "./GuideDialog";
 import DirectInbox from "./DirectInbox";
+import EventEditor from "./EventEditor";
 import { useWebRoute } from "./useWebRoute";
 import type { Page } from "./routes";
 import { ImageComposer, ProtectedImage, useImageDraft } from "./images";
@@ -83,7 +84,6 @@ import {
   type Community,
   type Report,
   sharedTargetPath,
-  previewEventDraft,
 } from "@theloop/core";
 type SquadPage = "squads";
 type Modal =
@@ -2917,147 +2917,20 @@ export default function App() {
         </ModalShell>
       )}
       {modal === "event" && (
-        <ModalShell
-          title="Make the next plan."
-          subtitle="Bring good people together, on purpose."
+        <EventEditor
           close={() => setModal(null)}
-        >
-          <form
-            className="modal-form"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const f = new FormData(e.currentTarget);
-              try {
-                const timezone = String(f.get("timezone"));
-                const result = previewEventDraft(
-                  {
-                    title: String(f.get("title")),
-                    description: String(f.get("description")),
-                    startAt: String(f.get("start")),
-                    endAt: String(f.get("end")),
-                    timezone,
-                    location: String(f.get("location")),
-                    conferenceId: String(f.get("conference")),
-                    kind: String(f.get("kind")) as LoopEvent["kind"],
-                    capacity: String(f.get("capacity")),
-                    tags: String(f.get("tags") || "")
-                      .split(",")
-                      .map((tag) => tag.trim())
-                      .filter(Boolean),
-                    url: String(f.get("url") || ""),
-                  },
-                  {
-                    conferences: s.conferences,
-                    existingEvents: s.events,
-                    now: new Date().toISOString(),
-                  },
-                );
-                if (!result.event) {
-                  toast(
-                    result.errors.join(" ") ||
-                      "Please check event dates and details.",
-                  );
-                  return;
-                }
-                if (
-                  await act(
-                    { type: "event.create", event: result.event },
-                    "A good plan is in the calendar.",
-                  )
-                )
-                  setModal(null);
-              } catch (e) {
-                toast(
-                  e instanceof Error
-                    ? e.message
-                    : "Please check your event details.",
-                );
-              }
-            }}
-          >
-            <Field label="Event title">
-              <input
-                name="title"
-                required
-                maxLength={160}
-                placeholder="The coffee before the conference"
-              />
-            </Field>
-            <Field label="What is the plan?">
-              <textarea name="description" required rows={3} maxLength={3000} />
-            </Field>
-            <div className="form-row">
-              <Field label="Starts">
-                <input name="start" type="datetime-local" required />
-              </Field>
-              <Field label="Ends">
-                <input name="end" type="datetime-local" required />
-              </Field>
-            </div>
-            <div className="form-row">
-              <Field label="Timezone">
-                <input
-                  name="timezone"
-                  defaultValue={
-                    Intl.DateTimeFormat().resolvedOptions().timeZone
-                  }
-                  required
-                />
-              </Field>
-              <Field label="Location">
-                <input name="location" required maxLength={300} />
-              </Field>
-            </div>
-            <div className="form-row">
-              <Field label="Conference or hub">
-                <select name="conference">
-                  {s.conferences.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Kind">
-                <select name="kind">
-                  <option value="meetup">Meetup</option>
-                  <option value="workshop">Workshop</option>
-                  <option value="social">Social</option>
-                  <option value="conference">Conference</option>
-                </select>
-              </Field>
-              <Field label="Capacity (0 = unlimited)">
-                <input
-                  name="capacity"
-                  type="number"
-                  min={0}
-                  max={10000}
-                  defaultValue={30}
-                  required
-                />
-              </Field>
-            </div>
-            <Field label="Event website · optional">
-              <input
-                name="url"
-                type="url"
-                maxLength={2048}
-                placeholder="https://…"
-              />
-            </Field>
-            <Field label="Tags · separated by commas">
-              <input
-                name="tags"
-                maxLength={600}
-                placeholder="Coffee, Community"
-              />
-            </Field>
-            <button className="button primary" disabled={pending > 0}>
-              Put it on the calendar
-              <ArrowUpRight size={16} />
-            </button>
-          </form>
-        </ModalShell>
+          submit={async (event) => {
+            const ok = await act(
+              { type: "event.create", event },
+              "A good plan is in the calendar.",
+            );
+            if (ok) {
+              setModal(null);
+              navigate("calendar");
+            }
+            return ok;
+          }}
+        />
       )}
       {modal === "interests" && (
         <ModalShell
