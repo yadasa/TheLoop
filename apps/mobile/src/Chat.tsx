@@ -64,15 +64,15 @@ export function Chats({ nav }: { nav: Nav }) {
   return (
     <ScrollView contentContainerStyle={s.content}>
       <View>
-        <Text style={s.overline}>GROUP CHATS WITH CONTEXT</Text>
-        <Text style={[s.title, { marginTop: 5 }]}>Your group chats.</Text>
+        <Text style={s.overline}>GROUP CHATS</Text>
+        <Text style={[s.title, { marginTop: 5 }]}>Group chats</Text>
         <Text style={[s.body, { marginTop: 8, color: color.muted }]}>
-          Big conference energy. Only the conversations you want.
+          Choose a conference, then a topic. Follow chats you want updates from.
         </Text>
       </View>
       <Button
         secondary
-        title="Private conversations ↗"
+        title="Direct messages"
         onPress={() => nav.open({ kind: "inbox" })}
       />
       <SquadSummary nav={nav} />
@@ -125,10 +125,10 @@ export function Chats({ nav }: { nav: Nav }) {
       )}
       <View style={s.between}>
         <Text style={s.h2}>
-          {discover ? "Discover rooms" : "Your conversations"}
+          {discover ? "Discover chats" : "Your group chats"}
         </Text>
         <Chip
-          title={discover ? "Your rooms" : "Discover"}
+          title={discover ? "Your chats" : "Discover"}
           selected={discover}
           onPress={() => setDiscover(!discover)}
         />
@@ -189,7 +189,7 @@ export function Chats({ nav }: { nav: Nav }) {
               ) : (
                 <Text style={s.small}>
                   {pref === "following"
-                    ? "↗"
+                    ? "Following"
                     : pref === "hidden"
                       ? "Hidden"
                       : "Muted"}
@@ -203,24 +203,24 @@ export function Chats({ nav }: { nav: Nav }) {
             </Text>
             <View style={s.between}>
               <Text style={s.overline}>{c.topics.length} TOPICS</Text>
-              <Text style={s.small}>Open group chat ↗</Text>
+              <Text style={s.small}>Open group chat</Text>
             </View>
           </Touch>
         );
       })}
       {rooms.length === 0 && (
         <Empty
-          title="Your loop, your choice"
-          body="Explore the rooms and follow the topics that feel like you. Everything else can stay quiet."
-          action="Discover rooms"
+          title="No group chats in this view"
+          body="Try another conference or search, or use Discover to see chats you have hidden."
+          action="Discover group chats"
           onPress={() => setDiscover(true)}
         />
       )}
       <View style={[s.card, { backgroundColor: color.soft }]}>
-        <Text style={s.h3}>You don't have to keep up with everything.</Text>
+        <Text style={s.h3}>Choose your notifications</Text>
         <Text style={s.small}>
-          Follow a room or a single topic. Mute the rest. Hide anything you'd
-          rather leave outside your loop.
+          Follow a group chat or topic for updates. Mute turns notifications
+          off. Hide removes it from your chat list.
         </Text>
       </View>
     </ScrollView>
@@ -295,8 +295,8 @@ export function ChannelDetail({
   )
     return (
       <Empty
-        title="Room unavailable"
-        body="You may not have access to this room."
+        title="Group chat unavailable"
+        body="This group chat may have been removed, or you may not have access."
       />
     );
   const allTopicNames = Array.from(
@@ -457,7 +457,7 @@ export function ChannelDetail({
             <Text style={s.small}>
               Topic:{" "}
               {state.preferences.subscriptions[`${id}:${topic}`] ||
-                "inherits room setting"}{" "}
+                "uses group chat setting"}{" "}
               ▾
             </Text>
           </Touch>
@@ -468,7 +468,7 @@ export function ChannelDetail({
               <Field
                 value={newTopic}
                 onChangeText={setNewTopic}
-                placeholder="Name this conversation"
+                placeholder="Topic name"
                 maxLength={80}
               />
             </View>
@@ -482,7 +482,7 @@ export function ChannelDetail({
                 void nav
                   .run(
                     { type: "topic.create", channelId: id, name },
-                    "Your topic is ready",
+                    "Topic created",
                   )
                   .then((ok) => {
                     if (ok) {
@@ -525,7 +525,7 @@ export function ChannelDetail({
       >
         <View style={{ alignItems: "center", paddingVertical: 14, gap: 7 }}>
           <Text style={{ fontSize: 33, color: color.ink }}>◎</Text>
-          <Text style={s.h3}>You're in the right room.</Text>
+          <Text style={s.h3}>Messages are organized by topic.</Text>
           <Text style={[s.small, { textAlign: "center" }]}>
             {channel.description}
           </Text>
@@ -535,9 +535,7 @@ export function ChannelDetail({
             secondary
             small
             title={
-              history.loading
-                ? "Loading history…"
-                : "Earlier in this conversation ↑"
+              history.loading ? "Loading history…" : "Load earlier messages ↑"
             }
             disabled={history.loading}
             onPress={() => {
@@ -562,7 +560,7 @@ export function ChannelDetail({
         )}
         {history.loading && !history.hasMore && (
           <Text style={[s.small, { textAlign: "center" }]}>
-            Opening the conversation…
+            Loading messages…
           </Text>
         )}
         {messages.map((m, i) => {
@@ -642,10 +640,10 @@ export function ChannelDetail({
                                           onPress: () =>
                                             Alert.alert(
                                               "Delete your message?",
-                                              "This message will be removed from the room.",
+                                              "This message will be deleted from the group chat.",
                                               [
                                                 {
-                                                  text: "Keep it",
+                                                  text: "Keep message",
                                                   style: "cancel",
                                                 },
                                                 {
@@ -791,8 +789,8 @@ export function ChannelDetail({
         })}
         {messages.length === 0 && (
           <Empty
-            title="Start a good conversation"
-            body="Your first message could be someone's first connection."
+            title="No messages in this topic"
+            body="Send the first message."
           />
         )}
       </ScrollView>
@@ -857,13 +855,14 @@ export function ChannelDetail({
             />
           </View>
           <Button
-            title={busy ? "…" : editing ? "Save" : "Send ↗"}
+            title={busy ? "…" : editing ? "Save" : "Send"}
             disabled={busy || attachment.busy || !body.trim()}
             onPress={send}
           />
         </View>
         <Text style={[s.small, { fontSize: 10, paddingHorizontal: 3 }]}>
-          A little context goes a long way. Stay kind.
+          Follow the group guidelines. Do not share someone else’s private
+          information.
         </Text>
       </View>
     </KeyboardAvoidingView>

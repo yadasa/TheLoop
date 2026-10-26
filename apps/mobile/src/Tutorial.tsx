@@ -82,28 +82,28 @@ export async function shouldShowTutorial(): Promise<boolean> {
 
 const steps = [
   {
-    eyebrow: "START WITH YOUR PEOPLE",
-    title: "Group chats.\nA little more room.",
-    body: "Group chats are the heart of TheLoop. Find a conference hub, open a room, and join the conversations that feel like you.",
-    tip: "The Group chats tab keeps your rooms close. You can return to this guide from You whenever you like.",
+    eyebrow: "GROUP CHATS",
+    title: "Start with a group chat.",
+    body: "Choose a conference to see its group chats. Open a chat, then choose a topic.",
+    tip: "Use the Group chats tab to return to your chats. Reopen this guide from You.",
   },
   {
-    eyebrow: "MAKE ROOM FOR WHAT MATTERS",
-    title: "Follow the good stuff.\nTurn down the rest.",
-    body: "Rooms have topics, so introductions, career moves, and after-hours plans can each have their own space. Choose what deserves your attention.",
-    tip: "Follow keeps you in the loop. Mute quiets a topic. Hide removes it from your view without making the choice for anyone else.",
+    eyebrow: "TOPICS AND NOTIFICATIONS",
+    title: "Choose your updates.",
+    body: "Topics separate introductions, career questions and event plans. Follow the topics you want updates from.",
+    tip: "Mute turns notifications off. Hide removes a chat or topic from your normal views. Change either choice in its notification settings.",
   },
   {
-    eyebrow: "TAKE THE CONNECTION FURTHER",
-    title: "A good plan.\nA smaller circle.",
-    body: "Explore events in the calendar and RSVP when a plan feels right. For your own private circle, create a Squad and invite accepted connections.",
-    tip: "A Squad invitation is a choice. Friends accept before joining, and new members do not receive conversation history from before they joined.",
+    eyebrow: "EVENTS AND SQUADS",
+    title: "Find events. Start a Squad.",
+    body: "Find events in the calendar and RSVP. Create a Squad for a private group chat with accepted connections.",
+    tip: "People accept Squad invitations before joining. They see messages sent after they join.",
   },
   {
-    eyebrow: "YOUR COMFORT COMES FIRST",
-    title: "Be known.\nOn your terms.",
-    body: "Share the professional details you want people to see. Connections need an accepted request; following someone is a separate choice.",
-    tip: "Review profile visibility, who can start a private conversation, quiet hours, and blocks in You. Trust scores explain activity signals; they do not verify someone’s credentials or safety.",
+    eyebrow: "PROFILES AND PRIVACY",
+    title: "Set up your profile.",
+    body: "Add your role, company, skills and interests. Choose who can view your professional details. Connections require acceptance; following is separate.",
+    tip: "In You, manage profile visibility, direct-message permissions, notifications and blocked members. Trust scores reflect app activity; they do not verify credentials or personal safety.",
   },
 ] as const;
 
@@ -115,7 +115,7 @@ function Illustration({ step }: { step: number }) {
         <>
           <View style={s.row}>
             <Logo size={30} />
-            <Text style={s.h3}>Your group chats</Text>
+            <Text style={s.h3}>Group chat example</Text>
           </View>
           <View
             style={{
@@ -127,24 +127,24 @@ function Illustration({ step }: { step: number }) {
             }}
           >
             <Text style={s.h3}>The lobby</Text>
-            <Text style={s.small}>A room for the first hello.</Text>
+            <Text style={s.small}>Introduce yourself to the group.</Text>
             <Text
               style={[
                 s.body,
                 { backgroundColor: color.soft, borderRadius: 12, padding: 12 },
               ]}
             >
-              Introductions → choose a topic, then join in.
+              Open a topic to read and send messages.
             </Text>
           </View>
         </>
       ) : step === 1 ? (
         <>
-          <Text style={s.h3}>Choose the volume.</Text>
+          <Text style={s.h3}>Notification options</Text>
           {[
-            ["Following", "Keep this topic close."],
-            ["Muted", "Stay joined, with less noise."],
-            ["Hidden", "Give this space a rest."],
+            ["Following", "Updates on."],
+            ["Muted", "Notifications off."],
+            ["Hidden", "Removed from normal views."],
           ].map(([label, body]) => (
             <View
               key={label}
@@ -164,7 +164,7 @@ function Illustration({ step }: { step: number }) {
             <Text style={[s.h2, { width: 35 }]}>□</Text>
             <View style={[s.grow, { gap: 5 }]}>
               <Text style={s.h3}>Calendar</Text>
-              <Text style={s.small}>See the plan before you commit.</Text>
+              <Text style={s.small}>View details, RSVP and save the date.</Text>
             </View>
           </View>
           <View style={s.divider} />
@@ -172,9 +172,7 @@ function Illustration({ step }: { step: number }) {
             <Text style={[s.h2, { width: 35 }]}>◎</Text>
             <View style={[s.grow, { gap: 5 }]}>
               <Text style={s.h3}>Private Squads</Text>
-              <Text style={s.small}>
-                Invited friends decide whether to join.
-              </Text>
+              <Text style={s.small}>Invitations must be accepted.</Text>
             </View>
           </View>
         </>
@@ -182,15 +180,12 @@ function Illustration({ step }: { step: number }) {
         <>
           <View style={s.row}>
             <Logo size={30} />
-            <Text style={s.h3}>You set the boundaries.</Text>
+            <Text style={s.h3}>Privacy settings</Text>
           </View>
           <Text style={s.body}>Profile visibility</Text>
           <Text style={s.body}>Connections and followers</Text>
-          <Text style={s.body}>Private conversation settings</Text>
-          <Text style={s.small}>
-            A thoughtful introduction can be the start. You choose what comes
-            next.
-          </Text>
+          <Text style={s.body}>Direct-message settings</Text>
+          <Text style={s.small}>Change these settings in You.</Text>
         </>
       )}
     </View>
@@ -281,9 +276,9 @@ export function Tutorial({ nav }: { nav: Nav }) {
     return (
       <ScrollView ref={scroll} contentContainerStyle={s.content}>
         <Logo size={42} />
-        <Text style={s.title}>A little way around.</Text>
+        <Text style={s.title}>Quick tour</Text>
         {loading ? (
-          <Text style={s.small}>Opening your guide…</Text>
+          <Text style={s.small}>Loading guide…</Text>
         ) : (
           <>
             <Text style={s.body} accessibilityRole="alert">
@@ -333,7 +328,7 @@ export function Tutorial({ nav }: { nav: Nav }) {
             text: `Guide step ${progress.step + 1} of 4`,
           }}
         >
-          YOUR GUIDE · {progress.step + 1} / 4
+          QUICK TOUR · {progress.step + 1} / 4
         </Text>
       </View>
       <Animated.View style={{ opacity, gap: 22 }}>
@@ -351,7 +346,7 @@ export function Tutorial({ nav }: { nav: Nav }) {
       {progress.step === 0 ? (
         <>
           <Button
-            title={busy ? "Saving your place…" : "Open group chats ↗"}
+            title={busy ? "Saving…" : "Open group chats"}
             disabled={busy}
             onPress={() => void persist(next(), () => nav.navigate("Chat"))}
           />
@@ -364,13 +359,13 @@ export function Tutorial({ nav }: { nav: Nav }) {
         </>
       ) : progress.step < 3 ? (
         <Button
-          title={busy ? "Saving your place…" : "Continue ↗"}
+          title={busy ? "Saving…" : "Continue"}
           disabled={busy}
           onPress={() => void persist(next())}
         />
       ) : (
         <Button
-          title={busy ? "Saving your place…" : "Finish · make yourself at home"}
+          title={busy ? "Saving…" : "Finish guide"}
           disabled={busy}
           onPress={() =>
             void persist(
@@ -410,7 +405,7 @@ export function Tutorial({ nav }: { nav: Nav }) {
         </View>
       </View>
       <Text style={s.small}>
-        Your place is saved on this device. Reopen the guide from You anytime.
+        Progress is saved on this device. Reopen the guide from You.
       </Text>
     </ScrollView>
   );

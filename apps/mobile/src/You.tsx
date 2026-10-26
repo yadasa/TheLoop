@@ -40,12 +40,12 @@ export function You({ nav }: { nav: Nav }) {
   if (!me)
     return (
       <ScrollView contentContainerStyle={s.content}>
-        <Text style={s.title}>A place for you.</Text>
+        <Text style={s.title}>Your account</Text>
         <Text style={s.body}>
-          Your people, your conversations, your next opportunity.
+          Sign in to use group chats, communities and events.
         </Text>
         <Button
-          title="Sign in or create an account ↗"
+          title="Sign in or create an account"
           onPress={() => nav.open({ kind: "auth" })}
         />
       </ScrollView>
@@ -58,9 +58,9 @@ export function You({ nav }: { nav: Nav }) {
   ).length;
   return (
     <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.overline}>MAKE YOURSELF AT HOME</Text>
+      <Text style={s.overline}>YOUR ACCOUNT</Text>
       <View style={s.between}>
-        <Text style={s.title}>Your corner.</Text>
+        <Text style={s.title}>Your profile</Text>
         <Touch
           label="Settings"
           onPress={() => nav.open({ kind: "settings" })}
@@ -76,11 +76,11 @@ export function You({ nav }: { nav: Nav }) {
         <Text style={[s.small, { textAlign: "center" }]}>{me.headline}</Text>
         <View style={s.row}>
           <Label>◎ {me.trust.score} TRUST</Label>
-          {me.verified && <Label>VERIFIED</Label>}
+          {me.verified && <Label>EMAIL VERIFIED</Label>}
         </View>
         <Button
           secondary
-          title="View your profile ↗"
+          title="View your profile"
           onPress={() => nav.open({ kind: "profile", id: me.id })}
         />
       </View>
@@ -89,7 +89,7 @@ export function You({ nav }: { nav: Nav }) {
           [String(count), "connections"],
           [String(me.followerCount || 0), "followers"],
           [String(state.preferences.followingIds.length), "following"],
-          [String(upcoming), "upcoming plans"],
+          [String(upcoming), "upcoming events"],
         ].map(([value, label]) => (
           <View
             key={label}
@@ -115,7 +115,7 @@ export function You({ nav }: { nav: Nav }) {
       </View>
       <Section
         title="Your interests"
-        action="Refine"
+        action="Edit"
         onAction={() => nav.open({ kind: "onboarding" })}
       />
       <View style={s.wrap}>
@@ -130,33 +130,33 @@ export function You({ nav }: { nav: Nav }) {
       <View style={s.card}>
         {[
           {
-            title: "Your quick tour",
-            subtitle: "Group chats, topics, plans, and your boundaries",
+            title: "Quick tour",
+            subtitle: "Group chats, topics, events and privacy settings",
             route: "tutorial",
           },
           {
-            title: "Your professional profile",
-            subtitle: "Your story, skills, and open doors",
+            title: "Edit profile",
+            subtitle: "Update your work, skills and links",
             route: "edit-profile",
           },
           {
-            title: "Your communities",
-            subtitle: `${state.preferences.joinedCommunityIds.length} corners of the loop`,
+            title: "Communities",
+            subtitle: `${state.preferences.joinedCommunityIds.length} joined communities`,
             route: "communities",
           },
           {
             title: "Privacy & notifications",
-            subtitle: "Make the loop work for you",
+            subtitle: "Manage visibility and notifications",
             route: "settings",
           },
           {
-            title: "Your trust score",
-            subtitle: "Clear signals. No mystery metrics.",
+            title: "Trust score",
+            subtitle: "Review the signals behind your score",
             route: "trust",
           },
           {
             title: "Export your data",
-            subtitle: "Your information stays yours",
+            subtitle: "Download your account information",
             route: "export",
           },
         ].map((item, i) => (
@@ -171,7 +171,7 @@ export function You({ nav }: { nav: Nav }) {
                 <Text style={[s.h3, { fontSize: 15 }]}>{item.title}</Text>
                 <Text style={s.small}>{item.subtitle}</Text>
               </View>
-              <Text style={s.small}>↗</Text>
+              <Text style={s.small}>›</Text>
             </Touch>
           </View>
         ))}
@@ -179,29 +179,27 @@ export function You({ nav }: { nav: Nav }) {
       <Button
         secondary
         title={
-          role === "member"
-            ? "Your report history ↗"
-            : "Community care · Moderator queue ↗"
+          role === "member" ? "Your report history" : "Review member reports"
         }
         onPress={() => nav.open({ kind: "safety" })}
       />
       {role !== "member" && (
         <Button
           secondary
-          title="Manage conferences and rooms ↗"
+          title="Manage conferences and group chats"
           onPress={() => nav.open({ kind: "spaces" })}
         />
       )}
       {mode === "demo" ? (
         <View style={[s.card, { backgroundColor: color.soft }]}>
-          <Text style={s.h3}>You're exploring the sample loop.</Text>
+          <Text style={s.h3}>Sample data</Text>
           <Text style={s.small}>
             People, messages, events, and reputation here are fictional. Your
             changes stay on this device.
           </Text>
           {resetRequested ? (
             <>
-              <Text style={s.h3}>Start the sample loop over?</Text>
+              <Text style={s.h3}>Reset sample data?</Text>
               <Text style={s.small}>
                 Your local fictional preview changes will be cleared.
               </Text>
@@ -210,12 +208,12 @@ export function You({ nav }: { nav: Nav }) {
                 onPress={() => {
                   setResetRequested(false);
                   resetDemo();
-                  nav.toast("A fresh loop is ready");
+                  nav.toast("Sample data reset");
                 }}
               />
               <Button
                 secondary
-                title="Keep exploring"
+                title="Cancel"
                 onPress={() => setResetRequested(false)}
               />
             </>
@@ -242,7 +240,7 @@ export function You({ nav }: { nav: Nav }) {
       <View style={{ alignItems: "center", gap: 12, paddingVertical: 20 }}>
         <Logo size={25} />
         <Text style={[s.small, { fontSize: 10, letterSpacing: 2 }]}>
-          BY US. FOR US. WITH US.
+          THELOOP
         </Text>
         <Text style={s.small}>TheLoop · early community preview</Text>
       </View>
@@ -255,10 +253,9 @@ function VerificationCard({ nav }: { nav: Nav }) {
   const [busy, setBusy] = useState(false);
   return (
     <View style={s.card}>
-      <Text style={s.h3}>One more thing: verify your email.</Text>
+      <Text style={s.h3}>Verify your email</Text>
       <Text style={s.small}>
-        It helps protect your account and adds a clear identity signal to your
-        community trust.
+        Confirm that you control this email address before posting or messaging.
       </Text>
       <Button
         secondary
@@ -274,7 +271,7 @@ function VerificationCard({ nav }: { nav: Nav }) {
       />
       <Button
         secondary
-        title="I've verified my email ↗"
+        title="I've verified my email"
         onPress={() =>
           void refreshVerification()
             .then((verified) =>
@@ -311,9 +308,9 @@ export function EditProfile({ nav }: { nav: Nav }) {
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={s.content}
     >
-      <Text style={s.title}>Tell your story.</Text>
+      <Text style={s.title}>Edit profile</Text>
       <Text style={s.body}>
-        A little about what you do. A lot about who you are.
+        Add the work, skills and interests you want to share.
       </Text>
       <Field
         label="Your name"
@@ -325,24 +322,24 @@ export function EditProfile({ nav }: { nav: Nav }) {
         label="Your headline"
         value={headline}
         onChangeText={setHeadline}
-        placeholder="Building things that bring people together"
+        placeholder="Product designer at your company"
         maxLength={160}
       />
       <Field
-        label="Company / what you're building"
+        label="Company or project"
         value={company}
         onChangeText={setCompany}
         maxLength={160}
       />
       <Field
-        label="Home base"
+        label="Location"
         value={location}
         onChangeText={setLocation}
         placeholder="Houston, TX"
         maxLength={160}
       />
       <Field
-        label="A bit about you"
+        label="Bio"
         value={bio}
         onChangeText={setBio}
         multiline
@@ -386,7 +383,7 @@ export function EditProfile({ nav }: { nav: Nav }) {
         platform.
       </Text>
       <Button
-        title={busy ? "Saving…" : "Save your story ↗"}
+        title={busy ? "Saving…" : "Save profile"}
         disabled={busy || !name.trim()}
         onPress={() => {
           const parsed = links
@@ -526,23 +523,21 @@ export function Settings({ nav }: { nav: Nav }) {
   const p = state.preferences;
   return (
     <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.title}>A quieter kind{`\n`}of connected.</Text>
-      <Text style={s.body}>
-        Your boundaries make this a better place to be.
-      </Text>
+      <Text style={s.title}>Settings</Text>
+      <Text style={s.body}>Manage appearance, notifications and privacy.</Text>
       <View style={s.card}>
         <Section
-          title="Your atmosphere"
+          title="Appearance"
           subtitle="Dark by default. Your choice stays on this device."
         />
         <ThemeSwitcher compact={false} />
       </View>
-      <Section title="Your attention" />
+      <Section title="Notifications" />
       <DevicePushSettings nav={nav} />
       <View style={s.card}>
         <Toggle
-          title="Hide unfollowed rooms"
-          body="Keep only the rooms you've chosen in view."
+          title="Hide group chats you do not follow"
+          body="Show only the group chats you follow."
           value={p.hideUnsubscribed}
           onChange={(v) =>
             void nav.run({
@@ -554,7 +549,7 @@ export function Settings({ nav }: { nav: Nav }) {
         <View style={s.divider} />
         <Toggle
           title="Quiet hours"
-          body="Let the loop wait while you recharge."
+          body="Pause notifications during the hours you choose."
           value={p.quietHours}
           onChange={(v) =>
             void nav.run({
@@ -579,7 +574,7 @@ export function Settings({ nav }: { nav: Nav }) {
           }
         />
       </View>
-      <Text style={s.label}>Your catch-up digest</Text>
+      <Text style={s.label}>Digest</Text>
       <Horizontal>
         {(["off", "daily", "weekly"] as const).map((value) => (
           <Chip
@@ -596,11 +591,11 @@ export function Settings({ nav }: { nav: Nav }) {
         ))}
       </Horizontal>
       <Text style={s.small}>
-        Catch up on the rooms you follow. Live digests arrive in app around 9
-        a.m. in your saved timezone. Quiet hours keep your evenings yours.
+        Get a digest of group chats you follow. Live digests arrive in the app
+        around 9 a.m. in your saved timezone and respect quiet hours.
       </Text>
-      <Section title="Who gets in" />
-      <Text style={s.label}>Who can start private conversations with you?</Text>
+      <Section title="Direct messages" />
+      <Text style={s.label}>Who can start a direct message with you?</Text>
       <Horizontal>
         {(["connections", "everyone", "nobody"] as const).map((value) => (
           <Chip
@@ -623,16 +618,16 @@ export function Settings({ nav }: { nav: Nav }) {
         ))}
       </Horizontal>
       <Text style={s.small}>
-        People you message can reply. Block a member to stop future messages, or
-        mute a conversation to keep it quiet.
+        People you message can reply. Block someone to stop future messages, or
+        mute their direct messages to turn off notifications.
       </Text>
       <Text style={s.small}>
-        Blocking overrides connections and follows. Hidden content stays hidden
-        until you choose to bring it back.
+        Blocking applies even if you are connected or follow each other. You can
+        manage hidden chats and blocked members below.
       </Text>
       <Section
-        title="Hidden rooms"
-        subtitle="You can always change your mind"
+        title="Hidden group chats"
+        subtitle="Restore a chat to your list"
       />
       {state.channels
         .filter((c) => p.subscriptions[c.id] === "hidden")
@@ -654,7 +649,7 @@ export function Settings({ nav }: { nav: Nav }) {
           </View>
         ))}
       {!state.channels.some((c) => p.subscriptions[c.id] === "hidden") && (
-        <Text style={s.small}>No rooms are hidden.</Text>
+        <Text style={s.small}>No hidden group chats.</Text>
       )}
       <Section title="Blocked members" />
       {p.blockedIds.map((id) => (
@@ -675,7 +670,7 @@ export function Settings({ nav }: { nav: Nav }) {
       )}
       <Button
         secondary
-        title="Export my information ↗"
+        title="Export my information"
         onPress={() => nav.open({ kind: "export" })}
       />
       {mode === "live" && (
@@ -698,7 +693,7 @@ function DeleteAccount({ nav }: { nav: Nav }) {
   const [busy, setBusy] = useState(false);
   return (
     <View style={s.card}>
-      <Text style={s.h3}>Leave the loop</Text>
+      <Text style={s.h3}>Delete account</Text>
       <Text style={s.small}>
         Delete your account and personal records. This cannot be undone. For
         your protection, sign in again first if your session is older than five
@@ -761,14 +756,14 @@ export function Onboarding({ nav }: { nav: Nav }) {
   return (
     <ScrollView contentContainerStyle={s.content}>
       <Logo size={38} />
-      <Text style={s.overline}>MAKE THIS YOUR LOOP · {step} / 2</Text>
+      <Text style={s.overline}>SET UP THELOOP · {step} / 2</Text>
       <Text style={s.title}>
-        {step === 1 ? "What are you\ninto?" : "Find your\nconversation."}
+        {step === 1 ? "Choose interests" : "Choose group chats"}
       </Text>
       <Text style={s.body}>
         {step === 1
-          ? "Pick what feels like you. We will help you find your people."
-          : "Follow a few rooms to get started. Everything else stays muted until you choose it."}
+          ? "Choose your interests to help suggest connections."
+          : "Select the group chats you want updates from. Other chats stay muted until you follow them."}
       </Text>
       {step === 1 ? (
         <View style={[s.wrap, { gap: 10, marginTop: 6 }]}>
@@ -820,11 +815,7 @@ export function Onboarding({ nav }: { nav: Nav }) {
       )}
       <Button
         title={
-          busy
-            ? "Finding your people…"
-            : step === 1
-              ? "Find my rooms ↗"
-              : "Welcome to your loop ↗"
+          busy ? "Saving…" : step === 1 ? "Choose group chats" : "Save choices"
         }
         disabled={busy || (step === 1 && chosen.length === 0)}
         onPress={() => {
@@ -844,7 +835,7 @@ export function Onboarding({ nav }: { nav: Nav }) {
                 replaceChannels: true,
                 channelScopeIds: eligibleChannels.map((c) => c.id),
               },
-              "Your loop is ready",
+              "Choices saved",
             )
             .then((ok) => {
               if (ok)
@@ -868,9 +859,7 @@ export function Onboarding({ nav }: { nav: Nav }) {
           onPress={() => setStep(1)}
         />
       )}
-      <Text style={s.small}>
-        You can change all of this anytime. This is your space.
-      </Text>
+      <Text style={s.small}>Change these choices later from You.</Text>
     </ScrollView>
   );
 }
@@ -883,7 +872,7 @@ export function Notifications({ nav }: { nav: Nav }) {
   return (
     <ScrollView contentContainerStyle={s.content}>
       <Section
-        title="In your loop"
+        title="Notifications"
         action="Mark all read"
         onAction={() => void nav.run({ type: "notification.read" })}
       />
@@ -920,8 +909,8 @@ export function Notifications({ nav }: { nav: Nav }) {
       ))}
       {items.length === 0 && (
         <Empty
-          title="All caught up"
-          body="A little quiet is a good thing. We will keep the important things here."
+          title="No notifications"
+          body="Message, connection and event updates will appear here."
         />
       )}
     </ScrollView>
@@ -955,7 +944,7 @@ export function Trust({ nav }: { nav: Nav }) {
   const trust = latestTrust || me?.trust;
   return (
     <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.title}>Trust is earned.{`\n`}And explained.</Text>
+      <Text style={s.title}>Trust score</Text>
       <View
         style={[
           s.card,
@@ -987,16 +976,16 @@ export function Trust({ nav }: { nav: Nav }) {
         </View>
       ))}
       <View style={s.card}>
-        <Text style={s.h3}>Your worth is never a number.</Text>
+        <Text style={s.h3}>What the score means</Text>
         <Text style={s.small}>
-          Trust supports safer community decisions. It is separate from identity
-          verification, professional status, popularity, and follower counts.
-          Scores should have clear evidence and a path to review.
+          Review the activity signals listed here. A trust score does not verify
+          identity, professional credentials or personal safety. You can request
+          a review below.
         </Text>
       </View>
-      <Section title="Something look wrong?" />
+      <Section title="Request a score review" />
       <Text style={s.body}>
-        Ask for a review. Give moderators the context they need.
+        Describe the issue so moderators can review it.
       </Text>
       <Field
         label="Your review request"
@@ -1006,7 +995,7 @@ export function Trust({ nav }: { nav: Nav }) {
         placeholder="Tell us what you'd like us to look at…"
       />
       <Button
-        title={busy ? "Submitting…" : "Request a review ↗"}
+        title={busy ? "Submitting…" : "Request a review"}
         disabled={busy || !reason.trim()}
         onPress={() => {
           setBusy(true);
@@ -1046,15 +1035,15 @@ export function ExportData({ nav }: { nav: Nav }) {
   };
   return (
     <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.title}>Your data.{`\n`}Your hands.</Text>
+      <Text style={s.title}>Export account data</Text>
       <Text style={s.body}>
         Export your profile, settings, authored posts and messages, direct
-        conversations, connections, and event RSVPs.
+        messages, connections and event RSVPs.
       </Text>
       <View style={s.card}>
-        <Text style={s.h3}>A portable JSON export</Text>
+        <Text style={s.h3}>JSON file</Text>
         <Text style={s.small}>
-          {data.posts.length} authored posts · {data.messages.length} room
+          {data.posts.length} authored posts · {data.messages.length} group chat
           messages · {data.connections.length} connections
         </Text>
         <Text style={s.small}>
@@ -1064,7 +1053,7 @@ export function ExportData({ nav }: { nav: Nav }) {
         </Text>
       </View>
       <Button
-        title={busy ? "Preparing your export…" : "Export and share my data ↗"}
+        title={busy ? "Preparing your export…" : "Export and share my data"}
         disabled={busy}
         onPress={() => {
           setBusy(true);
@@ -1077,8 +1066,7 @@ export function ExportData({ nav }: { nav: Nav }) {
         }}
       />
       <Text style={s.small}>
-        This includes private conversations. Share only with a destination you
-        trust.
+        This includes direct messages. Share only with a destination you trust.
       </Text>
     </ScrollView>
   );
@@ -1098,17 +1086,15 @@ export function Auth({ nav }: { nav: Nav }) {
       contentContainerStyle={s.content}
     >
       <Logo size={42} />
-      <Text style={s.title}>
-        {creating ? "Find your people." : "Welcome\nback to the loop."}
-      </Text>
+      <Text style={s.title}>{creating ? "Create account" : "Sign in"}</Text>
       <Text style={s.body}>
         {creating
-          ? "One account. Your communities, conversations, and next connections."
-          : "Good conversations are waiting for you."}
+          ? "Join group chats and communities, find events and connect with members."
+          : "Sign in to your account."}
       </Text>
       <Button
         secondary
-        title="Explore public AfroTech events ↗"
+        title="Explore public AfroTech events"
         onPress={() => nav.open({ kind: "guide" })}
       />
       {mode === "demo" && (
@@ -1138,10 +1124,12 @@ export function Auth({ nav }: { nav: Nav }) {
       <Button
         title={
           busy
-            ? "One moment…"
+            ? creating
+              ? "Creating account…"
+              : "Signing in…"
             : creating
-              ? "Create your account ↗"
-              : "Sign in ↗"
+              ? "Create your account"
+              : "Sign in"
         }
         disabled={
           busy ||
@@ -1166,9 +1154,7 @@ export function Auth({ nav }: { nav: Nav }) {
       <Button
         secondary
         title={
-          creating
-            ? "Already in the loop? Sign in"
-            : "New here? Create an account"
+          creating ? "Already have an account? Sign in" : "Create an account"
         }
         onPress={() => setCreating(!creating)}
       />
@@ -1192,8 +1178,8 @@ export function Auth({ nav }: { nav: Nav }) {
         </Touch>
       )}
       <Text style={s.small}>
-        By joining, you agree to keep the community thoughtful, safe, and
-        respectful. Protect private information. Make room for each other.
+        Follow the community guidelines. Do not post someone else’s private
+        information without permission.
       </Text>
     </ScrollView>
   );

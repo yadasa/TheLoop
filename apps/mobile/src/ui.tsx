@@ -286,8 +286,8 @@ export function ThemeSwitcher({ compact = true }: { compact?: boolean }) {
       onPress={() =>
         void setTheme(next).catch(() =>
           Alert.alert(
-            "Appearance changed",
-            "This choice could not be saved on this device. You can try again.",
+            "Theme changed for this session",
+            "Your theme changed but could not be saved on this device. Try again.",
           ),
         )
       }
@@ -621,7 +621,7 @@ export function Loading() {
     >
       <Logo size={50} />
       <ActivityIndicator color={color.ink} />
-      <Text style={s.small}>Finding your people…</Text>
+      <Text style={s.small}>Loading TheLoop…</Text>
     </View>
   );
 }
@@ -645,7 +645,7 @@ export function Section({
       {action && onAction && (
         <Touch onPress={onAction} label={action} style={{ padding: 8 }}>
           <Text style={{ fontSize: 12, fontWeight: "600", color: color.ink }}>
-            {action} ↗
+            {action}
           </Text>
         </Touch>
       )}
@@ -768,10 +768,10 @@ export function pickSubscription(
   const values: Subscription[] = ["following", "muted", "hidden"];
   const labels = values.map(
     (v) =>
-      `${v === "following" ? "Following" : v === "muted" ? "Muted" : "Hidden"}${current === v ? " ✓" : ""}`,
+      `${v === "following" ? "Follow" : v === "muted" ? "Mute" : "Hide"}${current === v ? " ✓" : ""}`,
   );
   const message =
-    "Follow what matters. Mute the rest. Hidden spaces leave your view until you discover them again.";
+    "Follow to receive updates. Mute to stop alerts. Hide to remove it from normal views.";
   if (Platform.OS === "ios") {
     ActionSheetIOS.showActionSheetWithOptions(
       {

@@ -21,8 +21,8 @@ export function Spaces({ nav }: { nav: Nav }) {
   if (role === "member")
     return (
       <Empty
-        title="This corner is for organizers"
-        body="Conference hubs and rooms are managed by community organizers and moderators."
+        title="Organizer access required"
+        body="Only moderators and administrators can manage group chats. Administrators manage conferences."
       />
     );
   if (view === "new-room")
@@ -35,20 +35,22 @@ export function Spaces({ nav }: { nav: Nav }) {
     );
   return (
     <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.title}>Make a little{`\n`}more room.</Text>
+      <Text style={s.title}>Manage group chats</Text>
       <Text style={s.body}>
-        Create thoughtful spaces. Keep the conversations relevant and the
-        boundaries clear.
+        Create conference group chats, add topics and manage access.
       </Text>
-      <Button title="Create a room ＋" onPress={() => setView("new-room")} />
+      <Button
+        title="Create group chat ＋"
+        onPress={() => setView("new-room")}
+      />
       {role === "admin" && (
         <Button
           secondary
-          title="Create a conference hub ＋"
+          title="Create conference ＋"
           onPress={() => setView("new-conference")}
         />
       )}
-      <Section title="Community spaces" />
+      <Section title="Group chats" />
       {state.channels.map((c) => (
         <View key={c.id} style={s.card}>
           <View style={s.between}>
@@ -66,7 +68,7 @@ export function Spaces({ nav }: { nav: Nav }) {
             secondary
             small
             title={
-              c.visibility === "private" ? "Manage membership ↗" : "Open room ↗"
+              c.visibility === "private" ? "Manage members" : "Open group chat"
             }
             onPress={() => {
               if (c.visibility === "private") {
@@ -98,7 +100,7 @@ function NewConference({ nav, done }: { nav: Nav; done: () => void }) {
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={s.content}
     >
-      <Text style={s.title}>A new gathering.</Text>
+      <Text style={s.title}>Create conference</Text>
       <Field
         label="Conference name"
         value={name}
@@ -126,20 +128,20 @@ function NewConference({ nav, done }: { nav: Nav; done: () => void }) {
         maxLength={10}
       />
       <Field
-        label="What brings people here?"
+        label="Description"
         value={description}
         onChangeText={setDescription}
         multiline
         maxLength={3000}
       />
       <Field
-        label="Tagline"
+        label="Short description"
         value={tagline}
         onChangeText={setTagline}
         maxLength={140}
       />
       <Button
-        title={busy ? "Creating…" : "Open the conference hub ↗"}
+        title={busy ? "Creating…" : "Create conference"}
         disabled={
           busy ||
           !name.trim() ||
@@ -171,7 +173,7 @@ function NewConference({ nav, done }: { nav: Nav; done: () => void }) {
                   tagline,
                 },
               },
-              "Your conference hub is ready",
+              "Conference created",
             )
             .then((ok) => {
               if (ok) done();
@@ -179,7 +181,7 @@ function NewConference({ nav, done }: { nav: Nav; done: () => void }) {
             .finally(() => setBusy(false));
         }}
       />
-      <Button secondary title="Back to spaces" onPress={done} />
+      <Button secondary title="Back to group chats" onPress={done} />
     </ScrollView>
   );
 }
@@ -200,7 +202,7 @@ function NewRoom({ nav, done }: { nav: Nav; done: () => void }) {
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={s.content}
     >
-      <Text style={s.title}>A room with{`\n`}a purpose.</Text>
+      <Text style={s.title}>Create group chat</Text>
       <Text style={s.label}>Conference</Text>
       <Horizontal>
         {state.conferences.map((c) => (
@@ -214,26 +216,26 @@ function NewRoom({ nav, done }: { nav: Nav; done: () => void }) {
       </Horizontal>
       {!conferenceId && (
         <Text style={s.small}>
-          Create a conference hub before opening its rooms.
+          Create a conference before adding group chats.
         </Text>
       )}
       <Field
         autoCapitalize="none"
         autoCorrect={false}
-        label="Room name · letters, numbers, dashes"
+        label="Group chat name · letters, numbers, dashes"
         value={name}
         onChangeText={setName}
         placeholder="founders-after-dark"
         maxLength={50}
       />
       <Field
-        label="What belongs in this room?"
+        label="Description"
         value={description}
         onChangeText={setDescription}
         multiline
         maxLength={1000}
       />
-      <Text style={s.label}>Room mark</Text>
+      <Text style={s.label}>Chat icon</Text>
       <Horizontal>
         {["#", "◎", "↗", "◇", "☾", "◈"].map((mark) => (
           <Chip
@@ -250,7 +252,7 @@ function NewRoom({ nav, done }: { nav: Nav; done: () => void }) {
         onChangeText={setTopics}
         multiline
       />
-      <Text style={s.label}>Who can enter?</Text>
+      <Text style={s.label}>Who can join?</Text>
       <View style={s.row}>
         <Chip
           title="Public"
@@ -258,20 +260,20 @@ function NewRoom({ nav, done }: { nav: Nav; done: () => void }) {
           onPress={() => setPrivate(false)}
         />
         <Chip
-          title="Private · invite only"
+          title="Private · added members only"
           selected={privateRoom}
           onPress={() => setPrivate(true)}
         />
       </View>
       <Text style={s.small}>
         {privateRoom
-          ? "You start as the room moderator. Add members after the room is created."
-          : "Anyone in the community can choose to follow this room."}
+          ? "You will be the group chat moderator. Add members after creating it."
+          : "Signed-in members can follow this group chat."}
       </Text>
       <Text style={s.label}>Link a community · optional</Text>
       <Horizontal>
         <Chip
-          title="Standalone room"
+          title="No linked community"
           selected={!communityId}
           onPress={() => setCommunity("")}
         />
@@ -285,12 +287,14 @@ function NewRoom({ nav, done }: { nav: Nav; done: () => void }) {
         ))}
       </Horizontal>
       <Button
-        title={busy ? "Opening…" : "Create the room ↗"}
+        title={busy ? "Creating…" : "Create group chat"}
         disabled={busy || !conferenceId || !name.trim() || !description.trim()}
         onPress={() => {
           const slug = name.trim().toLowerCase();
           if (!/^[a-z0-9][a-z0-9-]{0,49}$/.test(slug)) {
-            nav.toast("Use letters, numbers, and dashes for the room name.");
+            nav.toast(
+              "Use letters, numbers and dashes for the group chat name.",
+            );
             return;
           }
           setBusy(true);
@@ -312,7 +316,7 @@ function NewRoom({ nav, done }: { nav: Nav; done: () => void }) {
                   ...(communityId ? { communityId } : {}),
                 },
               },
-              "The room is open",
+              "Group chat created",
             )
             .then((ok) => {
               if (ok) done();
@@ -320,7 +324,7 @@ function NewRoom({ nav, done }: { nav: Nav; done: () => void }) {
             .finally(() => setBusy(false));
         }}
       />
-      <Button secondary title="Back to spaces" onPress={done} />
+      <Button secondary title="Back to group chats" onPress={done} />
     </ScrollView>
   );
 }
@@ -340,7 +344,7 @@ function Members({
   if (!channel)
     return (
       <Empty
-        title="Room unavailable"
+        title="Group chat unavailable"
         body="It may have been removed or you may no longer have access."
       />
     );
@@ -357,13 +361,13 @@ function Members({
     >
       <Text style={s.title}>{channel.name}</Text>
       <Text style={s.body}>
-        Only invited members can read this room. Moderators keep their place
-        until roles are transferred.
+        Only added members can read this group chat. Moderator membership cannot
+        be removed here.
       </Text>
       <Field
         value={search}
         onChangeText={setSearch}
-        placeholder="Find a member to invite…"
+        placeholder="Search members to add…"
       />
       {people.map((p) => {
         const member = channel.memberIds?.includes(p.id);
@@ -375,16 +379,18 @@ function Members({
               <Text style={s.h3}>{p.name}</Text>
               <Text style={s.small}>
                 {moderator
-                  ? "Room moderator"
+                  ? "Group chat moderator"
                   : member
-                    ? "In this room"
+                    ? "In this group chat"
                     : p.headline}
               </Text>
             </View>
             <Button
               small
               secondary={member}
-              title={moderator ? "Moderator" : member ? "Remove" : "Invite ＋"}
+              title={
+                moderator ? "Moderator" : member ? "Remove" : "Add member ＋"
+              }
               disabled={moderator}
               onPress={() =>
                 void nav.run(
@@ -394,7 +400,7 @@ function Members({
                     userId: p.id,
                     add: !member,
                   },
-                  member ? "Member removed" : "Member invited",
+                  member ? "Member removed" : "Member added",
                 )
               }
             />
@@ -402,7 +408,7 @@ function Members({
         );
       })}
       <View style={s.card}>
-        <Text style={s.h3}>Invite by member ID</Text>
+        <Text style={s.h3}>Add by member ID</Text>
         <Text style={s.small}>
           If someone is outside your discovery list, use their exact TheLoop
           member ID.
@@ -428,7 +434,7 @@ function Members({
                   userId: memberId.trim(),
                   add: true,
                 },
-                "Member invited",
+                "Member added",
               )
               .then((ok) => {
                 if (ok) setMemberId("");
@@ -436,7 +442,7 @@ function Members({
           }
         />
       </View>
-      <Button secondary title="Back to spaces" onPress={back} />
+      <Button secondary title="Back to group chats" onPress={back} />
     </ScrollView>
   );
 }

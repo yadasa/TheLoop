@@ -40,9 +40,7 @@ export function Feed({ nav }: { nav: Nav }) {
     setLoadingSaved(true);
     void loadSavedPosts()
       .catch(() =>
-        nav.toast(
-          "Could not refresh saved conversations. Try opening Saved again.",
-        ),
+        nav.toast("Could not load saved posts. Open Saved to try again."),
       )
       .finally(() => {
         if (mounted) setLoadingSaved(false);
@@ -92,10 +90,9 @@ export function Feed({ nav }: { nav: Nav }) {
     >
       <View style={s.between}>
         <View>
-          <Text style={s.overline}>THE PEOPLE MAKE THE LOOP</Text>
+          <Text style={s.overline}>YOUR FEED</Text>
           <Text style={[s.title, { marginTop: 5 }]}>
             Hey, {me?.name.split(" ")[0] || "you"}
-            <Text style={{ fontWeight: "300" }}> ↗</Text>
           </Text>
         </View>
         <Touch
@@ -145,7 +142,7 @@ export function Feed({ nav }: { nav: Nav }) {
         ]}
       >
         <Text style={{ fontSize: 21, color: color.ink }}>⌕</Text>
-        <Text style={s.small}>People, conversations, your next plan…</Text>
+        <Text style={s.small}>Search people, chats, posts and events…</Text>
       </Touch>
       <View
         style={[
@@ -186,7 +183,7 @@ export function Feed({ nav }: { nav: Nav }) {
           }}
         />
         <Text style={[s.overline, { color: color.heroMuted }]}>
-          BUILT ON REAL CONNECTION
+          CONFERENCE CHATS AND COMMUNITIES
         </Text>
         <Text
           style={{
@@ -198,7 +195,7 @@ export function Feed({ nav }: { nav: Nav }) {
             maxWidth: 235,
           }}
         >
-          Less noise.{`\n`}More of your people.
+          Group chats,{`\n`}organized by topic.
         </Text>
         <View style={[s.row, { flexWrap: "wrap", gap: 18 }]}>
           <Touch
@@ -209,7 +206,7 @@ export function Feed({ nav }: { nav: Nav }) {
             <Text
               style={{ color: color.onHero, fontSize: 13, fontWeight: "600" }}
             >
-              Open group chats ↗
+              Open group chats
             </Text>
           </Touch>
           <Touch
@@ -218,7 +215,7 @@ export function Feed({ nav }: { nav: Nav }) {
             style={{ minHeight: 44, justifyContent: "center" }}
           >
             <Text style={{ color: color.heroMuted, fontSize: 12 }}>
-              Find your corner ↗
+              Browse communities
             </Text>
           </Touch>
         </View>
@@ -251,7 +248,7 @@ export function Feed({ nav }: { nav: Nav }) {
           ))}
       </Horizontal>
       <View style={s.between}>
-        <Text style={s.h2}>Around the loop</Text>
+        <Text style={s.h2}>Community posts</Text>
         <View style={s.row}>
           {["Hot", "New"].map((v) => (
             <Touch
@@ -286,31 +283,27 @@ export function Feed({ nav }: { nav: Nav }) {
         ]}
       >
         <Avatar profile={me} size={34} />
-        <Text style={[s.small, { flex: 1 }]}>
-          A thought, a win, an open door…
-        </Text>
+        <Text style={[s.small, { flex: 1 }]}>Create a post…</Text>
         <Text style={{ fontSize: 23, color: color.ink }}>＋</Text>
       </Touch>
       {posts.map((post) => (
         <PostCard key={post.id} post={post} nav={nav} />
       ))}
-      {loadingSaved && (
-        <Text style={s.small}>Finding your saved conversations…</Text>
-      )}
+      {loadingSaved && <Text style={s.small}>Loading saved posts…</Text>}
       {filter !== "saved" && hasMore.posts && (
         <Button
           secondary
-          title="More from the community ↓"
+          title="Load more posts ↓"
           onPress={() => loadMore("posts")}
         />
       )}
       {posts.length === 0 && !loadingSaved && (
         <Empty
-          title="A little quiet here"
+          title="No posts in this view"
           body={
             filter === "saved"
-              ? "Save posts to come back to the good stuff."
-              : "Join a community or start a conversation to make this space yours."
+              ? "Saved posts will appear here."
+              : "Join a community to see its posts, or create a post."
           }
           action="Explore communities"
           onPress={() => nav.open({ kind: "communities" })}
@@ -318,7 +311,7 @@ export function Feed({ nav }: { nav: Nav }) {
       )}
       {upcoming && (
         <View style={[s.card, { backgroundColor: color.soft }]}>
-          <Text style={s.overline}>TAKE IT OFFLINE</Text>
+          <Text style={s.overline}>UPCOMING EVENT</Text>
           <Text style={s.h2}>{upcoming.title}</Text>
           <Text style={s.small}>
             {new Date(upcoming.startAt).toLocaleString(undefined, {
@@ -330,13 +323,13 @@ export function Feed({ nav }: { nav: Nav }) {
             · {upcoming.location}
           </Text>
           <Button
-            title="See who's going ↗"
+            title="View event"
             onPress={() => nav.open({ kind: "event", id: upcoming.id })}
           />
         </View>
       )}
       <Text style={[s.small, { textAlign: "center" }]}>
-        Four years of connection. A whole new chapter.
+        Built for conference communities.
       </Text>
     </ScrollView>
   );
@@ -403,9 +396,7 @@ export function PostCard({
       {post.poll && <PollBlock post={post} nav={nav} />}
       <View style={s.wrap}>
         <Label dark={post.kind === "win"}>
-          {post.kind === "win"
-            ? "✦ A LITTLE LOUDER FOR THE WINS"
-            : post.kind.toUpperCase()}
+          {post.kind === "win" ? "WIN" : post.kind.toUpperCase()}
         </Label>
         {post.tags.map((t) => (
           <Label key={t}>#{t}</Label>
@@ -501,7 +492,7 @@ export function PostCard({
             onPress={() =>
               mine
                 ? Alert.alert(
-                    "Your conversation",
+                    "Your post",
                     post.title,
                     [
                       {
@@ -519,14 +510,14 @@ export function PostCard({
                     { cancelable: true },
                   )
                 : Alert.alert(
-                    "This conversation",
+                    "Post options",
                     post.title,
                     [
                       {
                         text: "Share",
                         onPress: () =>
                           void Share.share({
-                            message: `${post.title}\n\nJoin the conversation on TheLoop: ${shareTargetURL({ kind: "post", id: post.id })}`,
+                            message: `${post.title}\n\nView this post on TheLoop: ${shareTargetURL({ kind: "post", id: post.id })}`,
                           }),
                       },
                       {
@@ -651,9 +642,9 @@ export function PostDetail({ id, nav }: { id: string; nav: Nav }) {
   if (state.preferences.blockedIds.includes(post.authorId))
     return (
       <Empty
-        title="Conversation hidden"
+        title="Post hidden"
         body="You have blocked this member. Manage blocked members in your privacy settings."
-        action="Your boundaries"
+        action="Privacy settings"
         onPress={() => nav.open({ kind: "settings" })}
       />
     );
@@ -683,7 +674,7 @@ export function PostDetail({ id, nav }: { id: string; nav: Nav }) {
       )}
       <Button
         secondary
-        title="Share conversation ↗"
+        title="Share post"
         onPress={() =>
           void Share.share({
             message: `${post.title}\n\n${shareTargetURL({ kind: "post", id: post.id })}`,
@@ -691,7 +682,7 @@ export function PostDetail({ id, nav }: { id: string; nav: Nav }) {
         }
       />
       <Section
-        title="The conversation"
+        title="Replies"
         subtitle={`${post.comments.length} ${post.comments.length === 1 ? "reply" : "replies"}`}
       />
       {post.comments
@@ -700,19 +691,17 @@ export function PostDetail({ id, nav }: { id: string; nav: Nav }) {
           <CommentItem key={c.id} comment={c} postId={post.id} nav={nav} />
         ))}
       {post.comments.length === 0 && (
-        <Text style={s.small}>
-          Bring a perspective. Ask a question. Open a door.
-        </Text>
+        <Text style={s.small}>No replies yet. Add the first reply.</Text>
       )}
       <Field
         value={body}
         onChangeText={setBody}
         disabled={busy}
         multiline
-        placeholder="Add to the conversation…"
+        placeholder="Write a reply…"
       />
       <Button
-        title={busy ? "Posting…" : "Post reply ↗"}
+        title={busy ? "Posting…" : "Post reply"}
         disabled={busy || !body.trim()}
         onPress={() => {
           setBusy(true);
@@ -730,10 +719,10 @@ export function PostDetail({ id, nav }: { id: string; nav: Nav }) {
 
 function confirmPostDelete(post: Post, nav: Nav) {
   Alert.alert(
-    "Delete your conversation?",
+    "Delete your post?",
     "Your post and its replies will be removed. This cannot be undone.",
     [
-      { text: "Keep it", style: "cancel" },
+      { text: "Cancel", style: "cancel" },
       {
         text: "Delete post",
         style: "destructive",
@@ -777,8 +766,8 @@ export function EditPost({ id, nav }: { id: string; nav: Nav }) {
   if (post.authorId !== state.currentUserId)
     return (
       <Empty
-        title="This edit belongs to its author"
-        body="You can edit your own posts. Report a concern on someone else's conversation."
+        title="Only the author can edit this post"
+        body="You can report this post from its options menu."
       />
     );
   return <PostEditor key={id} post={post} nav={nav} />;
@@ -796,10 +785,10 @@ function PostEditor({ post, nav }: { post: Post; nav: Nav }) {
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={s.content}
     >
-      <Text style={s.title}>A little more{`\n`}of your perspective.</Text>
+      <Text style={s.title}>Edit post</Text>
       <Text style={s.body}>
-        Make it clearer, add context, or fix a detail. The conversation and its
-        replies stay together.
+        Update the text, tags or link. Existing votes and replies stay with the
+        post.
       </Text>
       <Field
         label="Title"
@@ -834,11 +823,11 @@ function PostEditor({ post, nav }: { post: Post; nav: Nav }) {
       />
       <Text style={s.small}>
         {post.poll
-          ? "Poll choices stay the same so every existing vote keeps its meaning."
+          ? "Poll options cannot be edited after the post is created."
           : "Edits are marked on your post."}
       </Text>
       <Button
-        title={busy ? "Saving…" : "Save changes ↗"}
+        title={busy ? "Saving…" : "Save changes"}
         disabled={busy || !title.trim() || !body.trim()}
         onPress={() => {
           if (
@@ -975,9 +964,9 @@ function CommentItem({
                     onPress={() =>
                       Alert.alert(
                         "Delete your reply?",
-                        "This reply will be removed from the conversation.",
+                        "This reply will be deleted from the post.",
                         [
-                          { text: "Keep it", style: "cancel" },
+                          { text: "Cancel", style: "cancel" },
                           {
                             text: "Delete reply",
                             style: "destructive",
@@ -1055,7 +1044,7 @@ export function Compose({
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
   const [options, setOptions] = useState(
-    "Coffee & connection\nA rooftop link-up\nA good panel",
+    "Coffee meetup\nDinner\nA panel discussion",
   );
   const [busy, setBusy] = useState(false);
   return (
@@ -1063,8 +1052,8 @@ export function Compose({
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={s.content}
     >
-      <Text style={s.title}>Put it in{`\n`}the loop.</Text>
-      <Text style={s.body}>Good things happen when we share what we know.</Text>
+      <Text style={s.title}>Create post</Text>
+      <Text style={s.body}>Choose a community, then write your post.</Text>
       <Horizontal>
         {state.communities.map((c) => (
           <Chip
@@ -1092,20 +1081,20 @@ export function Compose({
         )}
       </Horizontal>
       <Field
-        label="Give it a title"
+        label="Title"
         value={title}
         onChangeText={setTitle}
         disabled={busy}
-        placeholder="What's on your mind?"
+        placeholder="Post title"
         maxLength={160}
       />
       <Field
-        label="The story"
+        label="Post text"
         value={body}
         onChangeText={setBody}
         disabled={busy}
         multiline
-        placeholder="The details, the context, the good stuff…"
+        placeholder="Write your post…"
       />
       {kind === "link" && (
         <Field
@@ -1127,12 +1116,12 @@ export function Compose({
         />
       )}
       <Text style={s.small}>
-        Keep it thoughtful. Protect people's privacy. Make room for a different
-        perspective.
+        Follow the community rules. Do not post someone else’s private
+        information without permission.
       </Text>
       <ImageAttachmentPicker attachment={attachment} disabled={busy} />
       <Button
-        title={busy ? "Sharing…" : "Share with the community ↗"}
+        title={busy ? "Sharing…" : "Publish post"}
         disabled={
           busy ||
           attachment.busy ||
@@ -1163,7 +1152,7 @@ export function Compose({
                   ...(kind === "link" ? { url } : {}),
                   ...(image ? { imageId: image.id } : {}),
                 },
-                "Your post is in the loop",
+                "Post published",
               ),
             )
             .then((ok) => {
@@ -1191,7 +1180,7 @@ export function Communities({ nav }: { nav: Nav }) {
   const [search, setSearch] = useState("");
   return (
     <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.title}>Find your{`\n`}kind of people.</Text>
+      <Text style={s.title}>Communities</Text>
       <Field
         value={search}
         onChangeText={setSearch}
@@ -1220,12 +1209,13 @@ export function Communities({ nav }: { nav: Nav }) {
             <Button
               secondary
               small
-              title="Explore community ↗"
+              title="Explore community"
               onPress={() => nav.open({ kind: "community", id: c.id })}
             />
             <Text style={s.body}>{c.description}</Text>
             <Text style={s.small}>
-              {c.rules[0] || "Be kind. Share generously. Respect the room."}
+              {c.rules[0] ||
+                "Treat members respectfully. Follow the community guidelines."}
             </Text>
             <View style={s.between}>
               <Button
@@ -1316,7 +1306,7 @@ export function CommunityDetail({ id, nav }: { id: string; nav: Nav }) {
       />
       <Button
         secondary
-        title="Share community ↗"
+        title="Share community"
         onPress={() =>
           void Share.share({
             message: `${community.name}\n${shareTargetURL({ kind: "community", id })}`,
@@ -1324,10 +1314,10 @@ export function CommunityDetail({ id, nav }: { id: string; nav: Nav }) {
         }
       />
       <View style={s.card}>
-        <Text style={s.h3}>The tone we set together</Text>
+        <Text style={s.h3}>Community rules</Text>
         {(community.rules.length
           ? community.rules
-          : ["Be kind. Share generously. Respect the room."]
+          : ["Treat members respectfully. Follow the community guidelines."]
         ).map((rule, i) => (
           <Text key={`${i}:${rule}`} style={s.small}>
             {i + 1}. {rule}
@@ -1335,28 +1325,28 @@ export function CommunityDetail({ id, nav }: { id: string; nav: Nav }) {
         ))}
       </View>
       <Section
-        title="Community conversations"
-        subtitle="Recent conversations in your loaded feed"
+        title="Community posts"
+        subtitle="Posts loaded for this community"
       />
       {posts.map((post) => (
         <PostCard key={post.id} post={post} nav={nav} />
       ))}
       {!posts.length && (
         <Text style={s.small}>
-          No conversations from this community in the current feed. Load more or
-          share a perspective with your people.
+          No posts from this community are loaded. Load more posts or create
+          one.
         </Text>
       )}
       {hasMore.posts && (
         <Button
           secondary
-          title="Load more conversations ↓"
+          title="Load more posts ↓"
           onPress={() => loadMore("posts")}
         />
       )}
       {joined && (
         <Button
-          title="Share a perspective ↗"
+          title="Create post"
           onPress={() => nav.open({ kind: "compose", communityId: id })}
         />
       )}
@@ -1369,38 +1359,36 @@ export function CreateCommunity({ nav }: { nav: Nav }) {
   const [description, setDescription] = useState("");
   return (
     <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.title}>Make room.</Text>
-      <Text style={s.body}>
-        Create a thoughtful corner of the internet for a shared interest.
-      </Text>
+      <Text style={s.title}>Create community</Text>
+      <Text style={s.body}>Create a community for a shared interest.</Text>
       <Field
         label="Community name"
         value={name}
         onChangeText={setName}
-        placeholder="Builders after dark"
+        placeholder="AfroTech first-timers"
         maxLength={60}
       />
       <Field
-        label="What brings your people together?"
+        label="Community description"
         value={description}
         onChangeText={setDescription}
         multiline
       />
       <View style={s.card}>
-        <Text style={s.h3}>You're setting the tone.</Text>
+        <Text style={s.h3}>You will moderate this community</Text>
         <Text style={s.small}>
-          As the founding moderator, you'll help keep this space welcoming,
-          relevant, and safe. Community guidelines apply everywhere.
+          Set clear rules and review reports from members. App-wide guidelines
+          also apply.
         </Text>
       </View>
       <Button
-        title="Create community ↗"
+        title="Create community"
         disabled={!name.trim() || !description.trim()}
         onPress={() =>
           void nav
             .run(
               { type: "community.create", name, description },
-              "Your community is ready",
+              "Community created",
             )
             .then((ok) => {
               if (ok) nav.close();
