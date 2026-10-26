@@ -1,4 +1,5 @@
 import { Doc } from "./policy";
+import { contributorIds } from "./contributions";
 
 export function scrubPost(post: Doc, uid: string): Doc | undefined {
   const comments = (post.comments || []).filter(
@@ -23,10 +24,12 @@ export function scrubPost(post: Doc, uid: string): Doc | undefined {
   if (
     comments.length === (post.comments || []).length &&
     !hadVote &&
-    !pollChanged
+    !pollChanged &&
+    !(post.contributorIds || []).includes(uid)
   )
     return;
-  return { comments, votes, ...(poll ? { poll } : {}) };
+  const patch = { comments, votes, ...(poll ? { poll } : {}) };
+  return { ...patch, contributorIds: contributorIds({ ...post, ...patch }) };
 }
 export function scrubReactions(message: Doc, uid: string): Doc | undefined {
   const reactions: Doc = {};

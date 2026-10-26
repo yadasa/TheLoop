@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { withContributors } from "../src/contributions";
 import { initialState, defaultPreferences } from "../../packages/core/src/seed";
 if (
   !process.env.FIRESTORE_EMULATOR_HOST ||
@@ -69,7 +70,10 @@ async function main() {
         data.participantIds = [data.fromId, data.toId];
       if (collection === "notifications" && !data.read)
         data.unreadUserId = data.userId;
-      batch.set(db.doc(`${collection}/${row.id}`), data);
+      batch.set(
+        db.doc(`${collection}/${row.id}`),
+        collection === "posts" ? withContributors(data) : data,
+      );
     }
   await batch.commit();
   console.log(

@@ -41,7 +41,7 @@ Region: `us-central1`. Every callable requires Firebase Authentication. `bootstr
 | `exportAccount`     | `{collection?,cursor?}`    | Own profile/preferences or a page of at most 100 own records with `nextCursor`                 |
 | `deleteAccount`     | `{confirmation:'DELETE'}`  | Starts an idempotent deletion worker; requires authentication within the previous five minutes |
 
-`requestId` is a fresh UUID (letters, digits, `_` and `-` only) per **logical action**, retained for retries of that same action. Receipts are per user and expire after seven days through Firestore TTL. Changing the payload with the same ID returns the original result rather than executing twice. Limits are 45 successful commands per minute and 2,000 per UTC day per member. Rejected commands do not mutate data or consume successful-operation quota.
+`requestId` is a fresh UUID (letters, digits, `_` and `-` only) per **logical action**, retained for retries of that same action. Receipts are per user, with an expiry timestamp seven days later. Automatic Firestore TTL cleanup is enabled only after billing approval; the Spark deployment excludes TTL. Changing the payload with the same ID returns the original result rather than executing twice. Limits are 45 successful commands per minute and 2,000 per UTC day per member. Rejected commands do not mutate data or consume successful-operation quota.
 
 Commands follow the union in `packages/core/src/types.ts`. Additional backend operations:
 
@@ -82,11 +82,26 @@ Trust inputs, rate counters, idempotency receipts, Expo tokens, deletion jobs an
 
 Two real scheduled workers generate in-app notices: `sendCommunityDigests` runs hourly and sends daily highlights at 9am in the saved timezone, or weekly highlights Monday at 9am. It honors channel/topic follows, mutes, blocks, read markers and private membership. Highlights use the latest 1,000 messages/posts from the last seven days; these are bounded recent highlights rather than a guaranteed complete archive. `sendEventReminders` runs every five minutes and notifies opted-in RSVP attendees about events starting within 30 minutes. Stable notification IDs make worker retries idempotent. Quiet hours suppress push delivery while retaining the in-app notice. No email/SMS messages are sent.
 
-Account export is paginated: request the collection names returned by the initial response until each `nextCursor` is null. Account deletion disables authentication, deletes authored messages/posts and private edges, removes private memberships, follows/blocks/access grants, corrects membership and accepted-connection signals, releases RSVP capacity to the waitlist, scrubs embedded post comments/votes/polls and message reactions, anonymizes hosted events/community/channel ownership, removes the user's private document tree/profile/trust data, and deletes Firebase Auth. Mutable shared arrays are reread and changed in transactions so cleanup cannot overwrite another member's concurrent activity. A small completed deletion-job marker retains the UID and completion timestamp for operational idempotency; no content is retained there. Audit external integrations separately before enabling them.
+Account export is paginated: request the collection names returned by the initial response until each `nextCursor` is null. The `contributions` export queries the server-maintained `posts.contributorIds` index and returns only the caller's comments, post vote, and selected poll-option IDs. It excludes other members' comments/votes and the post author's text. Comment/vote/poll mutations and deletion cleanup recompute this index; clients cannot supply it. Relationship cursors support directional IDs containing `~`. New deployments start with no historical content; legacy/imported posts must be normalized with `withContributors` before their contribution export is discoverable.
+
+Account deletion disables authentication, deletes authored messages/posts and private edges, removes private memberships, follows/blocks/access grants, corrects membership and accepted-connection signals, releases RSVP capacity to the waitlist, scrubs embedded post comments/votes/polls and message reactions, anonymizes hosted events/community/channel ownership, removes the user's private document tree/profile/trust data, and deletes Firebase Auth. Mutable shared arrays are reread and changed in transactions so cleanup cannot overwrite another member's concurrent activity. A small completed deletion-job marker retains the UID and completion timestamp for operational idempotency; no content is retained there. Audit external integrations separately before enabling them.
 
 Untrusted file uploads remain disabled in `storage.rules` until malware scanning, upload completion checks, image metadata stripping and retention policies are provisioned. HTTPS link sharing works without an upload bucket.
 
 ## Production provisioning
+
+For the **free Spark stage**, deploy only Firestore rules and ordinary indexes:
+
+```sh
+node scripts/prepare-spark-config.mjs
+firebase deploy --project theloop-community-2026 --config firebase.spark.json --only firestore:rules,firestore:indexes --non-interactive
+```
+
+The helper derives the index file from the canonical configuration and excludes the paid TTL override. `firebase.spark.json` contains no Functions/Hosting/Storage deployment targets. Do not deploy the full TTL configuration or enable Cloud Functions/Run/Build before billing authorization. Firestore's first Standard database can use the free quota; TTL, backups and PITR require billing. [Firestore quota documentation](https://firebase.google.com/docs/firestore/quotas).
+
+The public `identityPlatform:initializeAuth` administrative endpoint is restricted to billing-enabled projects. When basic Firebase Auth has not been initialized on Spark, use the Firebase console's Authentication setup instead of invoking that paid-platform initialization route. [Official initialization endpoint](https://docs.cloud.google.com/identity-platform/docs/reference/rest/v2/projects.identityPlatform/initializeAuth).
+
+After billing is approved and Authentication is configured:
 
 1. Create a dedicated Firebase project; do not reuse other customer/community projects.
 2. Enable Firestore Native mode, Firebase Auth Email/Password (and optional Google), add the web/mobile app, and set authorized web domains.

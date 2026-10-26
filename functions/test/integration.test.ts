@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { initializeApp, deleteApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
@@ -34,9 +36,10 @@ test(
   "two real emulator accounts enforce callable state transitions and Firestore privacy",
   { skip: !enabled, timeout: 180_000 },
   async (t) => {
-    assert.ok(
-      projectId.startsWith("demo-"),
-      "Integration tests require a demo- project ID.",
+    assert.equal(
+      projectId,
+      "demo-theloop-integration",
+      "Integration tests are restricted to the demo-theloop-integration namespace.",
     );
     for (const host of [functionsHost, authHost, firestoreHost])
       assert.match(
@@ -83,7 +86,7 @@ test(
       );
       assert.ok(
         response.ok && body.localId && body.idToken,
-        `Emulator signup failed: ${JSON.stringify(body)}`,
+        `Emulator signup failed: ${JSON.stringify(body.error ?? { status: response.status })}`,
       );
       const actor = { uid: String(body.localId), token: String(body.idToken) };
       actors.push(actor);
@@ -138,6 +141,14 @@ test(
       );
     let alice: TestActor, bob: TestActor;
     try {
+      // Load only this repository's rules into the explicitly isolated test namespace.
+      // No database-wide clear is used, including on shared emulator hosts.
+      const rules = await readFile(resolve(__dirname, "../../firestore.rules"), "utf8");
+      const rulesResponse = await fetch(`http://${firestoreHost}/emulator/v1/projects/${projectId}:securityRules`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rules: { files: [{ content: rules }] } }), signal: AbortSignal.timeout(20_000),
+      });
+      assert.ok(rulesResponse.ok, `Could not install isolated test rules: ${rulesResponse.status}`);
       alice = await createActor("alice");
       bob = await createActor("bob");
       await db.doc(`users/${alice.uid}`).update({ role: "admin" });
@@ -508,6 +519,21 @@ test(
             (await db.doc(`posts/${post}`).get()).get("votes")[alice.uid],
             undefined,
           );
+          const alicePost = remember("posts", (await command(alice, {
+            type: "post.create", communityId: community, title: "Alice's original post",
+            body: "Original author text must not be copied into Bob's contribution export.", kind: "discussion",
+          })).id);
+          await command(alice, { type: "post.comment", postId: alicePost, body: "Alice's separate comment stays out of Bob's export." });
+          await command(bob, { type: "post.comment", postId: alicePost, body: "Bob's own contribution is exportable." });
+          await command(bob, { type: "post.vote", postId: alicePost, value: 1 });
+          assert.ok((await db.doc(`posts/${alicePost}`).get()).get("contributorIds").includes(bob.uid));
+          const contributionExport = await callable(bob, "exportAccount", { collection: "contributions" });
+          const exportedContribution = contributionExport.records.find((record: Record<string, unknown>) => record.postId === alicePost);
+          assert.ok(exportedContribution, "server-maintained contributor index finds Bob's activity");
+          assert.equal(exportedContribution.vote, 1);
+          assert.deepEqual(exportedContribution.comments.map((comment: Record<string, unknown>) => comment.body), ["Bob's own contribution is exportable."]);
+          assert.equal(exportedContribution.body, undefined); assert.equal(exportedContribution.title, undefined);
+          assert.ok(!JSON.stringify(exportedContribution).includes("Alice's separate comment"));
           const report = remember(
             "reports",
             (

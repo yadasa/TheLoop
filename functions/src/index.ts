@@ -30,6 +30,7 @@ import {
 } from "./policy";
 import { inQuietHours } from "./notifications";
 import { scrubCommunityOwner, scrubPost, scrubReactions } from "./cleanup";
+import { exportCursor, projectContribution } from "./contributions";
 
 export { sendCommunityDigests, sendEventReminders } from "./workers";
 
@@ -339,10 +340,15 @@ export const exportAccount = onCall(callableOptions, async (request) => {
   try {
     const allowed: Record<
       string,
-      { field: string; operator: "==" | "array-contains" }
+      { field: string; operator: "==" | "array-contains"; source?: string }
     > = {
       messages: { field: "authorId", operator: "==" },
       posts: { field: "authorId", operator: "==" },
+      contributions: {
+        field: "contributorIds",
+        operator: "array-contains",
+        source: "posts",
+      },
       events: { field: "attendeeIds", operator: "array-contains" },
       connections: { field: "participantIds", operator: "array-contains" },
       follows: { field: "participantIds", operator: "array-contains" },
@@ -373,15 +379,22 @@ export const exportAccount = onCall(callableOptions, async (request) => {
     );
     const filter = allowed[collection];
     let query = db
-      .collection(collection)
+      .collection(filter.source || collection)
       .where(filter.field, filter.operator, identity.uid)
       .orderBy(FieldPath.documentId())
       .limit(100);
-    if (request.data.cursor) query = query.startAfter(id(request.data.cursor));
+    if (request.data.cursor)
+      query = query.startAfter(exportCursor(request.data.cursor));
     const snapshot = await query.get();
     return {
       collection,
-      records: snapshot.docs.map((doc) => doc.data()),
+      records: snapshot.docs
+        .map((doc) =>
+          collection === "contributions"
+            ? projectContribution(doc.data(), identity.uid)
+            : doc.data(),
+        )
+        .filter((record) => record !== undefined),
       nextCursor: snapshot.size === 100 ? snapshot.docs.at(-1)!.id : null,
     };
   } catch (error) {

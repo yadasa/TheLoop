@@ -579,3 +579,33 @@ test("arbitrary event hosts cannot farm attendance trust; approved organizers ca
     /own attendance/,
   );
 });
+test("post mutation handlers maintain the contributor query index without accepting client IDs", async () => {
+  const db = await database();
+  for (const uid of ["alice", "bob"])
+    await db.command(uid, { type: "community.join", communityId: "builders" });
+  const created = await db.command("alice", {
+    type: "post.create",
+    communityId: "builders",
+    title: "A useful poll",
+    body: "",
+    kind: "poll",
+    options: ["Coffee", "Dinner"],
+    contributorIds: ["forged"],
+  });
+  assert.deepEqual(db.get(`posts/${created.id}`).contributorIds, []);
+  await db.command("bob", { type: "post.vote", postId: created.id, value: 1 });
+  assert.deepEqual(db.get(`posts/${created.id}`).contributorIds, ["bob"]);
+  await db.command("bob", { type: "post.vote", postId: created.id, value: 1 });
+  assert.deepEqual(db.get(`posts/${created.id}`).contributorIds, []);
+  await db.command("bob", {
+    type: "poll.vote",
+    postId: created.id,
+    optionId: "option-0",
+  });
+  await db.command("bob", {
+    type: "post.comment",
+    postId: created.id,
+    body: "My context for this choice",
+  });
+  assert.deepEqual(db.get(`posts/${created.id}`).contributorIds, ["bob"]);
+});

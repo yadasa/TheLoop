@@ -15,6 +15,7 @@ import {
   validatePreferences,
   validateProfile,
 } from "./policy";
+import { withContributors } from "./contributions";
 
 export interface TransactionStore {
   get(path: string): Promise<Doc | undefined>;
@@ -740,7 +741,7 @@ export async function execute(
       if (command.url) post.url = httpsUrl(command.url);
       if (kind === "link")
         assert(post.url, "invalid-argument", "Add a link for this post.");
-      store.set(`posts/${entityId}`, post);
+      store.set(`posts/${entityId}`, withContributors(post));
       break;
     }
     case "post.vote":
@@ -772,7 +773,7 @@ export async function execute(
           "resource-exhausted",
           "Vote limit reached.",
         );
-        store.set(`posts/${post.id}`, { ...post, votes });
+        store.set(`posts/${post.id}`, withContributors({ ...post, votes }));
       } else if (commandType === "post.comment") {
         assert(
           post.comments?.length < 200,
@@ -780,13 +781,16 @@ export async function execute(
           "This discussion has reached its reply limit. Start a related discussion.",
         );
         const body = text(command.body, "Comment", 3000);
-        store.set(`posts/${post.id}`, {
-          ...post,
-          comments: [
-            ...post.comments,
-            { id: entityId, authorId: actor.uid, body, createdAt: now },
-          ],
-        });
+        store.set(
+          `posts/${post.id}`,
+          withContributors({
+            ...post,
+            comments: [
+              ...post.comments,
+              { id: entityId, authorId: actor.uid, body, createdAt: now },
+            ],
+          }),
+        );
         await notify(
           post.authorId,
           `${profile.name} joined your discussion`,
@@ -818,10 +822,13 @@ export async function execute(
           "resource-exhausted",
           "Poll response limit reached.",
         );
-        store.set(`posts/${post.id}`, {
-          ...post,
-          poll: { ...post.poll, options },
-        });
+        store.set(
+          `posts/${post.id}`,
+          withContributors({
+            ...post,
+            poll: { ...post.poll, options },
+          }),
+        );
       }
       break;
     }
