@@ -1,12 +1,28 @@
 {
   "cli": { "version": ">= 16.0.0", "appVersionSource": "local" },
   "build": {
-    "development": { "developmentClient": true, "distribution": "internal" },
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": { "THELOOP_NATIVE_MODE": "sample" }
+    },
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
+      "env": { "THELOOP_NATIVE_MODE": "sample" },
       "android": { "buildType": "apk" }
     },
-    "production": { "autoIncrement": true }
+    "livepreview": {
+      "distribution": "internal",
+      "environment": "preview",
+      "env": { "THELOOP_NATIVE_MODE": "live" },
+      "android": { "buildType": "apk" }
+    },
+    "production": {
+      "autoIncrement": true,
+      "environment": "production",
+      "env": { "THELOOP_NATIVE_MODE": "live" }
+    }
   },
   "submit": { "production": {} }
 }

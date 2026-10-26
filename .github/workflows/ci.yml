@@ -27,6 +27,7 @@ jobs:
           java-version: 21
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm --filter @theloop/mobile test:config
       - run: pnpm test
       - run: pnpm build
       - name: Firestore access and pagination rules

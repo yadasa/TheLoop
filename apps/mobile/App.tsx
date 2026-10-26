@@ -15,6 +15,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
 import { loadAuthPersistence } from "./src/authPersistence";
@@ -69,8 +70,8 @@ import {
   useTheme,
 } from "./src/ui";
 import type { Nav, Route, Tab } from "./src/navigation";
+import { parseNativeRuntime, type NativeRuntimeConfig } from "./src/runtimeConfig";
 
-declare const process: { env: Record<string, string | undefined> };
 const storage = {
   async load(): Promise<LoopState | null> {
     const raw = await AsyncStorage.getItem("theloop.preview.v1");
@@ -80,47 +81,55 @@ const storage = {
     await AsyncStorage.setItem("theloop.preview.v1", JSON.stringify(state));
   },
 };
-const firebaseConfig = process.env.EXPO_PUBLIC_FIREBASE_API_KEY
-  ? {
-      apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-      authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-      projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-      storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-      appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-    }
-  : undefined;
-const emulators = process.env.EXPO_PUBLIC_EMULATOR_HOST
-  ? {
-      host: process.env.EXPO_PUBLIC_EMULATOR_HOST,
-      authPort: Number(process.env.EXPO_PUBLIC_AUTH_EMULATOR_PORT || 9099),
-      firestorePort: Number(
-        process.env.EXPO_PUBLIC_FIRESTORE_EMULATOR_PORT || 8080,
-      ),
-      functionsPort: Number(
-        process.env.EXPO_PUBLIC_FUNCTIONS_EMULATOR_PORT || 5001,
-      ),
-    }
-  : undefined;
+// Missing or malformed manifest data must never silently choose another environment.
+const runtime: NativeRuntimeConfig | null = (() => {
+  try {
+    return parseNativeRuntime(Constants.expoConfig?.extra?.theloop);
+  } catch {
+    return null;
+  }
+})();
 
 export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <LoopProvider
-          storage={storage}
-          firebaseConfig={firebaseConfig}
-          authPersistenceFactory={loadAuthPersistence}
-          useEmulators={!!emulators}
-          emulators={emulators}
-        >
-          <ThemeStatusBar />
-          <MotionProvider>
-            <LoopApp />
-          </MotionProvider>
-        </LoopProvider>
+        <ThemeStatusBar />
+        {runtime ? (
+          <LoopProvider
+            storage={storage}
+            firebaseConfig={
+              runtime.mode === "sample" ? undefined : runtime.firebaseConfig
+            }
+            authPersistenceFactory={loadAuthPersistence}
+            useEmulators={runtime.mode === "emulator"}
+            emulators={runtime.mode === "emulator" ? runtime.emulators : undefined}
+          >
+            <MotionProvider>
+              <LoopApp />
+            </MotionProvider>
+          </LoopProvider>
+        ) : (
+          <ConfigurationUnavailable />
+        )}
       </ThemeProvider>
     </SafeAreaProvider>
+  );
+}
+
+function ConfigurationUnavailable() {
+  useTheme();
+  return (
+    <SafeAreaView style={[s.grow, { backgroundColor: color.paper }]}>
+      <View style={[s.content, { flex: 1, justifyContent: "center" }]}>
+        <Logo size={48} />
+        <Text style={s.title}>This version couldn’t start</Text>
+        <Text style={s.body}>
+          The app setup is incomplete. Install the latest TheLoop preview and
+          try again.
+        </Text>
+      </View>
+    </SafeAreaView>
   );
 }
 
