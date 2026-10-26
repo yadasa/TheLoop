@@ -1,7 +1,7 @@
 import type { Command, CommandContext, LoopState } from "./types";
 import { connected, safeURL } from "./selectors";
-import {applySquadCommand} from './squads';
-import {bindPreviewImage,prunePreviewImages} from './previewImages';
+import { applySquadCommand } from "./squads";
+import { bindPreviewImage, prunePreviewImages } from "./previewImages";
 const clean = (v: string, max: number, required = true) => {
   const value = v.trim();
   if ((required && !value) || value.length > max)
@@ -27,7 +27,15 @@ export function applyCommand(
     if (!p) throw new Error("This post is no longer available.");
     return p;
   };
-  if(cmd.type.startsWith('squad.')){applySquadCommand(s,cmd as Extract<Command,{type:`squad.${string}`}>,ctx);prunePreviewImages(s,ctx.now);return s;}
+  if (cmd.type.startsWith("squad.")) {
+    applySquadCommand(
+      s,
+      cmd as Extract<Command, { type: `squad.${string}` }>,
+      ctx,
+    );
+    prunePreviewImages(s, ctx.now);
+    return s;
+  }
   switch (cmd.type) {
     case "topic.create": {
       const channel = s.channels.find((c) => c.id === cmd.channelId);
@@ -109,10 +117,21 @@ export function applyCommand(
         channelId: cmd.channelId,
         topic: clean(cmd.topic, 80),
         authorId: uid,
+        ...(me ? { authorName: me.name, authorInitials: me.initials } : {}),
         body: clean(cmd.body, 4000),
         createdAt: ctx.now,
         reactions: {},
-        ...(cmd.imageId!==undefined?{image:bindPreviewImage(s,cmd.imageId,{kind:'channel',id:cmd.channelId},{kind:'message',id:ctx.id},ctx.now)}:{}),
+        ...(cmd.imageId !== undefined
+          ? {
+              image: bindPreviewImage(
+                s,
+                cmd.imageId,
+                { kind: "channel", id: cmd.channelId },
+                { kind: "message", id: ctx.id },
+                ctx.now,
+              ),
+            }
+          : {}),
         ...(cmd.replyTo ? { replyTo: cmd.replyTo } : {}),
       });
       break;
@@ -165,6 +184,7 @@ export function applyCommand(
         id: ctx.id,
         communityId: cmd.communityId,
         authorId: uid,
+        ...(me ? { authorName: me.name, authorInitials: me.initials } : {}),
         title: clean(cmd.title, 180),
         body: clean(cmd.body, 10000),
         kind: cmd.kind,
@@ -172,7 +192,17 @@ export function applyCommand(
         votes: {},
         comments: [],
         tags: (cmd.tags ?? []).slice(0, 5),
-        ...(cmd.imageId!==undefined?{image:bindPreviewImage(s,cmd.imageId,{kind:'community',id:cmd.communityId},{kind:'post',id:ctx.id},ctx.now)}:{}),
+        ...(cmd.imageId !== undefined
+          ? {
+              image: bindPreviewImage(
+                s,
+                cmd.imageId,
+                { kind: "community", id: cmd.communityId },
+                { kind: "post", id: ctx.id },
+                ctx.now,
+              ),
+            }
+          : {}),
         ...(cmd.url ? { url: cmd.url } : {}),
         ...(cmd.kind === "poll"
           ? {
@@ -191,27 +221,67 @@ export function applyCommand(
       });
       break;
     }
-    case 'post.edit': {
-      const p=post(cmd.postId);if(p.authorId!==uid)throw new Error('Only the author can edit this post.');
-      if(Object.keys(cmd.post).some(key=>!['title','body','tags','url'].includes(key)))throw new Error('Only the post text, tags and link can be edited.');
-      if(cmd.post.title!==undefined)p.title=clean(cmd.post.title,180);
-      if(cmd.post.body!==undefined)p.body=clean(cmd.post.body,10000);
-      if(cmd.post.tags!==undefined){if(cmd.post.tags.length>5)throw new Error('Use up to five tags.');p.tags=cmd.post.tags.map(tag=>clean(tag,40));}
-      if(cmd.post.url!==undefined){if(cmd.post.url===''){if(p.kind==='link')throw new Error('A shared link post needs its link.');delete p.url;}else{if(!safeURL(cmd.post.url))throw new Error('Use a valid HTTPS link.');p.url=cmd.post.url;}}
-      p.editedAt=ctx.now;break;
+    case "post.edit": {
+      const p = post(cmd.postId);
+      if (p.authorId !== uid)
+        throw new Error("Only the author can edit this post.");
+      if (
+        Object.keys(cmd.post).some(
+          (key) => !["title", "body", "tags", "url"].includes(key),
+        )
+      )
+        throw new Error("Only the post text, tags and link can be edited.");
+      if (cmd.post.title !== undefined) p.title = clean(cmd.post.title, 180);
+      if (cmd.post.body !== undefined) p.body = clean(cmd.post.body, 10000);
+      if (cmd.post.tags !== undefined) {
+        if (cmd.post.tags.length > 5) throw new Error("Use up to five tags.");
+        p.tags = cmd.post.tags.map((tag) => clean(tag, 40));
+      }
+      if (cmd.post.url !== undefined) {
+        if (cmd.post.url === "") {
+          if (p.kind === "link")
+            throw new Error("A shared link post needs its link.");
+          delete p.url;
+        } else {
+          if (!safeURL(cmd.post.url))
+            throw new Error("Use a valid HTTPS link.");
+          p.url = cmd.post.url;
+        }
+      }
+      p.editedAt = ctx.now;
+      break;
     }
-    case 'post.delete': {
-      const p=post(cmd.postId);if(p.authorId!==uid)throw new Error('Only the author can delete this post.');s.posts=s.posts.filter(p=>p.id!==cmd.postId);s.preferences.savedPostIds=s.preferences.savedPostIds.filter(id=>id!==cmd.postId);break;
+    case "post.delete": {
+      const p = post(cmd.postId);
+      if (p.authorId !== uid)
+        throw new Error("Only the author can delete this post.");
+      s.posts = s.posts.filter((p) => p.id !== cmd.postId);
+      s.preferences.savedPostIds = s.preferences.savedPostIds.filter(
+        (id) => id !== cmd.postId,
+      );
+      break;
     }
-    case 'comment.edit': {
-      const p=post(cmd.postId);const comment=p.comments.find(c=>c.id===cmd.commentId);if(!comment||comment.authorId!==uid)throw new Error('Only the author can edit this reply.');comment.body=clean(cmd.body,2000);comment.editedAt=ctx.now;break;
+    case "comment.edit": {
+      const p = post(cmd.postId);
+      const comment = p.comments.find((c) => c.id === cmd.commentId);
+      if (!comment || comment.authorId !== uid)
+        throw new Error("Only the author can edit this reply.");
+      comment.body = clean(cmd.body, 2000);
+      comment.editedAt = ctx.now;
+      break;
     }
-    case 'comment.delete': {
-      const p=post(cmd.postId);const comment=p.comments.find(c=>c.id===cmd.commentId);if(!comment||comment.authorId!==uid)throw new Error('Only the author can delete this reply.');p.comments=p.comments.filter(c=>c.id!==cmd.commentId);break;
+    case "comment.delete": {
+      const p = post(cmd.postId);
+      const comment = p.comments.find((c) => c.id === cmd.commentId);
+      if (!comment || comment.authorId !== uid)
+        throw new Error("Only the author can delete this reply.");
+      p.comments = p.comments.filter((c) => c.id !== cmd.commentId);
+      break;
     }
     case "post.vote": {
       const p = post(cmd.postId);
-      if(!s.preferences.joinedCommunityIds.includes(p.communityId))throw new Error('Join this community before voting.');
+      if (!s.preferences.joinedCommunityIds.includes(p.communityId))
+        throw new Error("Join this community before voting.");
       if (p.votes[uid] === cmd.value) delete p.votes[uid];
       else p.votes[uid] = cmd.value;
       break;
@@ -224,17 +294,22 @@ export function applyCommand(
         : [...s.preferences.savedPostIds, post(cmd.postId).id];
       break;
     case "post.comment":
-      if(!s.preferences.joinedCommunityIds.includes(post(cmd.postId).communityId))throw new Error('Join this community before replying.');
+      if (
+        !s.preferences.joinedCommunityIds.includes(post(cmd.postId).communityId)
+      )
+        throw new Error("Join this community before replying.");
       post(cmd.postId).comments.push({
         id: ctx.id,
         authorId: uid,
+        ...(me ? { authorName: me.name, authorInitials: me.initials } : {}),
         body: clean(cmd.body, 2000),
         createdAt: ctx.now,
       });
       break;
     case "poll.vote": {
       const p = post(cmd.postId);
-      if(!s.preferences.joinedCommunityIds.includes(p.communityId))throw new Error('Join this community before voting.');
+      if (!s.preferences.joinedCommunityIds.includes(p.communityId))
+        throw new Error("Join this community before voting.");
       if (!p.poll || p.poll.closesAt <= ctx.now)
         throw new Error("This poll has closed.");
       if (!p.poll.options.some((o) => o.id === cmd.optionId))
@@ -330,7 +405,7 @@ export function applyCommand(
           id: ctx.id,
           followerId: uid,
           followingId: cmd.userId,
-          participantIds:[uid,cmd.userId],
+          participantIds: [uid, cmd.userId],
           createdAt: ctx.now,
         });
       else
@@ -363,7 +438,20 @@ export function applyCommand(
               [c.fromId, c.toId].includes(cmd.userId)
             ),
         );
-        for(const invite of s.squadInvites)if(invite.status==='pending'&&[invite.fromId,invite.toId].includes(uid)&&[invite.fromId,invite.toId].includes(cmd.userId)){invite.status='revoked';invite.respondedAt=ctx.now;const squad=s.squads.find(g=>g.id===invite.squadId);if(squad)squad.pendingInviteeIds=squad.pendingInviteeIds.filter(id=>id!==invite.toId);}
+        for (const invite of s.squadInvites)
+          if (
+            invite.status === "pending" &&
+            [invite.fromId, invite.toId].includes(uid) &&
+            [invite.fromId, invite.toId].includes(cmd.userId)
+          ) {
+            invite.status = "revoked";
+            invite.respondedAt = ctx.now;
+            const squad = s.squads.find((g) => g.id === invite.squadId);
+            if (squad)
+              squad.pendingInviteeIds = squad.pendingInviteeIds.filter(
+                (id) => id !== invite.toId,
+              );
+          }
       }
       break;
     case "profile.update": {
@@ -391,22 +479,88 @@ export function applyCommand(
         .join("");
       break;
     }
-    case "dm.send":
-      person(cmd.userId);
+    case "dm.send": {
+      const peer = s.profiles.find((p) => p.id === cmd.userId),
+        prior = s.directMessages.find(
+          (d) => d.fromId === cmd.userId && d.toId === uid,
+        );
+      if (cmd.userId === uid || (!peer && !prior))
+        throw new Error("Choose another community member.");
       if (s.preferences.blockedIds.includes(cmd.userId))
         throw new Error("You have blocked this member.");
-      if (!connected(s, cmd.userId))
+      if (!connected(s, cmd.userId) && !prior)
         throw new Error("Connect before sending a private message.");
       s.directMessages.push({
         id: ctx.id,
         fromId: uid,
         toId: cmd.userId,
+        ...(me ? { fromName: me.name, fromInitials: me.initials } : {}),
+        ...(peer
+          ? { toName: peer.name, toInitials: peer.initials }
+          : prior?.fromName
+            ? { toName: prior.fromName, toInitials: prior.fromInitials }
+            : {}),
+        conversationId: [uid, cmd.userId].sort().join("~"),
+        participantIds: [uid, cmd.userId],
         body: clean(cmd.body, 4000),
         createdAt: ctx.now,
         read: false,
-        ...(cmd.imageId!==undefined?{image:bindPreviewImage(s,cmd.imageId,{kind:'directMessage',id:cmd.userId},{kind:'directMessage',id:ctx.id},ctx.now)}:{}),
+        ...(cmd.imageId !== undefined
+          ? {
+              image: bindPreviewImage(
+                s,
+                cmd.imageId,
+                { kind: "directMessage", id: cmd.userId },
+                { kind: "directMessage", id: ctx.id },
+                ctx.now,
+              ),
+            }
+          : {}),
       });
       break;
+    }
+    case "dm.edit": {
+      const message = s.directMessages.find(
+        (d) => d.id === cmd.messageId && d.fromId === uid,
+      );
+      if (!message)
+        throw new Error("Only the author can edit this private message.");
+      if (s.preferences.blockedIds.includes(message.toId))
+        throw new Error(
+          "Unblock this member before editing a private message.",
+        );
+      message.body = clean(cmd.body, 4000);
+      message.editedAt = ctx.now;
+      break;
+    }
+    case "dm.delete": {
+      const message = s.directMessages.find(
+        (d) => d.id === cmd.messageId && d.fromId === uid,
+      );
+      if (!message)
+        throw new Error("Only the author can remove this private message.");
+      s.directMessages = s.directMessages.filter((d) => d.id !== message.id);
+      break;
+    }
+    case "dm.mute": {
+      if (
+        cmd.userId === uid ||
+        (!s.profiles.some((p) => p.id === cmd.userId) &&
+          !s.directMessages.some(
+            (d) =>
+              [d.fromId, d.toId].includes(uid) &&
+              [d.fromId, d.toId].includes(cmd.userId),
+          ))
+      )
+        throw new Error("Choose another community member.");
+      if (typeof cmd.muted !== "boolean")
+        throw new Error("Choose whether to mute this conversation.");
+      const ids = s.preferences.dmMutedIds ?? [];
+      s.preferences.dmMutedIds = cmd.muted
+        ? [...new Set([...ids, cmd.userId])]
+        : ids.filter((id) => id !== cmd.userId);
+      break;
+    }
     case "dm.read":
       s.directMessages.forEach((message) => {
         if (message.fromId === cmd.userId && message.toId === uid)
@@ -444,7 +598,29 @@ export function applyCommand(
     case "onboarding.complete":
       s.preferences.interests = cmd.interests.slice(0, 12);
       s.preferences.onboardingComplete = true;
-      if(cmd.replaceChannels){if(!cmd.channelScopeIds||cmd.channelIds.some(id=>!cmd.channelScopeIds!.includes(id)))throw new Error('Choose channels from the displayed scope.');for(const id of cmd.channelScopeIds){const channel=s.channels.find(c=>c.id===id);if(!channel||(channel.visibility==='private'&&!channel.memberIds?.includes(uid)))throw new Error('Choose channels you can access.');if(!cmd.channelIds.includes(id)&&(s.preferences.subscriptions[id]??s.preferences.subscriptions[channel.conferenceId]??'muted')==='following')s.preferences.subscriptions[id]='muted';}}
+      if (cmd.replaceChannels) {
+        if (
+          !cmd.channelScopeIds ||
+          cmd.channelIds.some((id) => !cmd.channelScopeIds!.includes(id))
+        )
+          throw new Error("Choose channels from the displayed scope.");
+        for (const id of cmd.channelScopeIds) {
+          const channel = s.channels.find((c) => c.id === id);
+          if (
+            !channel ||
+            (channel.visibility === "private" &&
+              !channel.memberIds?.includes(uid))
+          )
+            throw new Error("Choose channels you can access.");
+          if (
+            !cmd.channelIds.includes(id) &&
+            (s.preferences.subscriptions[id] ??
+              s.preferences.subscriptions[channel.conferenceId] ??
+              "muted") === "following"
+          )
+            s.preferences.subscriptions[id] = "muted";
+        }
+      }
       cmd.channelIds.forEach((id) => {
         if (s.channels.some((c) => c.id === id))
           s.preferences.subscriptions[id] = "following";
@@ -452,21 +628,69 @@ export function applyCommand(
       if (me) me.interests = s.preferences.interests;
       break;
     case "report.create": {
-      if(cmd.targetType==='comment'&&(!cmd.postId||!s.posts.find(p=>p.id===cmd.postId)?.comments.some(c=>c.id===cmd.targetId)))throw new Error('Choose a reply that is still available.');
-      const target=cmd.targetType==='post'?s.posts.find(p=>p.id===cmd.targetId):cmd.targetType==='comment'?s.posts.find(p=>p.id===cmd.postId)?.comments.find(c=>c.id===cmd.targetId):cmd.targetType==='message'?s.messages.find(m=>m.id===cmd.targetId):cmd.targetType==='directMessage'?s.directMessages.find(d=>d.id===cmd.targetId&&[d.fromId,d.toId].includes(uid)):cmd.targetType==='squadMessage'?s.squadMessages.find(m=>m.id===cmd.targetId&&m.audienceIds.includes(uid)&&s.squads.some(g=>g.id===m.squadId&&!g.archived&&g.memberIds.includes(uid))):s.profiles.find(p=>p.id===cmd.targetId);
-      if(!target)throw new Error('Choose content that is still available to you.');
-      const body='body' in target?target.body:'bio' in target?target.bio:'';
-      const authorId='authorId' in target?target.authorId:'fromId' in target?target.fromId:target.id;
+      if (
+        cmd.targetType === "comment" &&
+        (!cmd.postId ||
+          !s.posts
+            .find((p) => p.id === cmd.postId)
+            ?.comments.some((c) => c.id === cmd.targetId))
+      )
+        throw new Error("Choose a reply that is still available.");
+      const target =
+        cmd.targetType === "post"
+          ? s.posts.find((p) => p.id === cmd.targetId)
+          : cmd.targetType === "comment"
+            ? s.posts
+                .find((p) => p.id === cmd.postId)
+                ?.comments.find((c) => c.id === cmd.targetId)
+            : cmd.targetType === "message"
+              ? s.messages.find((m) => m.id === cmd.targetId)
+              : cmd.targetType === "directMessage"
+                ? s.directMessages.find(
+                    (d) =>
+                      d.id === cmd.targetId && [d.fromId, d.toId].includes(uid),
+                  )
+                : cmd.targetType === "squadMessage"
+                  ? s.squadMessages.find(
+                      (m) =>
+                        m.id === cmd.targetId &&
+                        m.audienceIds.includes(uid) &&
+                        s.squads.some(
+                          (g) =>
+                            g.id === m.squadId &&
+                            !g.archived &&
+                            g.memberIds.includes(uid),
+                        ),
+                    )
+                  : s.profiles.find((p) => p.id === cmd.targetId);
+      if (!target)
+        throw new Error("Choose content that is still available to you.");
+      const body =
+        "body" in target ? target.body : "bio" in target ? target.bio : "";
+      const authorId =
+        "authorId" in target
+          ? target.authorId
+          : "fromId" in target
+            ? target.fromId
+            : target.id;
       s.reports.push({
         id: ctx.id,
         reporterId: uid,
         targetId: cmd.targetId,
         targetType: cmd.targetType,
-        ...(cmd.postId?{postId:cmd.postId}:{}),
+        ...(cmd.postId ? { postId: cmd.postId } : {}),
         reason: clean(cmd.reason, 1500),
         createdAt: ctx.now,
         status: "open",
-          snapshot:{body:body.slice(0,2000),authorId,capturedAt:ctx.now,...('title' in target&&typeof target.title==='string'?{title:target.title}: {}),...('image' in target&&target.image?{image:target.image}:{})},
+        snapshot: {
+          body: body.slice(0, 2000),
+          authorId,
+          capturedAt: ctx.now,
+          ...("title" in target && typeof target.title === "string"
+            ? { title: target.title }
+            : {}),
+          ...("image" in target && target.image ? { image: target.image } : {}),
+        },
       });
       break;
     }
@@ -475,7 +699,7 @@ export function applyCommand(
         "This moderation action is available in the connected live app.",
       );
   }
-  prunePreviewImages(s,ctx.now);
+  prunePreviewImages(s, ctx.now);
   s.profiles.forEach((p) => {
     p.followerCount = s.follows.filter((f) => f.followingId === p.id).length;
     p.followingCount = s.follows.filter((f) => f.followerId === p.id).length;

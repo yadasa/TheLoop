@@ -19,13 +19,14 @@ class Database {
     const snapshot = structuredClone(this.docs);
     const store: TransactionStore = {
       get: async (path) => snapshot.get(path),
-      find: async (collection, field, value, limit) =>
+      find: async (collection, field, value, limit, secondary) =>
         [...snapshot.entries()]
           .filter(
             ([path, row]) =>
               path.split("/").length === 2 &&
               path.startsWith(`${collection}/`) &&
-              row[field] === value,
+              row[field] === value &&
+              (!secondary || row[secondary.field] === secondary.value),
           )
           .slice(0, limit)
           .map(([, row]) => row),

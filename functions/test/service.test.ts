@@ -17,13 +17,14 @@ class Database {
     );
     const store: TransactionStore = {
       get: async (path) => snapshot.get(path),
-      find: async (collection, field, value, limit) =>
+      find: async (collection, field, value, limit, secondary) =>
         [...snapshot.entries()]
           .filter(
             ([path, data]) =>
               path.startsWith(collection + "/") &&
               path.split("/").length === 2 &&
-              data[field] === value,
+              data[field] === value &&
+              (!secondary || data[secondary.field] === secondary.value),
           )
           .slice(0, limit)
           .map(([, data]) => data),

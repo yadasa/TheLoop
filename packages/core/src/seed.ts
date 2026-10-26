@@ -8,6 +8,7 @@ export const defaultPreferences = (): Preferences => ({
   readChannels: {},
   squadReadAt: {},
   squadMutedIds: [],
+  dmMutedIds: [],
   interests: [],
   onboardingComplete: false,
   quietHours: false,
@@ -560,17 +561,120 @@ export function initialState(): LoopState {
     id: `follow-${index}`,
     followerId,
     followingId,
-    participantIds:[followerId,followingId],
+    participantIds: [followerId, followingId],
     createdAt: "2026-10-26T09:00:00Z",
   }));
   s.profiles.forEach((p) => {
     p.followerCount = s.follows.filter((f) => f.followingId === p.id).length;
     p.followingCount = s.follows.filter((f) => f.followerId === p.id).length;
   });
-  const squadTime='2026-10-26T10:00:00.000Z';
-  s.squads=[{id:'coffee-crew',name:'The coffee crew',description:'A tiny corner for a good coffee, a warm intro, and a little encouragement.',ownerId:'me',memberIds:['me','maya'],memberProfiles:Object.fromEntries(s.profiles.filter(p=>['me','maya'].includes(p.id)).map(p=>[p.id,{userId:p.id,name:p.name,initials:p.initials,joinedAt:squadTime}])),pendingInviteeIds:[],createdAt:squadTime,updatedAt:squadTime,archived:false}];
-  s.squadMessages=[{id:'squad-welcome',squadId:'coffee-crew',authorId:'maya',authorName:'Maya Thompson',authorInitials:'MT',body:'A little coffee circle. Big group-chat energy. What are we building this week?',createdAt:squadTime,audienceIds:['me','maya'],reactions:{'☕':['me']}}];
-  s.squads.push({id:'first-hello',name:'The first hello',description:'A quieter spot for meeting a few people before the conference.',ownerId:'maya',memberIds:['maya'],memberProfiles:{maya:{userId:'maya',name:'Maya Thompson',initials:'MT',joinedAt:squadTime}},pendingInviteeIds:['me'],createdAt:squadTime,updatedAt:squadTime,archived:false});
-  s.squadInvites=[{id:'first-hello-invite',squadId:'first-hello',squadName:'The first hello',description:'A quieter spot for meeting a few people before the conference.',fromId:'maya',toId:'me',participantIds:['maya','me'],status:'pending',createdAt:squadTime,expiresAt:'2026-11-02T10:00:00.000Z'}];
+  const participation = (id: string) => {
+    const p = s.profiles.find((person) => person.id === id);
+    return p ? { authorName: p.name, authorInitials: p.initials } : {};
+  };
+  s.messages = s.messages.map((message) => ({
+    ...message,
+    ...participation(message.authorId),
+  }));
+  s.posts = s.posts.map((post) => ({
+    ...post,
+    ...participation(post.authorId),
+    comments: post.comments.map((comment) => ({
+      ...comment,
+      ...participation(comment.authorId),
+    })),
+  }));
+  s.directMessages = [
+    {
+      id: "dm-hello",
+      fromId: "maya",
+      toId: "me",
+      fromName: "Maya Thompson",
+      fromInitials: "MT",
+      toName: "Alex Morgan",
+      toInitials: "AM",
+      conversationId: "maya~me",
+      participantIds: ["maya", "me"],
+      body: "A little coffee-circle energy for the new space. What are you building this week?",
+      createdAt: time(14),
+      read: false,
+    },
+  ];
+  const squadTime = "2026-10-26T10:00:00.000Z";
+  s.squads = [
+    {
+      id: "coffee-crew",
+      name: "The coffee crew",
+      description:
+        "A tiny corner for a good coffee, a warm intro, and a little encouragement.",
+      ownerId: "me",
+      memberIds: ["me", "maya"],
+      memberProfiles: Object.fromEntries(
+        s.profiles
+          .filter((p) => ["me", "maya"].includes(p.id))
+          .map((p) => [
+            p.id,
+            {
+              userId: p.id,
+              name: p.name,
+              initials: p.initials,
+              joinedAt: squadTime,
+            },
+          ]),
+      ),
+      pendingInviteeIds: [],
+      createdAt: squadTime,
+      updatedAt: squadTime,
+      archived: false,
+    },
+  ];
+  s.squadMessages = [
+    {
+      id: "squad-welcome",
+      squadId: "coffee-crew",
+      authorId: "maya",
+      authorName: "Maya Thompson",
+      authorInitials: "MT",
+      body: "A little coffee circle. Big group-chat energy. What are we building this week?",
+      createdAt: squadTime,
+      audienceIds: ["me", "maya"],
+      reactions: { "☕": ["me"] },
+    },
+  ];
+  s.squads.push({
+    id: "first-hello",
+    name: "The first hello",
+    description:
+      "A quieter spot for meeting a few people before the conference.",
+    ownerId: "maya",
+    memberIds: ["maya"],
+    memberProfiles: {
+      maya: {
+        userId: "maya",
+        name: "Maya Thompson",
+        initials: "MT",
+        joinedAt: squadTime,
+      },
+    },
+    pendingInviteeIds: ["me"],
+    createdAt: squadTime,
+    updatedAt: squadTime,
+    archived: false,
+  });
+  s.squadInvites = [
+    {
+      id: "first-hello-invite",
+      squadId: "first-hello",
+      squadName: "The first hello",
+      description:
+        "A quieter spot for meeting a few people before the conference.",
+      fromId: "maya",
+      toId: "me",
+      participantIds: ["maya", "me"],
+      status: "pending",
+      createdAt: squadTime,
+      expiresAt: "2026-11-02T10:00:00.000Z",
+    },
+  ];
   return s;
 }

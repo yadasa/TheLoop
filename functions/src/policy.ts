@@ -96,6 +96,7 @@ export function defaultPreferences(): Doc {
     readChannels: {},
     squadReadAt: {},
     squadMutedIds: [],
+    dmMutedIds: [],
     interests: [],
     onboardingComplete: false,
     quietHours: false,

@@ -1,5 +1,6 @@
-import { assert, canMessage, Doc, id, pairId } from "./policy";
+import { assert, Doc, id, pairId } from "./policy";
 import type { TransactionStore } from "./service";
+import { canSendDirectMessage } from "./directMessages";
 import { createHash } from "node:crypto";
 
 export const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
@@ -74,7 +75,14 @@ export async function authorizeMediaTarget(
         peer &&
         !peer.disabled &&
         !peer.deletionPending &&
-        canMessage(uid, target.id, user, peer, connection),
+        (await canSendDirectMessage(
+          store,
+          uid,
+          target.id,
+          user,
+          peer,
+          connection,
+        )),
       "permission-denied",
       "This person's message privacy settings do not allow this image.",
     );

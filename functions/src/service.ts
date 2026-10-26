@@ -1,7 +1,6 @@
 import {
   assert,
   calculateTrust,
-  canMessage,
   defaultPreferences,
   Doc,
   DomainError,
@@ -19,6 +18,8 @@ import { withContributors } from "./contributions";
 import { commandFields, editablePost } from "./authorControls";
 import { directoryFields } from "./directory.js";
 import { linkImage } from "./media";
+import { authorSnapshot, participationIdentity } from "./identity";
+import { canSendDirectMessage } from "./directMessages";
 import {
   executeSquad,
   readableSquadMessage,
@@ -32,6 +33,7 @@ export interface TransactionStore {
     field: string,
     value: unknown,
     limit: number,
+    secondary?: { field: string; value: unknown },
   ): Promise<Doc[]>;
   set(path: string, value: Doc): void;
   remove(path: string): void;
@@ -250,6 +252,11 @@ export async function execute(
     const recipient = await store.get(`users/${userId}`);
     if (!recipient || recipient.preferences?.blockedIds?.includes(actor.uid))
       return;
+    if (
+      suffix === "dm" &&
+      recipient.preferences?.dmMutedIds?.includes(actor.uid)
+    )
+      return;
     const notificationId = `${requestId}_${suffix}`;
     store.set(`notifications/${notificationId}`, {
       id: notificationId,
@@ -261,6 +268,7 @@ export async function execute(
       createdAt: now,
       read: false,
       unreadUserId: userId,
+      ...(suffix === "dm" ? { dmSenderId: actor.uid } : {}),
     });
   }
   function savePreferences(): void {
@@ -685,6 +693,7 @@ export async function execute(
         channelId: channel.id,
         topic,
         authorId: actor.uid,
+        ...authorSnapshot(profile),
         body,
         createdAt: now,
         reactions: {},
@@ -815,6 +824,7 @@ export async function execute(
         id: entityId,
         communityId: community.id,
         authorId: actor.uid,
+        ...authorSnapshot(profile),
         title: text(command.title, "Title", 180),
         body: text(command.body, "Post", 10000, kind === "poll" ? 0 : 1),
         kind,
@@ -973,6 +983,7 @@ export async function execute(
         );
         store.set(`posts/${post.id}`, withContributors({ ...post, votes }));
       } else if (commandType === "post.comment") {
+        commandFields(command, ["type", "postId", "body"]);
         assert(
           post.comments?.length < 200,
           "resource-exhausted",
@@ -985,7 +996,13 @@ export async function execute(
             ...post,
             comments: [
               ...post.comments,
-              { id: entityId, authorId: actor.uid, body, createdAt: now },
+              {
+                id: entityId,
+                authorId: actor.uid,
+                ...authorSnapshot(profile),
+                body,
+                createdAt: now,
+              },
             ],
           }),
         );
@@ -1383,7 +1400,14 @@ export async function execute(
         `connections/${pairId(actor.uid, peer.userId)}`,
       );
       assert(
-        canMessage(actor.uid, peer.userId, user, peer.user, connection),
+        await canSendDirectMessage(
+          store,
+          actor.uid,
+          peer.userId,
+          user,
+          peer.user,
+          connection,
+        ),
         "permission-denied",
         "This member only accepts messages according to their privacy settings.",
       );
@@ -1400,10 +1424,16 @@ export async function execute(
         now,
       );
       if (image) savePreferences();
+      const from = participationIdentity(profile),
+        to = participationIdentity(peer.profile);
       store.set(`directMessages/${entityId}`, {
         id: entityId,
         fromId: actor.uid,
         toId: peer.userId,
+        fromName: from.name,
+        fromInitials: from.initials,
+        toName: to.name,
+        toInitials: to.initials,
         participantIds: [actor.uid, peer.userId],
         conversationId: pairId(actor.uid, peer.userId),
         unreadRecipientId: peer.userId,
@@ -1422,13 +1452,93 @@ export async function execute(
       );
       break;
     }
+    case "dm.edit":
+    case "dm.delete": {
+      commandFields(
+        command,
+        commandType === "dm.edit"
+          ? ["type", "messageId", "body"]
+          : ["type", "messageId"],
+      );
+      const message = await requireDoc("directMessages", command.messageId);
+      assert(
+        message.fromId === actor.uid,
+        "permission-denied",
+        "Only the sender can change or remove this private message.",
+      );
+      if (commandType === "dm.edit") {
+        const peer = await requirePeer(message.toId),
+          connection = await store.get(
+            `connections/${pairId(actor.uid, message.toId)}`,
+          );
+        assert(
+          await canSendDirectMessage(
+            store,
+            actor.uid,
+            peer.userId,
+            user,
+            peer.user,
+            connection,
+          ),
+          "permission-denied",
+          "This person's current privacy settings do not allow editing this message.",
+        );
+        store.set(`directMessages/${message.id}`, {
+          ...message,
+          body: text(command.body, "Message", 4000),
+          editedAt: now,
+        });
+      } else {
+        store.remove(`directMessages/${message.id}`);
+        store.set(`moderationAudit/${requestId}`, {
+          id: requestId,
+          actorId: actor.uid,
+          action: "directMessage.delete",
+          targetType: "directMessage",
+          targetId: message.id,
+          subjectAuthorId: actor.uid,
+          authorization: "author",
+          createdAt: now,
+        });
+      }
+      break;
+    }
+    case "dm.mute": {
+      commandFields(command, ["type", "userId", "muted"]);
+      const peerId = id(command.userId);
+      assert(
+        peerId !== actor.uid && typeof command.muted === "boolean",
+        "invalid-argument",
+        "Choose whether to mute another person's messages.",
+      );
+      const mutedIds: string[] = prefs.dmMutedIds || [];
+      if (command.muted && !mutedIds.includes(peerId)) {
+        const peer = await store.get(`users/${peerId}`);
+        assert(
+          peer && !peer.disabled && !peer.deletionPending,
+          "not-found",
+          "This member is unavailable.",
+        );
+        assert(
+          mutedIds.length < 500,
+          "resource-exhausted",
+          "Muted conversation limit reached.",
+        );
+      }
+      prefs.dmMutedIds = mutedIds.filter((uid) => uid !== peerId);
+      if (command.muted) prefs.dmMutedIds.push(peerId);
+      savePreferences();
+      break;
+    }
     case "dm.read": {
+      commandFields(command, ["type", "userId"]);
       const peer = await requirePeer(command.userId);
       const unread = await store.find(
         "directMessages",
         "unreadRecipientId",
         actor.uid,
         200,
+        { field: "conversationId", value: pairId(actor.uid, peer.userId) },
       );
       let marked = 0;
       for (const message of unread)

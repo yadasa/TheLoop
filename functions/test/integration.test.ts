@@ -7,6 +7,7 @@ import { initializeApp, deleteApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { squadInviteId } from "../src/squads";
+import { drainDirectRead } from "../../packages/client/src/directRead";
 
 /**
  * Run only against a dedicated emulator project, never production.
@@ -1216,6 +1217,271 @@ test(
       );
 
       await t.test(
+        "DM controls preserve trusted minimal identities and metadata without granting private profiles",
+        async () => {
+          const reader = await createActor("dm-reader");
+          await command(reader, {
+            type: "profile.update",
+            profile: { visibility: "connections" },
+          });
+          await command(reader, {
+            type: "preferences.update",
+            preferences: { dmPolicy: "everyone" },
+          });
+          const message = remember(
+            "directMessages",
+            (
+              await command(alice, {
+                type: "dm.send",
+                userId: reader.uid,
+                body: "A message to a new person.",
+              })
+            ).id,
+          );
+          const before = (
+            await db.doc(`directMessages/${message}`).get()
+          ).data()!;
+          assert.equal(before.fromName, "Integration alice");
+          assert.equal(before.toName, "Integration dm-reader");
+          assert.equal(before.fromInitials, "IA");
+          assert.equal(before.headline, undefined);
+          assert.equal(
+            (await readDocument(alice, `profiles/${reader.uid}`)).response
+              .status,
+            403,
+            "participation names do not grant a private professional profile",
+          );
+          await denied(
+            command(reader, {
+              type: "dm.edit",
+              messageId: message,
+              body: "Not mine",
+            }),
+          );
+          await denied(
+            command(actors[2], { type: "dm.delete", messageId: message }),
+          );
+          await denied(
+            command(alice, {
+              type: "dm.edit",
+              messageId: message,
+              body: "Forged",
+              toId: bob.uid,
+            }),
+            ["INVALID_ARGUMENT"],
+          );
+          await command(reader, { type: "dm.read", userId: alice.uid });
+          await command(alice, {
+            type: "dm.edit",
+            messageId: message,
+            body: "Corrected by the sender.",
+          });
+          const edited = (
+            await db.doc(`directMessages/${message}`).get()
+          ).data()!;
+          for (const field of [
+            "fromId",
+            "toId",
+            "fromName",
+            "fromInitials",
+            "toName",
+            "toInitials",
+            "participantIds",
+            "conversationId",
+            "createdAt",
+          ])
+            assert.deepEqual(edited[field], before[field]);
+          assert.equal(edited.read, true);
+          assert.equal(edited.unreadRecipientId, "");
+          assert.ok(edited.editedAt);
+          await command(reader, {
+            type: "dm.mute",
+            userId: alice.uid,
+            muted: true,
+          });
+          const noticeCount = (
+            await db
+              .collection("notifications")
+              .where("userId", "==", reader.uid)
+              .get()
+          ).size;
+          const quiet = remember(
+            "directMessages",
+            (
+              await command(alice, {
+                type: "dm.send",
+                userId: reader.uid,
+                body: "Quiet delivery still reaches history.",
+              })
+            ).id,
+          );
+          assert.ok((await db.doc(`directMessages/${quiet}`).get()).exists);
+          assert.equal(
+            (
+              await db
+                .collection("notifications")
+                .where("userId", "==", reader.uid)
+                .get()
+            ).size,
+            noticeCount,
+          );
+          await command(reader, { type: "profile.block", userId: alice.uid });
+          await denied(
+            command(alice, {
+              type: "dm.edit",
+              messageId: message,
+              body: "No new text through a block.",
+            }),
+          );
+          const deletion = remember("moderationAudit", nextId());
+          await command(
+            alice,
+            { type: "dm.delete", messageId: message },
+            deletion,
+          );
+          assert.equal(
+            (await db.doc(`directMessages/${message}`).get()).exists,
+            false,
+          );
+        },
+      );
+
+      await t.test(
+        "the real client read drain marks 205 selected unread messages past 205 unrelated messages",
+        async () => {
+          const reader = await createActor("dm-scale");
+          const selected: string[] = [],
+            unrelated: string[] = [],
+            batch = db.batch();
+          const conversation = (a: string, b: string) =>
+            [a, b].sort().join("~");
+          for (let n = 0; n < 205; n++) {
+            for (const [sender, ids] of [
+              [actors[2], unrelated],
+              [alice, selected],
+            ] as const) {
+              const id = remember("directMessages", nextId());
+              ids.push(id);
+              batch.set(db.doc(`directMessages/${id}`), {
+                id,
+                fromId: sender.uid,
+                toId: reader.uid,
+                participantIds: [sender.uid, reader.uid],
+                conversationId: conversation(sender.uid, reader.uid),
+                unreadRecipientId: reader.uid,
+                body: "Disposable read-marker scale fixture.",
+                createdAt: new Date().toISOString(),
+                read: false,
+              });
+            }
+          }
+          await batch.commit();
+          const pages: number[] = [],
+            receipts: string[] = [];
+          await drainDirectRead({
+            requestId: () => {
+              const id = nextId();
+              receipts.push(id);
+              return id;
+            },
+            current: () => true,
+            send: async (requestId) => {
+              const result = await command(
+                reader,
+                { type: "dm.read", userId: alice.uid },
+                requestId,
+              );
+              pages.push(result.marked);
+              return result;
+            },
+          });
+          assert.deepEqual(pages, [200, 5]);
+          assert.equal(new Set(receipts).size, 2);
+          const selectedDocs = await db.getAll(
+            ...selected.map((id) => db.doc(`directMessages/${id}`)),
+          );
+          const unrelatedDocs = await db.getAll(
+            ...unrelated.map((id) => db.doc(`directMessages/${id}`)),
+          );
+          assert.ok(selectedDocs.every((row) => row.get("read") === true));
+          assert.ok(unrelatedDocs.every((row) => row.get("read") === false));
+        },
+      );
+
+      await t.test(
+        "recipient-authored history permits replies while unanswered inbound history never grants consent",
+        async () => {
+          const starter = await createActor("starter"),
+            responder = await createActor("responder"),
+            stranger = await createActor("stranger");
+          await command(starter, {
+            type: "preferences.update",
+            preferences: { dmPolicy: "everyone" },
+          });
+          remember(
+            "directMessages",
+            (
+              await command(stranger, {
+                type: "dm.send",
+                userId: starter.uid,
+                body: "An inbound message before policy changed.",
+              })
+            ).id,
+          );
+          await command(starter, {
+            type: "preferences.update",
+            preferences: { dmPolicy: "nobody" },
+          });
+          await denied(
+            command(stranger, {
+              type: "dm.send",
+              userId: starter.uid,
+              body: "Unanswered inbound cannot bypass the new policy.",
+            }),
+          );
+          await command(responder, {
+            type: "preferences.update",
+            preferences: { dmPolicy: "everyone" },
+          });
+          remember(
+            "directMessages",
+            (
+              await command(starter, {
+                type: "dm.send",
+                userId: responder.uid,
+                body: "I choose to start a conversation.",
+              })
+            ).id,
+          );
+          const reply = remember(
+            "directMessages",
+            (
+              await command(responder, {
+                type: "dm.send",
+                userId: starter.uid,
+                body: "A reply to your explicit outbound message.",
+              })
+            ).id,
+          );
+          assert.equal(
+            (await db.doc(`directMessages/${reply}`).get()).get("fromName"),
+            "Integration responder",
+          );
+          await command(starter, {
+            type: "profile.block",
+            userId: responder.uid,
+          });
+          await denied(
+            command(responder, {
+              type: "dm.send",
+              userId: starter.uid,
+              body: "Blocks override prior reply consent.",
+            }),
+          );
+        },
+      );
+
+      await t.test(
         "blocking revokes profile grants, both follow edges, and messages in both directions",
         async () => {
           const pendingSquad = remember(
@@ -1277,9 +1543,19 @@ test(
       );
     } finally {
       // No database-wide clear: cleanup is restricted to this run's IDs and ephemeral UIDs.
-      for (const [collection, ids] of created)
-        for (const id of ids)
-          await db.recursiveDelete(db.doc(`${collection}/${id}`));
+      for (const [collection, ids] of created) {
+        if (collection === "directMessages") {
+          const rows = [...ids];
+          for (let offset = 0; offset < rows.length; offset += 200) {
+            const batch = db.batch();
+            for (const id of rows.slice(offset, offset + 200))
+              batch.delete(db.doc(`${collection}/${id}`));
+            await batch.commit();
+          }
+        } else
+          for (const id of ids)
+            await db.recursiveDelete(db.doc(`${collection}/${id}`));
+      }
       for (const actor of actors) {
         for (const [collection, field, operator] of [
           ["notifications", "userId", "=="],

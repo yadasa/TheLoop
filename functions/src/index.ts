@@ -31,7 +31,7 @@ import {
   pairId,
   text,
 } from "./policy";
-import { inQuietHours } from "./notifications";
+import { shouldDeliverPush } from "./notifications";
 import { scrubCommunityOwner, scrubPost, scrubReactions } from "./cleanup";
 import { exportCursor, projectContribution } from "./contributions";
 import {
@@ -99,10 +99,11 @@ class FirestoreTransactionStore implements TransactionStore {
     field: string,
     value: unknown,
     limit: number,
+    secondary?: { field: string; value: unknown },
   ): Promise<Doc[]> {
-    const result = await this.tx.get(
-      db.collection(collection).where(field, "==", value).limit(limit),
-    );
+    let query = db.collection(collection).where(field, "==", value);
+    if (secondary) query = query.where(secondary.field, "==", secondary.value);
+    const result = await this.tx.get(query.limit(limit));
     return result.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
   }
   set(path: string, value: Doc): void {
@@ -583,13 +584,7 @@ export const deliverPushNotification = onDocumentCreated(
       return;
     const prefs = user.get("preferences") || {};
     // Quiet hours are interpreted in the member's selected timezone; absent/invalid zones use UTC.
-    if (inQuietHours(prefs, new Date())) return;
-    if (notification.kind === "event" && prefs.eventReminders === false) return;
-    if (
-      notification.kind === "squad" &&
-      prefs.squadMutedIds?.includes(notification.targetId)
-    )
-      return;
+    if (!shouldDeliverPush(notification, prefs, new Date())) return;
     const tokens = await db
       .collection(`users/${notification.userId}/pushTokens`)
       .limit(10)
@@ -1144,7 +1139,7 @@ export const processAccountDeletion = onDocumentCreated(
         });
       }
     }
-    for (const field of ["followingIds", "blockedIds"]) {
+    for (const field of ["followingIds", "blockedIds", "dmMutedIds"]) {
       for (;;) {
         const page = await db
           .collection("users")

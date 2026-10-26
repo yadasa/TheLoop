@@ -54,6 +54,27 @@ export function digestSlot(preferences: Doc, now: Date): string | undefined {
   if (preferences.digest === "weekly" && clock.weekday !== "Mon") return;
   return `${preferences.digest}_${clock.date}`;
 }
+export function shouldDeliverPush(
+  notification: Doc,
+  preferences: Doc,
+  now: Date,
+): boolean {
+  if (inQuietHours(preferences, now)) return false;
+  if (notification.kind === "event" && preferences.eventReminders === false)
+    return false;
+  if (
+    notification.kind === "squad" &&
+    preferences.squadMutedIds?.includes(notification.targetId)
+  )
+    return false;
+  const dmSenderId =
+    notification.dmSenderId ||
+    (notification.kind === "message" &&
+    String(notification.id || "").endsWith("_dm")
+      ? notification.targetId
+      : undefined);
+  return !dmSenderId || !preferences.dmMutedIds?.includes(dmSenderId);
+}
 export function subscription(
   preferences: Doc,
   channel: Doc,

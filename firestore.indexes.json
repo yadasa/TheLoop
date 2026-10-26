@@ -1,6 +1,32 @@
 {
   "indexes": [
     {
+      "collectionGroup": "directMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "conversationId", "order": "ASCENDING" },
+        { "fieldPath": "participantIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "directMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "unreadRecipientId", "order": "ASCENDING" },
+        { "fieldPath": "conversationId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "directMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fromId", "order": "ASCENDING" },
+        { "fieldPath": "toId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "privateMedia",
       "queryScope": "COLLECTION",
       "fields": [

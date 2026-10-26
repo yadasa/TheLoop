@@ -155,16 +155,14 @@ test(
         moderator = await actor("moderator");
       await db.doc(`users/${moderator.uid}`).update({ role: "moderator" });
       const channel = remember("channels", next());
-      await db
-        .doc(`channels/${channel}`)
-        .set({
-          id: channel,
-          conferenceId: "fixture",
-          name: "private-media-fixture",
-          visibility: "private",
-          memberIds: [alice.uid, bob.uid],
-          topics: ["General"],
-        });
+      await db.doc(`channels/${channel}`).set({
+        id: channel,
+        conferenceId: "fixture",
+        name: "private-media-fixture",
+        visibility: "private",
+        memberIds: [alice.uid, bob.uid],
+        topics: ["General"],
+      });
       const target = { kind: "channel", id: channel };
       const original = await sharp({
         create: { width: 8, height: 4, channels: 3, background: "#333333" },
@@ -419,6 +417,65 @@ test(
               contentType: "image/svg+xml",
             }),
             "INVALID_ARGUMENT",
+          );
+        },
+      );
+      await t.test(
+        "reply consent applies equally to private image uploads and author deletion revokes image retrieval",
+        async () => {
+          await command(bob, {
+            type: "preferences.update",
+            preferences: { dmPolicy: "everyone" },
+          });
+          await command(alice, {
+            type: "preferences.update",
+            preferences: { dmPolicy: "nobody" },
+          });
+          remember(
+            "directMessages",
+            (
+              await command(alice, {
+                type: "dm.send",
+                userId: bob.uid,
+                body: "I choose to contact you.",
+              })
+            ).id,
+          );
+          const replyImage = (
+            await callable(bob, "uploadMedia", {
+              ...input,
+              requestId: next(),
+              target: { kind: "directMessage", id: alice.uid },
+            })
+          ).image;
+          const reply = remember(
+            "directMessages",
+            (
+              await command(bob, {
+                type: "dm.send",
+                userId: alice.uid,
+                body: "A private photo in reply.",
+                imageId: replyImage.id,
+              })
+            ).id,
+          );
+          assert.equal(
+            (await callable(alice, "getMedia", { mediaId: replyImage.id }))
+              .image.id,
+            replyImage.id,
+          );
+          await command(alice, { type: "profile.block", userId: bob.uid });
+          await denied(
+            command(bob, {
+              type: "dm.edit",
+              messageId: reply,
+              body: "Cannot send new text through edits after blocking.",
+            }),
+          );
+          await command(bob, { type: "dm.delete", messageId: reply });
+          await denied(
+            callable(alice, "getMedia", { mediaId: replyImage.id }),
+            "NOT_FOUND",
           );
         },
       );
