@@ -30,10 +30,20 @@ export default function EventEditor({
   initial,
   close,
   submit,
+  saved,
+  stale = false,
+  warning,
+  reload,
+  reloadLabel = "Replace draft with latest details",
 }: {
   initial?: LoopEvent;
   close: () => void;
   submit: (event: EventDraft) => Promise<boolean>;
+  saved?: () => void;
+  stale?: boolean;
+  warning?: string;
+  reload?: () => void;
+  reloadLabel?: string;
 }) {
   const { state, pending, error, clearError } = useLoop();
   const [errors, setErrors] = useState<string[]>([]),
@@ -68,8 +78,9 @@ export default function EventEditor({
         }}
         onSubmit={async (event) => {
           event.preventDefault();
-          if (fence.current || pending > 0) return;
-          const form = new FormData(event.currentTarget),
+          if (fence.current || pending > 0 || stale) return;
+          const element = event.currentTarget;
+          const form = new FormData(element),
             field = (name: string) => String(form.get(name) || "");
           const selectedZone = field("timezone"),
             startValue = field("start"),
@@ -80,7 +91,7 @@ export default function EventEditor({
             {
               title: field("title"),
               description: field("description"),
-              conferenceId: field("conference"),
+              conferenceId: initial?.conferenceId || field("conference"),
               startAt:
                 initial &&
                 startValue === start &&
@@ -124,12 +135,21 @@ export default function EventEditor({
             );
             return;
           }
+          if (Date.parse(result.event.endAt) <= Date.now()) {
+            problem(["This event has finished."]);
+            return;
+          }
           fence.current = true;
           setSaving(true);
           setFailed(false);
           clearError();
           try {
-            if (!(await submit(result.event))) {
+            if (await submit(result.event)) {
+              if (element.isConnected) {
+                close();
+                saved?.();
+              }
+            } else if (element.isConnected) {
               setFailed(true);
             }
           } catch {
@@ -140,6 +160,19 @@ export default function EventEditor({
           }
         }}
       >
+        {stale && (
+          <div className="event-form-errors" role="status">
+            <p>
+              {warning ||
+                "This plan changed while you were editing. Review its latest details before saving."}
+            </p>
+            {reload && (
+              <button className="text-button" type="button" onClick={reload}>
+                {reloadLabel}
+              </button>
+            )}
+          </div>
+        )}
         {(errors.length > 0 || failed) && (
           <div
             className="event-form-errors"
@@ -173,13 +206,12 @@ export default function EventEditor({
               placeholder="The coffee before the conference"
             />
           </Field>
-          <Field label="What is the plan?">
+          <Field label="What is the plan? · optional">
             <textarea
               name="description"
               defaultValue={initial?.description}
-              required
               rows={3}
-              maxLength={3000}
+              maxLength={5000}
             />
           </Field>
           <div className="form-row">
@@ -262,7 +294,11 @@ export default function EventEditor({
           </details>
           <div className="form-row">
             <Field label="Conference or hub">
-              <select name="conference" defaultValue={initial?.conferenceId}>
+              <select
+                name="conference"
+                defaultValue={initial?.conferenceId}
+                disabled={!!initial}
+              >
                 {state.conferences.map((conference) => (
                   <option key={conference.id} value={conference.id}>
                     {conference.name}
@@ -308,7 +344,10 @@ export default function EventEditor({
             />
             <small>Up to 6 tags, with 30 characters each.</small>
           </Field>
-          <button className="button primary" disabled={saving || pending > 0}>
+          <button
+            className="button primary"
+            disabled={saving || pending > 0 || stale}
+          >
             {saving
               ? "Saving the plan…"
               : initial

@@ -59,6 +59,7 @@ import Squads from "./Squads";
 import GuideDialog from "./GuideDialog";
 import DirectInbox from "./DirectInbox";
 import EventEditor from "./EventEditor";
+import EventManager, { type EventManagementAction } from "./EventManager";
 import { useWebRoute } from "./useWebRoute";
 import type { Page } from "./routes";
 import { ImageComposer, ProtectedImage, useImageDraft } from "./images";
@@ -200,6 +201,9 @@ export default function App() {
     [intro, setIntro] = useState(false),
     [contentTarget, setContentTarget] = useState<ContentTarget | null>(null),
     [contentMode, setContentMode] = useState<ContentMode>("menu"),
+    [eventAction, setEventAction] = useState<EventManagementAction | null>(
+      null,
+    ),
     [composeKind, setComposeKind] = useState<Post["kind"]>("discussion"),
     [composeCommunityId, setComposeCommunityId] = useState(""),
     [followerMode, setFollowerMode] = useState<"followers" | "following">(
@@ -258,6 +262,7 @@ export default function App() {
     }
   };
   const navigate = (target: Page | SquadPage) => {
+    setEventAction(null);
     setPage(target);
     setModal(null);
     setPostDetail(null);
@@ -281,6 +286,7 @@ export default function App() {
     if (accountId.current === s.currentUserId) return;
     const hadAccount = !!accountId.current;
     accountId.current = s.currentUserId;
+    setEventAction(null);
     welcomed.current = false;
     setModal(null);
     setContentTarget(null);
@@ -292,6 +298,7 @@ export default function App() {
   }, [s.currentUserId]);
   useEffect(() => {
     setModal(null);
+    setEventAction(null);
     setContentTarget(null);
     setSearchOpen(false);
     setMobileNav(false);
@@ -313,10 +320,11 @@ export default function App() {
     watchPost(postDetail);
     return () => watchPost(null);
   }, [postDetail, watchPost]);
+  const watchedEventId = eventAction?.event.id ?? eventDetail;
   useEffect(() => {
-    watchEvent(eventDetail);
+    watchEvent(watchedEventId);
     return () => watchEvent(null);
-  }, [eventDetail, watchEvent]);
+  }, [watchedEventId, watchEvent]);
   useEffect(() => {
     watchConversation(
       page === "chat" ? (activeChannel?.id ?? null) : null,
@@ -475,6 +483,7 @@ export default function App() {
   const upcoming = s.events
     .filter((e) => new Date(e.endAt).getTime() > Date.now())
     .sort((a, b) => a.startAt.localeCompare(b.startAt));
+  const nextPlans = upcoming.filter((event) => event.status !== "cancelled");
   const share = async (
     title: string,
     text: string,
@@ -794,7 +803,12 @@ export default function App() {
   const eventCard = (event: LoopEvent, compact = false) => {
     const going = event.attendeeIds.includes(s.currentUserId),
       waiting = event.waitlistIds.includes(s.currentUserId),
-      full = event.capacity > 0 && event.attendeeIds.length >= event.capacity;
+      full = event.capacity > 0 && event.attendeeIds.length >= event.capacity,
+      cancelled = event.status === "cancelled",
+      ended = Date.parse(event.endAt) <= Date.now(),
+      closed = cancelled || ended,
+      limitReached = !full && event.attendeeIds.length >= 1000,
+      waitlistFull = full && event.waitlistIds.length >= 500;
     return (
       <article
         key={event.id}
@@ -819,6 +833,11 @@ export default function App() {
             {event.kind} ·{" "}
             {s.conferences.find((c) => c.id === event.conferenceId)
               ?.shortName ?? "THE LOOP"}
+            {closed && (
+              <strong className="event-status">
+                {cancelled ? "Cancelled" : "Ended"}
+              </strong>
+            )}
           </span>
           <h3>
             <button
@@ -842,6 +861,11 @@ export default function App() {
             {event.location}
           </p>
           {!compact && <p className="event-description">{event.description}</p>}
+          {!compact && cancelled && event.cancellationReason && (
+            <p className="event-cancellation-note">
+              {event.cancellationReason}
+            </p>
+          )}
           <div className="event-attendees">
             <div className="avatar-stack">
               {event.attendeeIds.slice(0, 3).map((id) => (
@@ -854,7 +878,8 @@ export default function App() {
               ))}
             </div>
             <span>
-              {event.attendeeIds.length} going{full ? " · Full" : ""}
+              {event.attendeeIds.length} {closed ? "RSVPs retained" : "going"}
+              {full && !closed ? " · Full" : ""}
               {waiting ? " · You’re on the waitlist" : ""}
             </span>
           </div>
@@ -871,9 +896,25 @@ export default function App() {
                       : "You’re on the list. See you there.",
                 )
               }
-              disabled={pending > 0}
+              disabled={
+                pending > 0 ||
+                (!(going || waiting) &&
+                  (closed || limitReached || waitlistFull))
+              }
             >
-              {going ? (
+              {closed && (going || waiting) ? (
+                "Remove my RSVP"
+              ) : closed ? (
+                cancelled ? (
+                  "Cancelled"
+                ) : (
+                  "Event ended"
+                )
+              ) : !going && !waiting && waitlistFull ? (
+                "Waitlist full"
+              ) : !going && !waiting && limitReached ? (
+                "RSVP limit reached"
+              ) : going ? (
                 <>
                   <Check size={13} />
                   Going
@@ -885,13 +926,21 @@ export default function App() {
               ) : (
                 "Count me in"
               )}
-              {!going && !waiting && <ArrowUpRight size={13} />}
+              {!going &&
+                !waiting &&
+                !closed &&
+                !waitlistFull &&
+                !limitReached && <ArrowUpRight size={13} />}
             </button>
             {!compact && (
               <>
                 <button
                   className="icon-button"
-                  title="Export event to calendar"
+                  title={
+                    cancelled
+                      ? "Export event cancellation"
+                      : "Export event to calendar"
+                  }
                   onClick={() =>
                     download(
                       `${event.id}.ics`,
@@ -907,7 +956,7 @@ export default function App() {
                   title="Share event"
                   onClick={() =>
                     void share(
-                      event.title,
+                      cancelled ? `Cancelled: ${event.title}` : event.title,
                       event.description,
                       `${window.location.origin}${window.location.pathname}${sharedTargetPath({ kind: "event", id: event.id })}`,
                     )
@@ -931,8 +980,8 @@ export default function App() {
             View calendar <ArrowUpRight size={13} />
           </button>
         </div>
-        {upcoming.slice(0, 2).map((e) => eventCard(e, true))}
-        {!upcoming.length && (
+        {nextPlans.slice(0, 2).map((e) => eventCard(e, true))}
+        {!nextPlans.length && (
           <p className="muted">
             Nothing on the calendar yet. Make the first plan.
           </p>
@@ -1811,7 +1860,7 @@ export default function App() {
                 ))}
                 <hr />
                 <span className="eyebrow">THE NEXT HELLO</span>
-                {upcoming.slice(0, 1).map((e) => eventCard(e, true))}
+                {nextPlans.slice(0, 1).map((e) => eventCard(e, true))}
               </aside>
             </div>
           )}
@@ -2947,17 +2996,13 @@ export default function App() {
       {modal === "event" && (
         <EventEditor
           close={() => setModal(null)}
-          submit={async (event) => {
-            const ok = await act(
+          saved={() => navigate("calendar")}
+          submit={(event) =>
+            act(
               { type: "event.create", event },
               "A good plan is in the calendar.",
-            );
-            if (ok) {
-              setModal(null);
-              navigate("calendar");
-            }
-            return ok;
-          }}
+            )
+          }
         />
       )}
       {modal === "interests" && (
@@ -4066,6 +4111,7 @@ export default function App() {
         })()}
       {eventDetail &&
         !modal &&
+        !eventAction &&
         !contentTarget &&
         !searchOpen &&
         (() => {
@@ -4116,6 +4162,43 @@ export default function App() {
                       <small>{event.timezone}</small>
                     </p>
                   </div>
+                  {event.status === "cancelled" && (
+                    <p className="event-cancel-explanation">
+                      This plan was cancelled. Update any calendar entry you
+                      saved on your device. The cancellation export keeps the
+                      event’s original calendar identity.
+                    </p>
+                  )}
+                  {(event.hostId === s.currentUserId || role === "admin") &&
+                    event.status !== "cancelled" &&
+                    Date.parse(event.endAt) > Date.now() && (
+                      <div className="event-management">
+                        <button
+                          className="button subtle"
+                          disabled={eventStatus.loading || !!eventStatus.error}
+                          onClick={() =>
+                            setEventAction({
+                              kind: "edit",
+                              event: JSON.parse(JSON.stringify(event)),
+                            })
+                          }
+                        >
+                          Edit plan
+                        </button>
+                        <button
+                          className="text-button"
+                          disabled={eventStatus.loading || !!eventStatus.error}
+                          onClick={() =>
+                            setEventAction({
+                              kind: "cancel",
+                              event: JSON.parse(JSON.stringify(event)),
+                            })
+                          }
+                        >
+                          Cancel this event
+                        </button>
+                      </div>
+                    )}
                   {event.url && (
                     <a
                       className="button subtle"
@@ -4145,6 +4228,14 @@ export default function App() {
             </ModalShell>
           );
         })()}
+      {eventAction && !modal && !searchOpen && (
+        <EventManager
+          key={`${s.currentUserId}:${eventAction.kind}:${eventAction.event.id}`}
+          action={eventAction}
+          close={() => setEventAction(null)}
+          run={act}
+        />
+      )}
     </div>
   );
 }

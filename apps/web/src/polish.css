@@ -1599,3 +1599,40 @@ textarea::placeholder {
   font-size: 11px;
   min-height: 44px;
 }
+.event-status {
+  display: inline-flex;
+  border: 1px solid #bcbcb5;
+  border-radius: 4px;
+  padding: 3px 6px;
+  margin-left: 8px;
+  font-size: 9px;
+  color: #383835;
+  letter-spacing: 0.04em;
+}
+.event-actions {
+  flex-wrap: wrap;
+}
+.event-cancellation-note {
+  padding: 12px;
+  border-left: 2px solid #4b4b45;
+  background: #f1f1ed;
+  color: #53534d;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.event-cancel-explanation {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #686862;
+}
+.event-management {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 18px 0;
+  border-top: 1px solid #e5e5df;
+}
+.event-management .text-button {
+  min-height: 44px;
+}
