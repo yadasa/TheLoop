@@ -37,6 +37,7 @@ import { Safety } from "./src/Safety";
 import { Spaces } from "./src/Spaces";
 import { ImportEvents } from "./src/ImportEvents";
 import { Squads, CreateSquad, SquadDetail, SquadMembers } from "./src/Squads";
+import { PublicGuide } from "./src/Guide";
 import { NativePushBridge } from "./src/devicePush";
 import {
   Auth,
@@ -287,6 +288,7 @@ function LoopApp() {
       "create-squad": "Start a squad",
       squad: "A room for your people",
       "squad-members": "Your circle",
+      guide: "Explore AfroTech.guide",
     })[route.kind];
   const renderRoute = (route: Route) => {
     switch (route.kind) {
@@ -340,6 +342,8 @@ function LoopApp() {
         return <SquadDetail id={route.id} nav={nav} />;
       case "squad-members":
         return <SquadMembers id={route.id} nav={nav} />;
+      case "guide":
+        return <PublicGuide nav={nav} />;
     }
   };
   const active = stack[stack.length - 1];

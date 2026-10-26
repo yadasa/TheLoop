@@ -31,7 +31,8 @@ export type Route =
         | "spaces"
         | "import-events"
         | "squads"
-        | "create-squad";
+        | "create-squad"
+        | "guide";
     };
 export type Nav = {
   open: (route: Route) => void;

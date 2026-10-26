@@ -92,6 +92,18 @@ export function Events({ nav }: { nav: Nav }) {
         The panels, the link-ups, the in-between moments. Make space for all of
         it.
       </Text>
+      <View style={[s.card, { backgroundColor: color.soft }]}>
+        <Label>PUBLIC EVENTS · AFROTECH.GUIDE</Label>
+        <Text style={s.h2}>The city has plans, too.</Text>
+        <Text style={s.small}>
+          Explore public conference side events and meetups from the Guide.
+        </Text>
+        <Button
+          secondary
+          title="Explore the public Guide ↗"
+          onPress={() => nav.open({ kind: "guide" })}
+        />
+      </View>
       <Horizontal>
         <Chip
           title="Global calendar"

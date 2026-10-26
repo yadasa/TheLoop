@@ -1076,6 +1076,11 @@ export function Auth({ nav }: { nav: Nav }) {
           ? "One account. Your communities, conversations, and next connections."
           : "Good conversations are waiting for you."}
       </Text>
+      <Button
+        secondary
+        title="Explore public AfroTech events ↗"
+        onPress={() => nav.open({ kind: "guide" })}
+      />
       {mode === "demo" && (
         <View style={s.card}>
           <Text style={s.small}>
