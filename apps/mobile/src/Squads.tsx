@@ -64,7 +64,13 @@ function Initials({
   );
 }
 
-export function SquadSummary({ nav }: { nav: Nav }) {
+export function SquadSummary({
+  nav,
+  compact = false,
+}: {
+  nav: Nav;
+  compact?: boolean;
+}) {
   const { state } = useLoop();
   const invites = (state.squadInvites ?? []).filter(
     (invite) => invite.toId === state.currentUserId && activeInvite(invite),
@@ -72,17 +78,31 @@ export function SquadSummary({ nav }: { nav: Nav }) {
   const squads = (state.squads ?? []).filter(
     (squad) => squad.memberIds.includes(state.currentUserId) && !squad.archived,
   );
+  if (compact)
+    return (
+      <Touch
+        label={`Squads${invites.length ? `, ${invites.length} pending invitation${invites.length === 1 ? "" : "s"}` : ""}`}
+        onPress={() => nav.open({ kind: "squads" })}
+        style={[
+          s.button,
+          { backgroundColor: color.soft, flexDirection: "row", gap: 8 },
+        ]}
+      >
+        <Text style={[s.buttonText, { color: color.ink }]}>Squads</Text>
+        {invites.length > 0 && <Label dark>{invites.length}</Label>}
+      </Touch>
+    );
   return (
     <View style={[s.card, { backgroundColor: color.soft }]}>
       <View style={s.between}>
         <View style={s.grow}>
-          <Text style={s.overline}>A SMALLER CIRCLE</Text>
-          <Text style={[s.h2, { marginTop: 5 }]}>Your squads.</Text>
+          <Text style={s.overline}>PRIVATE GROUP CHATS</Text>
+          <Text style={[s.h2, { marginTop: 5 }]}>Your Squads</Text>
         </View>
         <Button
           small
           secondary
-          title="Open"
+          title="View Squads"
           onPress={() => nav.open({ kind: "squads" })}
         />
       </View>
@@ -96,8 +116,8 @@ export function SquadSummary({ nav }: { nav: Nav }) {
           onPress={() => nav.open({ kind: "squads" })}
         >
           <Text style={s.h3}>
-            {invites.length} invitation{invites.length === 1 ? "" : "s"} waiting
-            ↗
+            {invites.length} invitation{invites.length === 1 ? "" : "s"} to
+            review
           </Text>
         </Touch>
       )}
@@ -111,14 +131,14 @@ export function SquadSummary({ nav }: { nav: Nav }) {
           <Text style={[s.h3, s.grow]}>{squad.name}</Text>
           <Text style={s.small}>
             {squad.memberIds.length}{" "}
-            {squad.memberIds.length === 1 ? "person" : "people"} ↗
+            {squad.memberIds.length === 1 ? "person" : "people"}
           </Text>
         </Touch>
       ))}
       {squads.length === 0 && (
         <Button
           small
-          title="Start a squad ＋"
+          title="Create Squad ＋"
           onPress={() => nav.open({ kind: "create-squad" })}
         />
       )}
@@ -149,11 +169,11 @@ export function Squads({ nav }: { nav: Nav }) {
       <Text style={s.overline}>PRIVATE GROUP CHATS</Text>
       <Text style={s.title}>Squads</Text>
       <Text style={s.body}>
-        Plan a dinner, keep up with friends, or start an accountability group.
-        Invite your connections; they choose whether to join.
+        Create a private group chat with accepted connections. Invitations must
+        be accepted before someone joins.
       </Text>
       <Button
-        title="Start a squad ＋"
+        title="Create Squad ＋"
         disabled={squads.length >= 50}
         onPress={() => nav.open({ kind: "create-squad" })}
       />
@@ -179,7 +199,7 @@ export function Squads({ nav }: { nav: Nav }) {
           {!invites.length && (
             <Empty
               title="No invitations yet"
-              body="Squad invitations from your connections appear here. You decide when to join."
+              body="Invitations from your connections will appear here. You can accept or decline them."
             />
           )}
         </>
@@ -214,14 +234,14 @@ export function Squads({ nav }: { nav: Nav }) {
                     ? "You’re the host"
                     : "Member"}
                 </Text>
-                <Text style={s.h3}>↗</Text>
+                <Text style={s.h3}>›</Text>
               </View>
             </Touch>
           ))}
           {!squads.length && (
             <Empty
               title="No squads yet"
-              body="Create a squad and invite your connections. They must accept before joining the chat."
+              body="Create a Squad and invite accepted connections. They must accept before joining the chat."
               action="Start a squad"
               onPress={() => nav.open({ kind: "create-squad" })}
             />
@@ -285,7 +305,7 @@ function Invitation({ invite, nav }: { invite: SquadInvite; nav: Nav }) {
       <View style={s.row}>
         <View style={s.grow}>
           <Button
-            title={busy ? "One moment…" : "Join squad"}
+            title={busy ? "Joining…" : "Join Squad"}
             disabled={busy}
             onPress={() => respond(true)}
           />
@@ -334,8 +354,8 @@ export function CreateSquad({ nav }: { nav: Nav }) {
       <Text style={s.overline}>PRIVATE GROUP CHAT</Text>
       <Text style={s.title}>Create squad</Text>
       <Text style={s.body}>
-        Name your group and invite up to 11 connections. You can invite more
-        people later if there’s space.
+        Create a private group chat for up to 12 people. Invite accepted
+        connections now or later.
       </Text>
       <Field
         label="Squad name"
@@ -346,7 +366,7 @@ export function CreateSquad({ nav }: { nav: Nav }) {
         disabled={busy}
       />
       <Field
-        label="What brings you together?"
+        label="Description · optional"
         value={description}
         onChangeText={setDescription}
         multiline
@@ -356,7 +376,7 @@ export function CreateSquad({ nav }: { nav: Nav }) {
       />
       <Section
         title="Invite your connections"
-        subtitle={`${selected.length} invited · ${1 + selected.length}/${capacity} places reserved`}
+        subtitle={`${selected.length}/${capacity - 1} connections selected`}
       />
       {selected.length > 0 && (
         <Button
@@ -368,13 +388,13 @@ export function CreateSquad({ nav }: { nav: Nav }) {
         />
       )}
       <Text style={s.small}>
-        Invitations reserve a place for seven days. Your connections choose
-        whether to join; they are not added automatically.
+        Invitations are sent when you create the Squad and reserve a place for
+        seven days. Your connections must accept before joining.
       </Text>
       <Field
         value={search}
         onChangeText={setSearch}
-        placeholder="Find a connection…"
+        placeholder="Search connections…"
         disabled={busy}
       />
       {visible.map((profile) => (
@@ -408,7 +428,7 @@ export function CreateSquad({ nav }: { nav: Nav }) {
       {!friends.length && (
         <Empty
           title="Invite a connection"
-          body="Accept a connection request or meet someone in People, then invite them here. You can also start a squad just for yourself and invite people later."
+          body="Connect with members in People before inviting them. You can create a Squad on your own and invite connections later."
         />
       )}
       <Text style={s.small}>
@@ -422,7 +442,7 @@ export function CreateSquad({ nav }: { nav: Nav }) {
         </Text>
       )}
       <Button
-        title={busy ? "Creating your squad…" : "Create squad"}
+        title={busy ? "Creating…" : "Create Squad"}
         disabled={busy || !name.trim() || limitReached}
         onPress={() => {
           setBusy(true);
@@ -624,7 +644,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
         {!messages.length && (
           <Empty
             title="No messages yet"
-            body="Start the conversation. You only receive messages sent while you are part of the squad's audience."
+            body="Write a message. Members can read messages shared with them while they belong to the Squad."
           />
         )}
         {messages.map((message) => {
@@ -1207,8 +1227,8 @@ export function SquadMembers({ id, nav }: { id: string; nav: Nav }) {
           ))}
           {!friends.length && (
             <Text style={s.small}>
-              Your available connections are already here or invited. Meet
-              someone new in People.
+              No eligible connections to invite. Connect with members in People,
+              or check pending invitations.
             </Text>
           )}
         </>

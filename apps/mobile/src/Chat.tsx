@@ -70,12 +70,18 @@ export function Chats({ nav }: { nav: Nav }) {
           Choose a conference, then a topic. Follow chats you want updates from.
         </Text>
       </View>
-      <Button
-        secondary
-        title="Direct messages"
-        onPress={() => nav.open({ kind: "inbox" })}
-      />
-      <SquadSummary nav={nav} />
+      <View style={s.row}>
+        <View style={s.grow}>
+          <Button
+            secondary
+            title="Direct messages"
+            onPress={() => nav.open({ kind: "inbox" })}
+          />
+        </View>
+        <View style={s.grow}>
+          <SquadSummary nav={nav} compact />
+        </View>
+      </View>
       <Field
         value={search}
         onChangeText={setSearch}
@@ -216,6 +222,7 @@ export function Chats({ nav }: { nav: Nav }) {
           onPress={() => setDiscover(true)}
         />
       )}
+      <SquadSummary nav={nav} />
       <View style={[s.card, { backgroundColor: color.soft }]}>
         <Text style={s.h3}>Choose your notifications</Text>
         <Text style={s.small}>
