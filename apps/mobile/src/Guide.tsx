@@ -212,8 +212,13 @@ export function PublicGuide({ nav }: { nav: Nav }) {
       ))}
       {result.bounded && (
         <Text style={s.small}>
-          Showing up to {result.limit} matches. Narrow the date, category, or
+          Showing up to {result.limit} public listings. Narrow the date, category, or
           search to find a specific event.
+        </Text>
+      )}
+      {!!filters.q && (
+        <Text style={s.small}>
+          The Guide ranks results by relevance and may include related suggestions.
         </Text>
       )}
       {result.skipped > 0 && (

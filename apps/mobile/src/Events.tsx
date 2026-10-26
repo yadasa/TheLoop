@@ -298,14 +298,10 @@ export function Events({ nav }: { nav: Nav }) {
       )}
       {shown.length === 0 && (
         <Empty
-          title={
-            scope === "mine"
-              ? "No RSVPs yet"
-              : "No events in this view"
-          }
+          title="No events in this view"
           body={
             scope === "mine"
-              ? "RSVP to an event to keep your plans together."
+              ? "Try another date or filter, or load more events. Events you RSVP to appear here."
               : "Try another date or filter, or create an event."
           }
           action="Create event"
@@ -708,7 +704,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
       )}
       <Section
         title={
-          cancelled ? "Previous attendees" : "Attendees"
+          cancelled ? "RSVPs before cancellation" : "Attendees"
         }
         subtitle={`${event.attendeeIds.length} ${cancelled ? "planned to come" : "going"}${event.waitlistIds.length ? ` · ${event.waitlistIds.length} ${cancelled ? "were waitlisted" : "on the waitlist"}` : ""}`}
       />
