@@ -35,6 +35,7 @@ import {
   useReducedMotion,
 } from "./ui";
 import type { Nav } from "./navigation";
+import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
 
 export function People({ nav }: { nav: Nav }) {
   const { state, directory, setDirectoryQuery, loadMoreDirectory } = useLoop();
@@ -584,6 +585,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
 
 export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
   const { state } = useLoop();
+  const attachment = useImageAttachment(nav);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const scroll = useRef<ScrollViewInstance>(null);
@@ -680,6 +682,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                   text={m.body}
                   style={{ color: mine ? "#fff" : color.ink }}
                 />
+                <MediaImage image={m.image} caption={m.body} nav={nav} />
               </View>
               <View
                 style={[
@@ -695,7 +698,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                     onPress={() =>
                       Alert.alert(
                         "Report this private message?",
-                        "The reported message excerpt will be shared with moderators. The rest of this conversation stays private.",
+                        "The selected message and any attached image will be shared with moderators. The rest of this conversation stays private.",
                         [
                           { text: "Cancel", style: "cancel" },
                           {
@@ -754,11 +757,13 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
           </Text>
         ) : (
           <>
+            <ImageAttachmentPicker attachment={attachment} disabled={busy} />
             <View style={s.row}>
               <View style={s.grow}>
                 <Field
                   value={body}
                   onChangeText={setBody}
+                  disabled={busy}
                   placeholder="A thoughtful hello…"
                   multiline
                   compact
@@ -767,16 +772,34 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
               </View>
               <Button
                 title={busy ? "…" : "Send ↗"}
-                disabled={busy || !body.trim()}
+                disabled={busy || attachment.busy || !body.trim()}
                 onPress={() => {
                   stickToBottom.current = true;
                   setShowJump(false);
                   setBusy(true);
-                  void nav
-                    .run({ type: "dm.send", userId: id, body })
+                  void attachment
+                    .resolve({ kind: "directMessage", id })
+                    .then((image) =>
+                      nav.run({
+                        type: "dm.send",
+                        userId: id,
+                        body,
+                        ...(image ? { imageId: image.id } : {}),
+                      }),
+                    )
                     .then((ok) => {
-                      if (ok) setBody("");
+                      if (ok) {
+                        setBody("");
+                        attachment.clear();
+                      }
                     })
+                    .catch((error) =>
+                      nav.toast(
+                        error instanceof Error
+                          ? error.message
+                          : "Could not send this image.",
+                      ),
+                    )
                     .finally(() => setBusy(false));
                 }}
               />

@@ -241,6 +241,7 @@ function LoopApp() {
     return () => listener.remove();
   }, [open]);
   useEffect(() => {
+    if (Platform.OS !== "android") return;
     const listener = BackHandler.addEventListener("hardwareBackPress", () => {
       if (stack.length) {
         close();
@@ -418,7 +419,7 @@ function LoopApp() {
           )}
         </View>
       </View>
-      {error && (
+      {!!error && (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Dismiss error"
@@ -533,9 +534,9 @@ function LoopApp() {
                 <Text style={[s.h3, { fontSize: 14, flex: 1 }]}>
                   {title(active)}
                 </Text>
-                {mode === "demo" && (
+                {(active.kind === "guide" || mode === "demo") && (
                   <Text style={[s.overline, { fontSize: 8, letterSpacing: 1 }]}>
-                    SAMPLE
+                    {active.kind === "guide" ? "PUBLIC" : "SAMPLE"}
                   </Text>
                 )}
               </View>
@@ -552,10 +553,12 @@ function LoopApp() {
               </KeyboardAvoidingView>
             </>
           )}
-          {toast && <Toast text={toast} dismiss={() => setToast("")} />}
+          {!!toast && <Toast text={toast} dismiss={() => setToast("")} />}
         </SafeAreaView>
       </Modal>
-      {toast && !active && <Toast text={toast} dismiss={() => setToast("")} />}
+      {!!toast && !active && (
+        <Toast text={toast} dismiss={() => setToast("")} />
+      )}
     </SafeAreaView>
   );
 }

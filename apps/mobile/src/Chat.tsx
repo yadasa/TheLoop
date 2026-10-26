@@ -30,6 +30,12 @@ import {
 } from "./ui";
 import type { Nav } from "./navigation";
 import { SquadSummary } from "./Squads";
+import {
+  confirmContentReport,
+  ImageAttachmentPicker,
+  MediaImage,
+  useImageAttachment,
+} from "./Media";
 
 export function Chats({ nav }: { nav: Nav }) {
   const { state } = useLoop();
@@ -261,6 +267,7 @@ export function Chats({ nav }: { nav: Nav }) {
 
 export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
   const { state, watchConversation, loadOlderMessages, history } = useLoop();
+  const attachment = useImageAttachment(nav);
   const channel = state.channels.find((c) => c.id === id);
   const [topic, setTopic] = useState("all");
   const [newTopic, setNewTopic] = useState("");
@@ -336,15 +343,18 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
               setTopic("all");
           }),
     );
-  const send = () => {
-    if (!body.trim()) return;
+  const send = async () => {
+    if (!body.trim() || busy || attachment.busy) return;
     loadingOlder.current = false;
     stickToBottom.current = true;
     setShowJump(false);
     const sendTopic = topic === "all" ? topicNames[0] || "General" : topic;
     setBusy(true);
-    void nav
-      .run(
+    try {
+      const image = editing
+        ? null
+        : await attachment.resolve({ kind: "channel", id });
+      const ok = await nav.run(
         editing
           ? { type: "message.edit", messageId: editing.id, body }
           : {
@@ -353,17 +363,25 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
               topic: sendTopic,
               body,
               ...(reply ? { replyTo: reply.id } : {}),
+              ...(image ? { imageId: image.id } : {}),
             },
-      )
-      .then((ok) => {
-        if (ok) {
-          setBody("");
-          setReply(null);
-          setEditing(null);
-          void nav.run({ type: "channel.read", channelId: id });
-        }
-      })
-      .finally(() => setBusy(false));
+      );
+      if (ok) {
+        attachment.clear();
+        setBody("");
+        setReply(null);
+        setEditing(null);
+        void nav.run({ type: "channel.read", channelId: id });
+      }
+    } catch (error) {
+      nav.toast(
+        error instanceof Error
+          ? error.message
+          : "Could not send this image. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <KeyboardAvoidingView
@@ -611,6 +629,7 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
                                         {
                                           text: "Edit",
                                           onPress: () => {
+                                            attachment.clear();
                                             setEditing(m);
                                             setBody(m.body);
                                             setReply(null);
@@ -654,14 +673,15 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
                                 {
                                   text: "Report",
                                   onPress: () =>
-                                    void nav.run(
+                                    confirmContentReport(
+                                      nav,
                                       {
                                         type: "report.create",
                                         targetId: m.id,
                                         targetType: "message",
                                         reason: "Community guideline concern",
                                       },
-                                      "Report sent",
+                                      !!m.image,
                                     ),
                                 },
                               ]),
@@ -694,6 +714,7 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
                   </View>
                 )}
                 <LinkifiedText text={m.body} />
+                <MediaImage image={m.image} caption={m.body} nav={nav} />
                 <View style={[s.row, { gap: 6, flexWrap: "wrap" }]}>
                   {Object.entries(m.reactions)
                     .filter(([, ids]) => ids.length > 0)
@@ -817,11 +838,15 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
             </Touch>
           </View>
         )}
+        {!editing && (
+          <ImageAttachmentPicker attachment={attachment} disabled={busy} />
+        )}
         <View style={[s.row, { alignItems: "flex-end" }]}>
           <View style={s.grow}>
             <Field
               value={body}
               onChangeText={setBody}
+              disabled={busy}
               placeholder={`Message ${topic === "all" ? topicNames[0] || "General" : topic}…`}
               multiline
               compact
@@ -830,7 +855,7 @@ export function ChannelDetail({ id, nav }: { id: string; nav: Nav }) {
           </View>
           <Button
             title={busy ? "…" : editing ? "Save" : "Send ↗"}
-            disabled={busy || !body.trim()}
+            disabled={busy || attachment.busy || !body.trim()}
             onPress={send}
           />
         </View>

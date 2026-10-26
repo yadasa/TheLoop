@@ -19,6 +19,12 @@ import {
   Touch,
 } from "./ui";
 import type { Nav } from "./navigation";
+import {
+  confirmContentReport,
+  ImageAttachmentPicker,
+  MediaImage,
+  useImageAttachment,
+} from "./Media";
 
 export function Feed({ nav }: { nav: Nav }) {
   const { state, hasMore, loadMore, loadSavedPosts } = useLoop();
@@ -373,6 +379,7 @@ export function PostCard({
           {post.body}
         </Text>
       </Touch>
+      <MediaImage image={post.image} caption={post.body} nav={nav} />
       {post.poll && <PollBlock post={post} nav={nav} />}
       <View style={s.wrap}>
         <Label dark={post.kind === "win"}>
@@ -503,14 +510,15 @@ export function PostCard({
                       {
                         text: "Report",
                         onPress: () =>
-                          void nav.run(
+                          confirmContentReport(
+                            nav,
                             {
                               type: "report.create",
                               targetId: post.id,
                               targetType: "post",
                               reason: "Community guideline concern",
                             },
-                            "Report sent to the moderation queue",
+                            !!post.image,
                           ),
                       },
                       { text: "Cancel", style: "cancel" },
@@ -656,6 +664,7 @@ export function PostDetail({ id, nav }: { id: string; nav: Nav }) {
       <Field
         value={body}
         onChangeText={setBody}
+        disabled={busy}
         multiline
         placeholder="Add to the conversation…"
       />
@@ -729,9 +738,16 @@ export function EditPost({ id, nav }: { id: string; nav: Nav }) {
         label="Title"
         value={title}
         onChangeText={setTitle}
+        disabled={busy}
         maxLength={160}
       />
-      <Field label="Your post" value={body} onChangeText={setBody} multiline />
+      <Field
+        label="Your post"
+        value={body}
+        onChangeText={setBody}
+        disabled={busy}
+        multiline
+      />
       <Field
         label="Tags · comma separated"
         value={tags}
@@ -745,6 +761,7 @@ export function EditPost({ id, nav }: { id: string; nav: Nav }) {
         }
         value={url}
         onChangeText={setUrl}
+        disabled={busy}
         keyboardType="url"
         placeholder="https://…"
       />
@@ -827,6 +844,7 @@ function CommentItem({
               label="Edit your reply"
               value={body}
               onChangeText={setBody}
+              disabled={busy}
               multiline
               maxLength={3000}
             />
@@ -945,6 +963,7 @@ function CommentItem({
 
 export function Compose({ nav }: { nav: Nav }) {
   const { state } = useLoop();
+  const attachment = useImageAttachment(nav);
   const [communityId, setCommunity] = useState(
     state.preferences.joinedCommunityIds[0] || state.communities[0]?.id || "",
   );
@@ -969,7 +988,9 @@ export function Compose({ nav }: { nav: Nav }) {
             key={c.id}
             title={`l/${c.slug}`}
             selected={communityId === c.id}
-            onPress={() => setCommunity(c.id)}
+            onPress={() => {
+              if (!busy) setCommunity(c.id);
+            }}
           />
         ))}
       </Horizontal>
@@ -980,7 +1001,9 @@ export function Compose({ nav }: { nav: Nav }) {
               key={k}
               title={k}
               selected={kind === k}
-              onPress={() => setKind(k)}
+              onPress={() => {
+                if (!busy) setKind(k);
+              }}
             />
           ),
         )}
@@ -989,6 +1012,7 @@ export function Compose({ nav }: { nav: Nav }) {
         label="Give it a title"
         value={title}
         onChangeText={setTitle}
+        disabled={busy}
         placeholder="What's on your mind?"
         maxLength={160}
       />
@@ -996,6 +1020,7 @@ export function Compose({ nav }: { nav: Nav }) {
         label="The story"
         value={body}
         onChangeText={setBody}
+        disabled={busy}
         multiline
         placeholder="The details, the context, the good stuff…"
       />
@@ -1004,6 +1029,7 @@ export function Compose({ nav }: { nav: Nav }) {
           label="Link"
           value={url}
           onChangeText={setUrl}
+          disabled={busy}
           keyboardType="url"
           placeholder="https://…"
         />
@@ -1013,6 +1039,7 @@ export function Compose({ nav }: { nav: Nav }) {
           label="Poll choices · one per line"
           value={options}
           onChangeText={setOptions}
+          disabled={busy}
           multiline
         />
       )}
@@ -1020,34 +1047,55 @@ export function Compose({ nav }: { nav: Nav }) {
         Keep it thoughtful. Protect people's privacy. Make room for a different
         perspective.
       </Text>
+      <ImageAttachmentPicker attachment={attachment} disabled={busy} />
       <Button
         title={busy ? "Sharing…" : "Share with the community ↗"}
-        disabled={busy || !title.trim() || !body.trim() || !communityId}
+        disabled={
+          busy ||
+          attachment.busy ||
+          !title.trim() ||
+          !body.trim() ||
+          !communityId
+        }
         onPress={() => {
           setBusy(true);
-          void nav
-            .run(
-              {
-                type: "post.create",
-                communityId,
-                title,
-                body,
-                kind,
-                ...(kind === "poll"
-                  ? {
-                      options: options
-                        .split("\n")
-                        .map((v) => v.trim())
-                        .filter(Boolean),
-                    }
-                  : {}),
-                ...(kind === "link" ? { url } : {}),
-              },
-              "Your post is in the loop",
+          void attachment
+            .resolve({ kind: "community", id: communityId })
+            .then((image) =>
+              nav.run(
+                {
+                  type: "post.create",
+                  communityId,
+                  title,
+                  body,
+                  kind,
+                  ...(kind === "poll"
+                    ? {
+                        options: options
+                          .split("\n")
+                          .map((v) => v.trim())
+                          .filter(Boolean),
+                      }
+                    : {}),
+                  ...(kind === "link" ? { url } : {}),
+                  ...(image ? { imageId: image.id } : {}),
+                },
+                "Your post is in the loop",
+              ),
             )
             .then((ok) => {
-              if (ok) nav.close();
+              if (ok) {
+                attachment.clear();
+                nav.closeIfTop("compose");
+              }
             })
+            .catch((error) =>
+              nav.toast(
+                error instanceof Error
+                  ? error.message
+                  : "Could not share this image.",
+              ),
+            )
             .finally(() => setBusy(false));
         }}
       />

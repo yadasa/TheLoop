@@ -275,7 +275,7 @@ function GuideCard({
     <View style={s.card}>
       <View style={s.between}>
         <Label>{event.kind || "PUBLIC EVENT"}</Label>
-        {event.priceType && (
+        {!!event.priceType && (
           <Label>{event.priceType.replace(/[-_]/g, " ")}</Label>
         )}
       </View>
@@ -287,21 +287,21 @@ function GuideCard({
         <Text style={[s.h2, { fontSize: 23, lineHeight: 29 }]}>
           {event.title}
         </Text>
-        {event.host && <Text style={s.small}>Hosted by {event.host}</Text>}
+        {!!event.host && <Text style={s.small}>Hosted by {event.host}</Text>}
         <Text style={[s.body, { fontWeight: "500" }]}>
           {event.timeLabel ||
             (event.startAt
               ? dateLabel(event.startAt)
               : "Timing to be confirmed")}
         </Text>
-        {location && <Text style={s.small}>{location}</Text>}
+        {!!location && <Text style={s.small}>{location}</Text>}
         <Text style={s.small}>
           {expanded ? "Less detail ↑" : "More detail ↓"}
         </Text>
       </Touch>
       {expanded && (
         <>
-          {event.description && <LinkifiedText text={event.description} />}
+          {!!event.description && <LinkifiedText text={event.description} />}
           <View style={s.wrap}>
             {event.categories.map((value) => (
               <Label key={value}>{value}</Label>
@@ -384,7 +384,7 @@ function GuideCard({
               start and end times.
             </Text>
           )}
-          {event.address && (
+          {!!event.address && (
             <Button
               small
               secondary

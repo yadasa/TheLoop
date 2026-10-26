@@ -4,6 +4,7 @@ import { useLoop } from "@theloop/client";
 import type { Report } from "@theloop/core";
 import { Button, Empty, Field, Label, s, Section } from "./ui";
 import type { Nav } from "./navigation";
+import { MediaImage } from "./Media";
 
 export function Safety({ nav }: { nav: Nav }) {
   const { state, role } = useLoop();
@@ -88,6 +89,12 @@ function ReportCard({
       {r.snapshot && (
         <>
           <Text style={s.body}>{r.snapshot.body}</Text>
+          <MediaImage
+            image={r.snapshot.image}
+            caption={r.snapshot.body}
+            reportId={moderator ? r.id : undefined}
+            nav={nav}
+          />
           <Text style={s.small}>
             Captured when reported ·{" "}
             {new Date(r.snapshot.capturedAt).toLocaleString()}

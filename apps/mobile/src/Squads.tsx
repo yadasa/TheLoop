@@ -27,6 +27,7 @@ import {
   useReducedMotion,
 } from "./ui";
 import type { Nav } from "./navigation";
+import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
 
 const capacity = 12;
 const activeInvite = (invite: SquadInvite) =>
@@ -448,6 +449,7 @@ export function CreateSquad({ nav }: { nav: Nav }) {
 
 export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
   const { state, watchSquad, loadOlderSquadMessages, squadHistory } = useLoop();
+  const attachment = useImageAttachment(nav);
   const squad = (state.squads ?? []).find(
     (value) =>
       value.id === id &&
@@ -655,6 +657,11 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                   </View>
                 )}
                 <LinkifiedText text={message.body} />
+                <MediaImage
+                  image={message.image}
+                  caption={message.body}
+                  nav={nav}
+                />
                 <View style={[s.wrap, { gap: 6 }]}>
                   {Object.entries(message.reactions)
                     .filter(([, ids]) => ids.length)
@@ -719,6 +726,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                           secondary
                           title="Edit"
                           onPress={() => {
+                            attachment.clear();
                             setEditing(message.id);
                             setBody(message.body);
                             setReply(null);
@@ -761,7 +769,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                         onPress={() =>
                           Alert.alert(
                             "Report this squad message?",
-                            "The reported message excerpt will be shared with moderators. The rest of the squad conversation stays private.",
+                            "The selected message and any attached image will be shared with moderators. The rest of the squad conversation stays private.",
                             [
                               { text: "Cancel", style: "cancel" },
                               {
@@ -831,11 +839,15 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
             />
           </View>
         )}
+        {!editing && (
+          <ImageAttachmentPicker attachment={attachment} disabled={busy} />
+        )}
         <View style={s.row}>
           <View style={s.grow}>
             <Field
               value={body}
               onChangeText={setBody}
+              disabled={busy}
               multiline
               compact
               maxLength={4000}
@@ -844,30 +856,45 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
           </View>
           <Button
             title={busy ? "…" : editing ? "Save" : "Send ↗"}
-            disabled={busy || !body.trim()}
+            disabled={busy || attachment.busy || !body.trim()}
             onPress={() => {
               loadingOlder.current = false;
               stickToBottom.current = true;
               setShowJump(false);
               setBusy(true);
-              void nav
-                .run(
-                  editing
-                    ? { type: "squad.message.edit", messageId: editing, body }
-                    : {
-                        type: "squad.message.send",
-                        squadId: id,
-                        body,
-                        ...(reply ? { replyTo: reply } : {}),
-                      },
+              void (
+                editing
+                  ? Promise.resolve(null)
+                  : attachment.resolve({ kind: "squad", id })
+              )
+                .then((image) =>
+                  nav.run(
+                    editing
+                      ? { type: "squad.message.edit", messageId: editing, body }
+                      : {
+                          type: "squad.message.send",
+                          squadId: id,
+                          body,
+                          ...(reply ? { replyTo: reply } : {}),
+                          ...(image ? { imageId: image.id } : {}),
+                        },
+                  ),
                 )
                 .then((ok) => {
                   if (ok) {
                     setBody("");
                     setReply(null);
                     setEditing(null);
+                    attachment.clear();
                   }
                 })
+                .catch((error) =>
+                  nav.toast(
+                    error instanceof Error
+                      ? error.message
+                      : "Could not send this image.",
+                  ),
+                )
                 .finally(() => setBusy(false));
             }}
           />
