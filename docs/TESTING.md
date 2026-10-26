@@ -2,7 +2,7 @@
 
 Run `pnpm install --frozen-lockfile`, then `pnpm typecheck`, `pnpm test`, and `pnpm build` from the repository root. Unit suites cover domain transitions, authorization, trust, cleanup, notifications, author controls, report context and pagination helpers. `pnpm --filter @theloop/mobile export:native` builds both native bundles. See the mobile README for installed-device checks.
 
-Without Firebase environment values, both clients open fictional sample data and persist only on the device. Run `pnpm dev` or `pnpm mobile`. No sample actions create cloud users or messages. The current private published sample is https://theloop-community.h2vmw6.chatgpt.site and requires the owner's ChatGPT sign-in. The first APK is available from the [EAS build](https://expo.dev/accounts/keithazodeh/projects/theloop-community/builds/2bcffbdb-8b46-456b-9989-5c2fbe5463f8); its baseline commit is e2fff2b.
+Without Firebase environment values, both clients open fictional sample data and persist only on the device. Run `pnpm dev` or `pnpm mobile`. No sample actions create cloud users or messages. The private published sample is https://theloop-community.h2vmw6.chatgpt.site and requires the owner's ChatGPT sign-in. The latest installed preview is [Android0.2](https://expo.dev/accounts/keithazodeh/projects/theloop-community/builds/f865aa5b-23a3-4113-b6e8-40d336a89ec4), exact8a2df83; the private site serves that same source. They include Squads, public Guide discovery and photos. Newer DM/targeted-link/date-entry work is currently available from main source; check BUILD_STATUS.md before assuming it is in the installed APK.
 
 ## Firestore rules and cursor queries
 
@@ -23,6 +23,9 @@ Build Functions and start loopback Auth, Firestore and Functions emulators under
 5. Save an old post outside the feed window; reopen Saved and verify hydration. Unsave a deleted post without an error.
 6. Report a specific reply or received private message. The report must share only its bounded excerpt with moderators. Removing a reported reply leaves its parent thread and other replies intact.
 7. Sign out/switch accounts and ensure open routes, drafts and private content do not carry over. Native new-account onboarding must survive successful signup.
+8. Open a private conversation, load older history, send/edit/delete your own message and mute the peer. Incoming author-only controls must not appear. A block hides the conversation and prevents new delivery. A message sent while a read marker is in flight must still be shown and handled after the first read completes.
+9. Open an old post/event via a shared link; refresh and use browser back/forward. A cache-only miss must remain loading, server permission denial must show retryable error, and a confirmed deletion must disappear from feed/Saved. Resolving a post must not fetch its author's private professional profile. Hidden-room links must preserve the subscription choice.
+10. Make a future plan in a different IANA timezone. Reject an impossible calendar date, a spring clock-change gap and an ambiguous repeated hour. Resolve a repeated hour with an explicit offset and verify displayed start/end zones; for example November1,2026,1:30AM America/Chicago at-05:00 through3AM shows CDT then CST. Capacity1001, HTTP links and overlong tags must be rejected before submitting. Repeat the same title/start and verify duplicate feedback without losing the form.
 
 Calendar permissions, push registration/delivery, OS share sheets, haptics and native deep links require a physical device. Export success and phone-sized browser screenshots do not establish these checks.
 
