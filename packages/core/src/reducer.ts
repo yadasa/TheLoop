@@ -1,5 +1,6 @@
 import type { Command, CommandContext, LoopState } from "./types";
 import { connected, safeURL } from "./selectors";
+import {applySquadCommand} from './squads';
 const clean = (v: string, max: number, required = true) => {
   const value = v.trim();
   if ((required && !value) || value.length > max)
@@ -25,6 +26,7 @@ export function applyCommand(
     if (!p) throw new Error("This post is no longer available.");
     return p;
   };
+  if(cmd.type.startsWith('squad.')){applySquadCommand(s,cmd as Extract<Command,{type:`squad.${string}`}>,ctx);return s;}
   switch (cmd.type) {
     case "topic.create": {
       const channel = s.channels.find((c) => c.id === cmd.channelId);
@@ -358,6 +360,7 @@ export function applyCommand(
               [c.fromId, c.toId].includes(cmd.userId)
             ),
         );
+        for(const invite of s.squadInvites)if(invite.status==='pending'&&[invite.fromId,invite.toId].includes(uid)&&[invite.fromId,invite.toId].includes(cmd.userId)){invite.status='revoked';invite.respondedAt=ctx.now;const squad=s.squads.find(g=>g.id===invite.squadId);if(squad)squad.pendingInviteeIds=squad.pendingInviteeIds.filter(id=>id!==invite.toId);}
       }
       break;
     case "profile.update": {
@@ -446,7 +449,7 @@ export function applyCommand(
       break;
     case "report.create": {
       if(cmd.targetType==='comment'&&(!cmd.postId||!s.posts.find(p=>p.id===cmd.postId)?.comments.some(c=>c.id===cmd.targetId)))throw new Error('Choose a reply that is still available.');
-      const target=cmd.targetType==='post'?s.posts.find(p=>p.id===cmd.targetId):cmd.targetType==='comment'?s.posts.find(p=>p.id===cmd.postId)?.comments.find(c=>c.id===cmd.targetId):cmd.targetType==='message'?s.messages.find(m=>m.id===cmd.targetId):cmd.targetType==='directMessage'?s.directMessages.find(d=>d.id===cmd.targetId&&[d.fromId,d.toId].includes(uid)):s.profiles.find(p=>p.id===cmd.targetId);
+      const target=cmd.targetType==='post'?s.posts.find(p=>p.id===cmd.targetId):cmd.targetType==='comment'?s.posts.find(p=>p.id===cmd.postId)?.comments.find(c=>c.id===cmd.targetId):cmd.targetType==='message'?s.messages.find(m=>m.id===cmd.targetId):cmd.targetType==='directMessage'?s.directMessages.find(d=>d.id===cmd.targetId&&[d.fromId,d.toId].includes(uid)):cmd.targetType==='squadMessage'?s.squadMessages.find(m=>m.id===cmd.targetId&&m.audienceIds.includes(uid)&&s.squads.some(g=>g.id===m.squadId&&!g.archived&&g.memberIds.includes(uid))):s.profiles.find(p=>p.id===cmd.targetId);
       if(!target)throw new Error('Choose content that is still available to you.');
       const body='body' in target?target.body:'bio' in target?target.bio:'';
       const authorId='authorId' in target?target.authorId:'fromId' in target?target.fromId:target.id;

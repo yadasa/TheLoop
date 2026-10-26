@@ -13,6 +13,7 @@ import {
   onCall,
 } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import {
   bootstrap as bootstrapAccount,
   execute,
@@ -31,6 +32,11 @@ import {
 import { inQuietHours } from "./notifications";
 import { scrubCommunityOwner, scrubPost, scrubReactions } from "./cleanup";
 import { exportCursor, projectContribution } from "./contributions";
+import {
+  detachDeletedSquadMember,
+  expireSquadInvitation,
+  revokeDeletedSquadInvitation,
+} from "./squads";
 
 export { sendCommunityDigests, sendEventReminders } from "./workers";
 
@@ -111,6 +117,35 @@ async function transaction<T>(
     return result;
   });
 }
+
+export const expireSquadInvites = onSchedule(
+  {
+    schedule: "every 5 minutes",
+    timeZone: "UTC",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+    maxInstances: 1,
+  },
+  async () => {
+    const now = new Date().toISOString();
+    // A bounded run resumes naturally from the earliest still-pending reservation next tick.
+    for (let page = 0; page < 20; page++) {
+      const expired = await db
+        .collection("squadInvites")
+        .where("status", "==", "pending")
+        .where("expiresAt", "<=", now)
+        .orderBy("expiresAt")
+        .limit(100)
+        .get();
+      if (expired.empty) break;
+      for (const invite of expired.docs)
+        await transaction((store) =>
+          expireSquadInvitation(store, invite.id, now),
+        );
+      if (expired.size < 100) break;
+    }
+  },
+);
 
 export const bootstrap = onCall(callableOptions, async (request) => {
   const identity = actor(request);
@@ -295,6 +330,11 @@ export const deliverPushNotification = onDocumentCreated(
     // Quiet hours are interpreted in the member's selected timezone; absent/invalid zones use UTC.
     if (inQuietHours(prefs, new Date())) return;
     if (notification.kind === "event" && prefs.eventReminders === false) return;
+    if (
+      notification.kind === "squad" &&
+      prefs.squadMutedIds?.includes(notification.targetId)
+    )
+      return;
     const tokens = await db
       .collection(`users/${notification.userId}/pushTokens`)
       .limit(10)
@@ -352,6 +392,9 @@ export const exportAccount = onCall(callableOptions, async (request) => {
       events: { field: "attendeeIds", operator: "array-contains" },
       connections: { field: "participantIds", operator: "array-contains" },
       follows: { field: "participantIds", operator: "array-contains" },
+      squads: { field: "memberIds", operator: "array-contains" },
+      squadInvites: { field: "participantIds", operator: "array-contains" },
+      squadMessages: { field: "authorId", operator: "==" },
       directMessages: { field: "participantIds", operator: "array-contains" },
       notifications: { field: "userId", operator: "==" },
       reports: { field: "reporterId", operator: "==" },
@@ -496,6 +539,43 @@ export const processAccountDeletion = onDocumentCreated(
       .catch((error) => {
         if (error.code !== "auth/user-not-found") throw error;
       });
+    const deletionTime = new Date().toISOString();
+    for (;;) {
+      const page = await db
+        .collection("squads")
+        .where("memberIds", "array-contains", uid)
+        .limit(100)
+        .get();
+      if (page.empty) break;
+      for (const squad of page.docs)
+        await transaction((store) =>
+          detachDeletedSquadMember(store, squad.id, uid, deletionTime),
+        );
+    }
+    for (;;) {
+      const page = await db
+        .collection("squadInvites")
+        .where("participantIds", "array-contains", uid)
+        .limit(100)
+        .get();
+      if (page.empty) break;
+      for (const invite of page.docs)
+        await transaction((store) =>
+          revokeDeletedSquadInvitation(store, invite.id, deletionTime),
+        );
+    }
+    await mutateMatching("squadMessages", "authorId", "==", uid);
+    await mutateMatching(
+      "squadMessages",
+      "audienceIds",
+      "array-contains",
+      uid,
+      (data) => ({
+        ...data,
+        audienceIds: data.audienceIds.filter((value: string) => value !== uid),
+        ...(scrubReactions(data, uid) || {}),
+      }),
+    );
     // Directional follow edges are removed with their surviving member's public counts in
     // one transaction. Deleting a repeated job cannot subtract a count twice.
     for (;;) {

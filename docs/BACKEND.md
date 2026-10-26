@@ -56,6 +56,36 @@ Subscription targets are a channel ID, conference ID, or `${channelId}:${topic}`
 
 ## Reader queries
 
+Public directory pages use server-computed `nameKey` and bounded normalized `searchKeys`. Bootstrap repairs the caller's legacy metadata, and profile changes recompute it; the client cannot supply either field. Search combines public visibility, an optional prefix key, and stable name/document-ID pagination. Existing imported profiles need the same server normalization before directory queries can find them.
+
+## Author controls and report context
+
+`post.edit` accepts only title/body/tags/URL; `url:''` clears an optional link, while a link-kind post must retain HTTPS. Post and reply edits require the original author, including when the caller has left that community. Global moderators can remove content but cannot rewrite it under its author's identity. `post.delete`, `comment.edit`, and `comment.delete` use exact IDs. Deletions create metadata-only moderation audit records and preserve other replies and contributions. Saved IDs can be removed after the original post disappears.
+
+Reports capture at most 2,000 characters, the actual author ID, and capture time after checking access to the reported resource. Reply reports carry their parent post ID, so removal affects that exact reply. Private DM/Squad report snapshots give moderators bounded case context without granting broad private-message reads. Only current Squad members in the original message audience can capture a Squad report; a role alone grants no such access. Profile removal requires a separate account review, rather than pretending that deleting a profile field removes the account.
+
+Scoped `onboarding.complete` with `replaceChannels:true` requires the exact displayed authorized `channelScopeIds`. Selected channels follow; deselected effective follows explicitly mute; existing muted/hidden choices and channels outside that scope remain unchanged. The default command stays additive. All authorization and counter changes commit atomically.
+
+## Private friend Squads
+
+Any active member can create a Squad and invite accepted connections. Every recipient must accept before membership, name/initials sharing, or message access begins. All members may invite their own accepted connections; the current owner can rename, remove members, revoke another member's reservation, or explicitly transfer ownership. Leaving transfers ownership to the oldest remaining member, with UID tie-breaking. The last departure archives the group and clears member IDs. Departure revokes outstanding invitations created by that member.
+
+Limits are 12 active members plus reserved invitations, 50 active memberships per account, 20 owned groups when creating another group, and 50 unexpired incoming invitations. Automatic ownership transfer never prevents departure. Names are at most 60 characters, descriptions 500, and messages 4,000. Invitations expire after seven days; a group/recipient pair has a 24-hour reinvitation cooldown after its previous response. The expiry worker runs every five minutes, and group mutations prune expired reservations transactionally.
+
+Each message captures its consenting audience at send time. Reads require both current membership and inclusion in that captured audience, so new members cannot read prior conversations and removed members immediately lose access. A returning member may see previously consented messages, but cannot see conversations from their absence. Replies retain only their original authorized audience. Edits narrow the audience to current, unblocked original recipients; no new recipient is added by editing. The author may remove their own message after leaving without regaining history access. An owner can remove another message only if they are in its readable audience. Global moderator roles do not grant Squad history.
+
+Blocking keeps an existing shared membership but excludes either blocked party from the other's new sends. New reactions to old messages cannot disclose a blocked interaction; existing reactions can be withdrawn. Blocking revokes pending invitations between the pair and prevents future invitations/acceptance that conflict with a member's blocks. `squad.mute` suppresses future message notices for that member without changing access. `squad.read` maintains the private read marker; neither field can be written through raw preferences.
+
+| Collection      | Authorized bounded query                                                                                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `squads`        | `memberIds array-contains uid`, `updatedAt desc`, limit 50; selected authorized document can be watched independently                                                                |
+| `squadInvites`  | Participant history via `participantIds array-contains uid`; incoming pending via `toId==uid` and `status==pending`; current owner may query a selected `squadId` and pending status |
+| `squadMessages` | Selected `squadId`, `audienceIds array-contains uid`, `createdAt desc` and document ID descending; pages of 100                                                                      |
+
+Exports include active Squad records, the member's invitation records and their own authored Squad messages. Deletion transactionally transfers ownership/removes membership, revokes reservations, removes private invitations and authored messages, and removes the deleted UID from surviving message audiences/reactions. There are no fabricated memberships or historical conversations in the production initializer.
+
+## Catalog and timeline queries
+
 | Collection                                      | Required client filter                                                                                                        |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `profiles`                                      | `where('visibility','==','public')`; connection-only profiles may be individually fetched by their owner/accepted connections |

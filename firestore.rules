@@ -20,6 +20,13 @@ service cloud.firestore {
       return owner(uid) || resource.data.visibility == 'public'
         || exists(/databases/$(database)/documents/profileAccess/$(uid)/members/$(request.auth.uid));
     }
+    function squadMember(squadId) {
+      return active() && request.auth.uid in get(/databases/$(database)/documents/squads/$(squadId)).data.memberIds;
+    }
+    function squadOwner(squadId) {
+      let squad = get(/databases/$(database)/documents/squads/$(squadId));
+      return active() && squad.data.ownerId == request.auth.uid && request.auth.uid in squad.data.memberIds;
+    }
     match /users/{uid} {
       allow read: if owner(uid);
       allow write: if false;
@@ -41,6 +48,15 @@ service cloud.firestore {
     match /connections/{connectionId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
     match /follows/{followId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
     match /directMessages/{messageId} { allow read: if active() && request.auth.uid in resource.data.participantIds; allow write: if false; }
+    match /squads/{squadId} { allow read: if active() && request.auth.uid in resource.data.memberIds; allow write: if false; }
+    match /squadInvites/{inviteId} {
+      allow read: if active() && (request.auth.uid in resource.data.get('participantIds', []) || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid || squadOwner(resource.data.squadId));
+      allow write: if false;
+    }
+    match /squadMessages/{messageId} {
+      allow read: if squadMember(resource.data.squadId) && request.auth.uid in resource.data.audienceIds;
+      allow write: if false;
+    }
     match /notifications/{notificationId} { allow read: if active() && resource.data.userId == request.auth.uid; allow write: if false; }
     match /reports/{reportId} { allow read: if active() && (resource.data.reporterId == request.auth.uid || moderator()); allow write: if false; }
     match /moderationAudit/{auditId} { allow read: if moderator(); allow write: if false; }

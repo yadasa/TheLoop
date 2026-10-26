@@ -18,6 +18,11 @@ import {
 import { withContributors } from "./contributions";
 import { commandFields, editablePost } from "./authorControls";
 import { directoryFields } from "./directory.js";
+import {
+  executeSquad,
+  readableSquadMessage,
+  revokeBlockedSquadInvites,
+} from "./squads";
 
 export interface TransactionStore {
   get(path: string): Promise<Doc | undefined>;
@@ -1304,6 +1309,15 @@ export async function execute(
           }
         }
       }
+      if (blocking)
+        await revokeBlockedSquadInvites(
+          store,
+          actor.uid,
+          user,
+          peerId,
+          await store.get(`users/${peerId}`),
+          now,
+        );
       break;
     }
     case "profile.update": {
@@ -1400,9 +1414,14 @@ export async function execute(
     case "report.create": {
       const targetType = command.targetType;
       assert(
-        ["message", "post", "profile", "comment", "directMessage"].includes(
-          targetType,
-        ),
+        [
+          "message",
+          "post",
+          "profile",
+          "comment",
+          "directMessage",
+          "squadMessage",
+        ].includes(targetType),
         "invalid-argument",
         "Invalid report target.",
       );
@@ -1424,10 +1443,14 @@ export async function execute(
               ? "posts"
               : targetType === "directMessage"
                 ? "directMessages"
-                : "profiles",
+                : targetType === "squadMessage"
+                  ? "squadMessages"
+                  : "profiles",
           targetId,
         );
       if (targetType === "message") await channelAccess(target.channelId);
+      if (targetType === "squadMessage")
+        await readableSquadMessage(store, actor.uid, target);
       if (targetType === "directMessage")
         assert(
           target.participantIds?.includes(actor.uid),
@@ -1527,7 +1550,7 @@ export async function execute(
           );
         }
         store.remove(
-          `${report.targetType === "message" ? "messages" : report.targetType === "directMessage" ? "directMessages" : "posts"}/${report.targetId}`,
+          `${report.targetType === "message" ? "messages" : report.targetType === "directMessage" ? "directMessages" : report.targetType === "squadMessage" ? "squadMessages" : "posts"}/${report.targetId}`,
         );
       }
       store.set(`reports/${report.id}`, {
@@ -1592,7 +1615,19 @@ export async function execute(
       break;
     }
     default:
-      throw new DomainError("invalid-argument", "Unknown command.");
+      if (commandType.startsWith("squad.")) {
+        result = await executeSquad(
+          store,
+          actor,
+          user,
+          profile,
+          prefs,
+          command,
+          requestId,
+          now,
+        );
+        savePreferences();
+      } else throw new DomainError("invalid-argument", "Unknown command.");
   }
   if (prefsChanged)
     store.set(`users/${actor.uid}`, {
@@ -1609,6 +1644,30 @@ export async function execute(
     Object.assign(profile, directoryFields(profile));
     store.set(`profiles/${actor.uid}`, profile);
     store.set(`trustSignals/${actor.uid}`, serverSignals);
+  }
+  if (profileChanged) {
+    // Only the consented name/initials card is shared, never professional profile fields.
+    for (const squadId of (user.activeSquadIds || []).slice(0, 50)) {
+      const squad = await store.get(`squads/${squadId}`);
+      if (!squad?.memberIds?.includes(actor.uid)) continue;
+      const member = squad.memberProfiles?.[actor.uid];
+      if (
+        !member ||
+        (member.name === profile.name && member.initials === profile.initials)
+      )
+        continue;
+      store.set(`squads/${squad.id}`, {
+        ...squad,
+        memberProfiles: {
+          ...squad.memberProfiles,
+          [actor.uid]: {
+            ...member,
+            name: profile.name,
+            initials: profile.initials,
+          },
+        },
+      });
+    }
   }
   store.set(`users/${actor.uid}/system/rate`, {
     bucket,

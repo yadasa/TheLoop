@@ -6,6 +6,8 @@ export const defaultPreferences = (): Preferences => ({
   blockedIds: [],
   savedPostIds: [],
   readChannels: {},
+  squadReadAt: {},
+  squadMutedIds: [],
   interests: [],
   onboardingComplete: false,
   quietHours: false,
@@ -131,6 +133,9 @@ export function emptyState(userId = ""): LoopState {
     posts: [],
     events: [],
     connections: [],
+    squads: [],
+    squadInvites: [],
+    squadMessages: [],
     notifications: [],
     directMessages: [],
     follows: [],
@@ -562,5 +567,10 @@ export function initialState(): LoopState {
     p.followerCount = s.follows.filter((f) => f.followingId === p.id).length;
     p.followingCount = s.follows.filter((f) => f.followerId === p.id).length;
   });
+  const squadTime='2026-10-26T10:00:00.000Z';
+  s.squads=[{id:'coffee-crew',name:'The coffee crew',description:'A tiny corner for a good coffee, a warm intro, and a little encouragement.',ownerId:'me',memberIds:['me','maya'],memberProfiles:Object.fromEntries(s.profiles.filter(p=>['me','maya'].includes(p.id)).map(p=>[p.id,{userId:p.id,name:p.name,initials:p.initials,joinedAt:squadTime}])),pendingInviteeIds:[],createdAt:squadTime,updatedAt:squadTime,archived:false}];
+  s.squadMessages=[{id:'squad-welcome',squadId:'coffee-crew',authorId:'maya',authorName:'Maya Thompson',authorInitials:'MT',body:'A little coffee circle. Big group-chat energy. What are we building this week?',createdAt:squadTime,audienceIds:['me','maya'],reactions:{'☕':['me']}}];
+  s.squads.push({id:'first-hello',name:'The first hello',description:'A quieter spot for meeting a few people before the conference.',ownerId:'maya',memberIds:['maya'],memberProfiles:{maya:{userId:'maya',name:'Maya Thompson',initials:'MT',joinedAt:squadTime}},pendingInviteeIds:['me'],createdAt:squadTime,updatedAt:squadTime,archived:false});
+  s.squadInvites=[{id:'first-hello-invite',squadId:'first-hello',squadName:'The first hello',description:'A quieter spot for meeting a few people before the conference.',fromId:'maya',toId:'me',participantIds:['maya','me'],status:'pending',createdAt:squadTime,expiresAt:'2026-11-02T10:00:00.000Z'}];
   return s;
 }

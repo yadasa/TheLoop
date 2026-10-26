@@ -26,6 +26,15 @@ before(async () => {
       "Run with pnpm test:rules so the Firestore emulator is isolated from production.",
     );
   const [host, port] = process.env.FIRESTORE_EMULATOR_HOST.split(":");
+  assert.ok(
+    ["127.0.0.1", "localhost"].includes(host),
+    "Rules tests only use a loopback emulator.",
+  );
+  assert.match(
+    process.env.GCLOUD_PROJECT || "demo-theloop",
+    /^demo-theloop(?:-[a-z0-9-]+)?$/,
+    "Rules fixtures must use an isolated demo namespace.",
+  );
   env = await initializeTestEnvironment({
     projectId: process.env.GCLOUD_PROJECT || "demo-theloop",
     firestore: {

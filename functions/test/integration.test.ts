@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { initializeApp, deleteApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { squadInviteId } from "../src/squads";
 
 /**
  * Run only against a dedicated emulator project, never production.
@@ -992,9 +993,256 @@ test(
       );
 
       await t.test(
+        "Squads require accepted invitations, capture consenting audiences, and transfer ownership without granting old history",
+        async () => {
+          for (const actor of [alice, bob])
+            await db.doc(`users/${actor.uid}/system/rate`).delete();
+          const squad = remember(
+            "squads",
+            (
+              await command(alice, {
+                type: "squad.create",
+                name: "Private consent QA",
+                description: "Only accepted friends, with explicit consent.",
+                inviteeIds: [bob.uid],
+              })
+            ).id,
+          );
+          const invite = remember(
+            "squadInvites",
+            squadInviteId(squad, bob.uid),
+          );
+          assert.deepEqual(
+            (await db.doc(`squads/${squad}`).get()).get("memberIds"),
+            [alice.uid],
+          );
+          assert.equal(
+            (await readDocument(bob, `squads/${squad}`)).response.status,
+            403,
+          );
+          assert.equal(
+            (await readDocument(bob, `squadInvites/${invite}`)).response.status,
+            200,
+          );
+          const old = remember(
+            "squadMessages",
+            (
+              await command(alice, {
+                type: "squad.message.send",
+                squadId: squad,
+                body: "Before Bob consented.",
+              })
+            ).id,
+          );
+          await denied(
+            command(bob, {
+              type: "squad.message.send",
+              squadId: squad,
+              body: "Not accepted yet.",
+            }),
+          );
+          await command(bob, {
+            type: "squad.respond",
+            inviteId: invite,
+            accept: true,
+          });
+          assert.equal(
+            (await readDocument(bob, `squads/${squad}`)).response.status,
+            200,
+          );
+          assert.equal(
+            (await readDocument(bob, `squadMessages/${old}`)).response.status,
+            403,
+          );
+          const message = remember(
+            "squadMessages",
+            (
+              await command(alice, {
+                type: "squad.message.send",
+                squadId: squad,
+                body: "Shared only after acceptance.",
+              })
+            ).id,
+          );
+          assert.equal(
+            (await readDocument(bob, `squadMessages/${message}`)).response
+              .status,
+            200,
+          );
+          assert.deepEqual(
+            (await db.doc(`squadMessages/${message}`).get()).get("audienceIds"),
+            [alice.uid, bob.uid],
+          );
+          await denied(
+            command(bob, {
+              type: "squad.message.send",
+              squadId: squad,
+              body: "Cannot forge a recipient.",
+              audienceIds: [actors[2].uid],
+            }),
+            ["INVALID_ARGUMENT"],
+          );
+          await command(bob, {
+            type: "squad.mute",
+            squadId: squad,
+            muted: true,
+          });
+          const noticeCount = (
+            await db
+              .collection("notifications")
+              .where("userId", "==", bob.uid)
+              .get()
+          ).docs.filter((notice) => notice.get("targetId") === squad).length;
+          remember(
+            "squadMessages",
+            (
+              await command(alice, {
+                type: "squad.message.send",
+                squadId: squad,
+                body: "Delivered quietly.",
+              })
+            ).id,
+          );
+          assert.equal(
+            (
+              await db
+                .collection("notifications")
+                .where("userId", "==", bob.uid)
+                .get()
+            ).docs.filter((notice) => notice.get("targetId") === squad).length,
+            noticeCount,
+          );
+          const own = remember(
+            "squadMessages",
+            (
+              await command(bob, {
+                type: "squad.message.send",
+                squadId: squad,
+                body: "Bob's exportable private contribution.",
+              })
+            ).id,
+          );
+          const exported = await callable(bob, "exportAccount", {
+            collection: "squadMessages",
+          });
+          assert.ok(
+            exported.records.some(
+              (record: Record<string, unknown>) => record.id === own,
+            ),
+          );
+          assert.ok(
+            exported.records.every(
+              (record: Record<string, unknown>) => record.authorId === bob.uid,
+            ),
+          );
+          const moderator = actors[2];
+          assert.equal(
+            (await readDocument(moderator, `squadMessages/${message}`)).response
+              .status,
+            403,
+          );
+          await denied(
+            command(moderator, {
+              type: "report.create",
+              targetType: "squadMessage",
+              targetId: message,
+              reason: "Role cannot copy a private Squad message.",
+            }),
+          );
+          const report = remember(
+            "reports",
+            (
+              await command(bob, {
+                type: "report.create",
+                targetType: "squadMessage",
+                targetId: message,
+                reason: "Review the exact consenting message.",
+              })
+            ).id,
+          );
+          assert.equal(
+            (await db.doc(`reports/${report}`).get()).get("snapshot.body"),
+            "Shared only after acceptance.",
+          );
+          assert.equal(
+            (await readDocument(moderator, `reports/${report}`)).response
+              .status,
+            200,
+          );
+          await command(moderator, {
+            type: "report.review",
+            reportId: report,
+            outcome: "dismiss",
+            note: "Snapshot review does not unlock private history.",
+          });
+          await command(alice, {
+            type: "squad.transfer",
+            squadId: squad,
+            userId: bob.uid,
+          });
+          await denied(
+            command(bob, { type: "squad.message.delete", messageId: old }),
+          );
+          await command(bob, { type: "squad.leave", squadId: squad });
+          assert.equal(
+            (await db.doc(`squads/${squad}`).get()).get("ownerId"),
+            alice.uid,
+          );
+          assert.equal(
+            (await readDocument(bob, `squadMessages/${message}`)).response
+              .status,
+            403,
+          );
+          const deleteRequest = remember("moderationAudit", nextId());
+          await command(
+            bob,
+            { type: "squad.message.delete", messageId: own },
+            deleteRequest,
+          );
+          assert.equal(
+            (await db.doc(`squadMessages/${own}`).get()).exists,
+            false,
+          );
+          await command(alice, { type: "squad.leave", squadId: squad });
+          assert.equal(
+            (await db.doc(`squads/${squad}`).get()).get("archived"),
+            true,
+          );
+          assert.deepEqual(
+            (await db.doc(`squads/${squad}`).get()).get("memberIds"),
+            [],
+          );
+        },
+      );
+
+      await t.test(
         "blocking revokes profile grants, both follow edges, and messages in both directions",
         async () => {
+          const pendingSquad = remember(
+            "squads",
+            (
+              await command(alice, {
+                type: "squad.create",
+                name: "Pending block cleanup",
+                inviteeIds: [bob.uid],
+              })
+            ).id,
+          );
+          const pendingInvite = remember(
+            "squadInvites",
+            squadInviteId(pendingSquad, bob.uid),
+          );
           await command(alice, { type: "profile.block", userId: bob.uid });
+          assert.equal(
+            (await db.doc(`squadInvites/${pendingInvite}`).get()).get("status"),
+            "revoked",
+          );
+          assert.deepEqual(
+            (await db.doc(`squads/${pendingSquad}`).get()).get(
+              "pendingInviteeIds",
+            ),
+            [],
+          );
           assert.equal(
             (await readDocument(alice, `profiles/${bob.uid}`)).response.status,
             403,
