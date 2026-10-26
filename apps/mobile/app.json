@@ -2,14 +2,14 @@
   "expo": {
     "name": "TheLoop",
     "slug": "theloop-community",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "scheme": "theloop",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#101010",
     "ios": {
-      "buildNumber": "3",
+      "buildNumber": "4",
       "supportsTablet": true,
       "bundleIdentifier": "co.theloop.community",
       "infoPlist": {
@@ -19,7 +19,7 @@
       }
     },
     "android": {
-      "versionCode": 3,
+      "versionCode": 4,
       "package": "co.theloop.community",
       "adaptiveIcon": {
         "backgroundColor": "#171717",
@@ -40,7 +40,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Choose an image to share with your people.",
+          "photosPermission": "Choose a photo to share in TheLoop.",
           "cameraPermission": false,
           "microphonePermission": false
         }
