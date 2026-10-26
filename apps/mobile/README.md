@@ -13,6 +13,10 @@ pnpm mobile
 
 Use an installed SDK 58 development build for reliable device testing. Expo's [SDK 58 Go installation page](https://expo.dev/go?platform=android&sdkVersion=58&device=true) links to the Android store release. Your Expo Go installation must support SDK 58; use an internal preview APK if it does not. The phone and development computer must be on the same network when using Metro. If LAN discovery is blocked, start `pnpm --filter @theloop/mobile start --tunnel`. A tunnel requires Expo's tunnel dependency and an internet connection.
 
+The app opens in dark mode. The sun/moon control in the main header and every screen switches between dark and light, including sign-in and onboarding; **You → Privacy & notifications** also has an appearance control. This explicit choice is saved on the device independently of Firebase or account data. Forms and app status bars follow the choice; image viewing deliberately keeps a dark canvas, and external system dialogs may follow device settings.
+
+A first-visit quick tour makes **Group chats** explicit and offers **Open group chats** immediately. Skip saves your place without repeated prompts. Reopen **Your quick tour** under **You** to resume; completion is versioned and stored locally. Shared incoming links and initial account onboarding take priority over the tour. Transitions respect reduced motion.
+
 The app starts in **SAMPLE LOOP** mode when no Firebase API key is configured. All people, messages, reputation and events are fictional. Actions persist in AsyncStorage on the device. Reset sample data under **You** to start over. This lets the native interactions be tested immediately without creating accounts or touching production data.
 
 Firebase and native auth persistence initialize only when live configuration is present. The module-stable `loadAuthPersistence` factory keeps sample startup independent of the Firebase runtime; the installed app still uses AsyncStorage auth persistence for live accounts.
@@ -25,7 +29,7 @@ For local Firebase emulator testing, set `EXPO_PUBLIC_EMULATOR_HOST` to your com
 
 ## Build an installable preview
 
-If Metro file watching times out on Windows, run `pnpm --filter @theloop/mobile start:stable` from the repository root. This optional preview mode uses two workers and disables file watching through Expo's CI mode. Restart it after source changes. It uses port 8097 and Expo Go; enter `exp://YOUR_COMPUTER_LAN_IP:8097` on your phone. The normal `pnpm mobile` command retains hot reload. Preview metadata is version **0.2.0**, Android version code **2**, and iOS build number **2**.
+If Metro file watching times out on Windows, run `pnpm --filter @theloop/mobile start:stable` from the repository root. This optional preview mode uses two workers and disables file watching through Expo's CI mode. Restart it after source changes. It uses port 8097 and Expo Go; enter `exp://YOUR_COMPUTER_LAN_IP:8097` on your phone. The normal `pnpm mobile` command retains hot reload. Preview metadata is version **0.3.0**, Android version code **3**, and iOS build number **3**.
 
 ```sh
 cd apps/mobile

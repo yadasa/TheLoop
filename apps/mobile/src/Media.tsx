@@ -411,14 +411,16 @@ function PrivateImage({
         onRequestClose={() => setExpanded(false)}
         presentationStyle="fullScreen"
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: color.ink }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: color.viewer }}>
           <StatusBar style="light" />
           <Touch
             label="Close image"
             onPress={() => setExpanded(false)}
             style={{ padding: 22, alignSelf: "flex-end" }}
           >
-            <Text style={{ color: "#fff", fontSize: 17 }}>Close ×</Text>
+            <Text style={{ color: color.viewerText, fontSize: 17 }}>
+              Close ×
+            </Text>
           </Touch>
           {uri && (
             <Image
@@ -430,7 +432,7 @@ function PrivateImage({
             />
           )}
           <Text
-            style={{ color: "#fff", padding: 22, lineHeight: 22 }}
+            style={{ color: color.viewerText, padding: 22, lineHeight: 22 }}
             numberOfLines={4}
           >
             {caption}

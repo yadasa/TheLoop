@@ -88,7 +88,7 @@ export function Events({ nav }: { nav: Nav }) {
             justifyContent: "center",
           }}
         >
-          <Text style={{ fontSize: 25, color: "#fff" }}>＋</Text>
+          <Text style={{ fontSize: 25, color: color.onInk }}>＋</Text>
         </Touch>
       </View>
       <Text style={s.body}>
@@ -188,7 +188,7 @@ export function Events({ nav }: { nav: Nav }) {
               }}
               style={{ padding: 8 }}
             >
-              <Text>←</Text>
+              <Text style={{ color: color.ink }}>←</Text>
             </Touch>
             <Text style={s.h3}>
               {month.toLocaleDateString(undefined, {
@@ -206,7 +206,7 @@ export function Events({ nav }: { nav: Nav }) {
               }}
               style={{ padding: 8 }}
             >
-              <Text>→</Text>
+              <Text style={{ color: color.ink }}>→</Text>
             </Touch>
           </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
@@ -255,7 +255,7 @@ export function Events({ nav }: { nav: Nav }) {
                     <Text
                       style={{
                         fontSize: 13,
-                        color: selected === key ? "#fff" : color.ink,
+                        color: selected === key ? color.onInk : color.ink,
                       }}
                     >
                       {i + 1}
@@ -267,7 +267,7 @@ export function Events({ nav }: { nav: Nav }) {
                           height: 3,
                           borderRadius: 2,
                           backgroundColor:
-                            selected === key ? "#fff" : color.ink,
+                            selected === key ? color.onInk : color.ink,
                         }}
                       />
                     )}
@@ -475,7 +475,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
       <View
         style={{
           height: 130,
-          backgroundColor: color.ink,
+          backgroundColor: color.hero,
           borderRadius: 23,
           alignItems: "center",
           justifyContent: "center",
@@ -489,7 +489,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
             height: 200,
             borderRadius: 100,
             borderWidth: 1,
-            borderColor: "#4A4B43",
+            borderColor: color.heroLine,
             transform: [{ scaleX: 0.6 }, { rotate: "40deg" }],
           }}
         />
@@ -501,11 +501,13 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
             height: 200,
             borderRadius: 100,
             borderWidth: 1,
-            borderColor: "#4A4B43",
+            borderColor: color.heroLine,
             transform: [{ scaleX: 0.6 }, { rotate: "40deg" }],
           }}
         />
-        <Text style={{ fontSize: 12, letterSpacing: 5, color: "#DADDD1" }}>
+        <Text
+          style={{ fontSize: 12, letterSpacing: 5, color: color.heroMuted }}
+        >
           {event.kind.toUpperCase()} / THELOOP
         </Text>
       </View>

@@ -6,7 +6,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  StatusBar as NativeStatusBar,
   Text,
   View,
 } from "react-native";
@@ -45,6 +44,7 @@ import { Spaces } from "./src/Spaces";
 import { ImportEvents } from "./src/ImportEvents";
 import { Squads, CreateSquad, SquadDetail, SquadMembers } from "./src/Squads";
 import { PublicGuide } from "./src/Guide";
+import { Tutorial, shouldShowTutorial } from "./src/Tutorial";
 import { NativePushBridge } from "./src/devicePush";
 import {
   Auth,
@@ -64,6 +64,9 @@ import {
   s,
   Touch,
   useReducedMotion,
+  ThemeProvider,
+  ThemeSwitcher,
+  useTheme,
 } from "./src/ui";
 import type { Nav, Route, Tab } from "./src/navigation";
 
@@ -103,23 +106,31 @@ const emulators = process.env.EXPO_PUBLIC_EMULATOR_HOST
 export default function App() {
   return (
     <SafeAreaProvider>
-      <LoopProvider
-        storage={storage}
-        firebaseConfig={firebaseConfig}
-        authPersistenceFactory={loadAuthPersistence}
-        useEmulators={!!emulators}
-        emulators={emulators}
-      >
-        <StatusBar style="dark" />
-        <MotionProvider>
-          <LoopApp />
-        </MotionProvider>
-      </LoopProvider>
+      <ThemeProvider>
+        <LoopProvider
+          storage={storage}
+          firebaseConfig={firebaseConfig}
+          authPersistenceFactory={loadAuthPersistence}
+          useEmulators={!!emulators}
+          emulators={emulators}
+        >
+          <ThemeStatusBar />
+          <MotionProvider>
+            <LoopApp />
+          </MotionProvider>
+        </LoopProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
 
+function ThemeStatusBar() {
+  const { theme } = useTheme();
+  return <StatusBar style={theme === "dark" ? "light" : "dark"} />;
+}
+
 function LoopApp() {
+  const { theme } = useTheme();
   const { state, dispatch, mode, ready, error, clearError, pending } =
     useLoop();
   const insets = useSafeAreaInsets();
@@ -132,6 +143,7 @@ function LoopApp() {
   const transition = useRef(0);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onboarded = useRef(false);
+  const tutorialChecked = useRef<string | null>(null);
   const showToast = useCallback((text: string) => {
     setToast(text);
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -160,14 +172,14 @@ function LoopApp() {
       Animated.timing(fade, {
         toValue: 0,
         duration: 80,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }).start(({ finished }) => {
         if (!finished || token !== transition.current) return;
         setTab(target);
         Animated.timing(fade, {
           toValue: 1,
           duration: 150,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }).start();
       });
     },
@@ -279,6 +291,37 @@ function LoopApp() {
     });
     return () => listener.remove();
   }, [stack.length, tab, close, navigate]);
+  useEffect(() => {
+    const userId = state.currentUserId;
+    if (
+      !ready ||
+      !userId ||
+      !state.preferences.onboardingComplete ||
+      pendingLink ||
+      stack.length ||
+      tutorialChecked.current === userId
+    )
+      return;
+    tutorialChecked.current = userId;
+    let active = true;
+    void shouldShowTutorial()
+      .then((show) => {
+        if (active && show)
+          setStack((routes) =>
+            routes.length ? routes : [{ kind: "tutorial" }],
+          );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [
+    ready,
+    state.currentUserId,
+    state.preferences.onboardingComplete,
+    pendingLink,
+    stack.length,
+  ]);
   useEffect(
     () => () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -317,6 +360,7 @@ function LoopApp() {
       squad: "A room for your people",
       "squad-members": "Your circle",
       guide: "Explore AfroTech.guide",
+      tutorial: "Find your way around",
     })[route.kind];
   const renderRoute = (route: Route) => {
     const scope = state.currentUserId || "signed-out";
@@ -414,6 +458,8 @@ function LoopApp() {
         );
       case "guide":
         return <PublicGuide nav={nav} />;
+      case "tutorial":
+        return <Tutorial key={scope} nav={nav} />;
     }
   };
   const requestedRoute = stack[stack.length - 1];
@@ -459,6 +505,7 @@ function LoopApp() {
           </Text>
         </View>
         <View style={s.row}>
+          <ThemeSwitcher />
           {mode === "demo" ? (
             <View
               style={{
@@ -503,7 +550,7 @@ function LoopApp() {
           style={{
             paddingHorizontal: 22,
             paddingVertical: 12,
-            backgroundColor: "#E3E0D9",
+            backgroundColor: color.soft,
           }}
         >
           <Text style={{ fontSize: 12, color: color.ink, lineHeight: 18 }}>
@@ -562,7 +609,7 @@ function LoopApp() {
         {tabs.map((t) => (
           <View key={t.name} style={{ flex: 1 }}>
             <Touch
-              label={`${t.name} tab${tab === t.name ? ", selected" : ""}`}
+              label={`${t.name === "Chat" ? "Group chats" : t.name} tab${tab === t.name ? ", selected" : ""}`}
               onPress={() => navigate(t.name)}
               style={{ alignItems: "center", paddingVertical: 7, gap: 4 }}
             >
@@ -580,7 +627,7 @@ function LoopApp() {
                   style={{
                     fontSize: 21,
                     lineHeight: 25,
-                    color: tab === t.name ? "#fff" : color.muted,
+                    color: tab === t.name ? color.onInk : color.muted,
                   }}
                 >
                   {t.symbol}
@@ -593,7 +640,7 @@ function LoopApp() {
                   color: tab === t.name ? color.ink : color.muted,
                 }}
               >
-                {t.name}
+                {t.name === "Chat" ? "Group chats" : t.name}
               </Text>
             </Touch>
           </View>
@@ -606,7 +653,7 @@ function LoopApp() {
         onRequestClose={close}
       >
         <SafeAreaView style={s.page} edges={["top", "left", "right", "bottom"]}>
-          <StatusBar style="dark" />
+          <StatusBar style={theme === "dark" ? "light" : "dark"} />
           {active && (
             <>
               <View
@@ -635,6 +682,7 @@ function LoopApp() {
                     {active.kind === "guide" ? "PUBLIC" : "SAMPLE"}
                   </Text>
                 )}
+                <ThemeSwitcher />
               </View>
               <KeyboardAvoidingView
                 style={{ flex: 1 }}
@@ -677,7 +725,7 @@ function Toast({ text, dismiss }: { text: string; dismiss: () => void }) {
         elevation: 5,
       }}
     >
-      <Text style={{ fontSize: 13, lineHeight: 20, color: "#fff" }}>
+      <Text style={{ fontSize: 13, lineHeight: 20, color: color.onInk }}>
         {text}
       </Text>
     </Pressable>

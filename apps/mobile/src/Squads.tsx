@@ -573,7 +573,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
         }}
       >
         <View style={{ alignItems: "center", gap: 7, padding: 16 }}>
-          <Text style={{ fontSize: 35 }}>◎</Text>
+          <Text style={{ fontSize: 35, color: color.ink }}>◎</Text>
           <Text style={s.h3}>A little room for your people.</Text>
           <Text style={[s.small, { textAlign: "center" }]}>
             {squad.description || "Make yourself at home. Keep it thoughtful."}

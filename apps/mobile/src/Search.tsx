@@ -4,6 +4,7 @@ import { useLoop } from "@theloop/client";
 import { subscriptionFor } from "@theloop/core";
 import {
   Avatar,
+  color,
   displayIdentity,
   Chip,
   Empty,
@@ -179,7 +180,7 @@ export function Search({ nav }: { nav: Nav }) {
                 <Text style={s.h3}>{p.name}</Text>
                 <Text style={s.small}>{p.headline}</Text>
               </View>
-              <Text>↗</Text>
+              <Text style={{ color: color.ink }}>↗</Text>
             </Touch>
           ))}
         </>

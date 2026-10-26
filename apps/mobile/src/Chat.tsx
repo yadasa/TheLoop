@@ -62,8 +62,8 @@ export function Chats({ nav }: { nav: Nav }) {
   return (
     <ScrollView contentContainerStyle={s.content}>
       <View>
-        <Text style={s.overline}>CONVERSATIONS WITH CONTEXT</Text>
-        <Text style={[s.title, { marginTop: 5 }]}>Your rooms.</Text>
+        <Text style={s.overline}>GROUP CHATS WITH CONTEXT</Text>
+        <Text style={[s.title, { marginTop: 5 }]}>Your group chats.</Text>
         <Text style={[s.body, { marginTop: 8, color: color.muted }]}>
           Big conference energy. Only the conversations you want.
         </Text>
@@ -77,7 +77,7 @@ export function Chats({ nav }: { nav: Nav }) {
       <Field
         value={search}
         onChangeText={setSearch}
-        placeholder="Search rooms or topics…"
+        placeholder="Search group chats or topics…"
       />
       <Horizontal>
         <Chip
@@ -201,7 +201,7 @@ export function Chats({ nav }: { nav: Nav }) {
             </Text>
             <View style={s.between}>
               <Text style={s.overline}>{c.topics.length} TOPICS</Text>
-              <Text style={s.small}>Enter the room ↗</Text>
+              <Text style={s.small}>Open group chat ↗</Text>
             </View>
           </Touch>
         );
@@ -508,7 +508,7 @@ export function ChannelDetail({
         }}
       >
         <View style={{ alignItems: "center", paddingVertical: 14, gap: 7 }}>
-          <Text style={{ fontSize: 33 }}>◎</Text>
+          <Text style={{ fontSize: 33, color: color.ink }}>◎</Text>
           <Text style={s.h3}>You're in the right room.</Text>
           <Text style={[s.small, { textAlign: "center" }]}>
             {channel.description}
@@ -725,7 +725,7 @@ export function ChannelDetail({
                           backgroundColor: color.soft,
                         }}
                       >
-                        <Text style={{ fontSize: 12 }}>
+                        <Text style={{ fontSize: 12, color: color.ink }}>
                           {emoji} {ids.length}
                         </Text>
                       </Touch>
@@ -762,7 +762,9 @@ export function ChannelDetail({
                           justifyContent: "center",
                         }}
                       >
-                        <Text style={{ fontSize: 19 }}>{emoji}</Text>
+                        <Text style={{ fontSize: 19, color: color.ink }}>
+                          {emoji}
+                        </Text>
                       </Touch>
                     ))}
                   </View>
@@ -819,7 +821,7 @@ export function ChannelDetail({
               }}
               style={{ padding: 8 }}
             >
-              <Text>×</Text>
+              <Text style={{ color: color.ink }}>×</Text>
             </Touch>
           </View>
         )}

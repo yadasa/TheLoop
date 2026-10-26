@@ -1,5 +1,6 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -7,6 +8,8 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Image,
+  Appearance,
   ActionSheetIOS,
   AccessibilityInfo,
   Alert,
@@ -24,13 +27,14 @@ import {
   type ViewStyle,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Profile, Subscription } from "@theloop/core";
 import { safeURL } from "@theloop/core";
 
 const MotionContext = createContext(false);
 export const useReducedMotion = () => useContext(MotionContext);
 export function MotionProvider({ children }: { children: React.ReactNode }) {
-  const [reduced, setReduced] = useState(false);
+  const [reduced, setReduced] = useState(true);
   useEffect(() => {
     void AccessibilityInfo.isReduceMotionEnabled()
       .then(setReduced)
@@ -46,106 +50,252 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export const color = {
-  ink: "#171816",
-  paper: "#F5F4F0",
+const lightPalette = {
+  ink: "#171717",
+  paper: "#F5F5F5",
   card: "#FFFFFF",
-  muted: "#75766F",
-  line: "#DEDED7",
-  soft: "#EAEAE4",
-  tint: "#D8DACF",
+  muted: "#666666",
+  line: "#DEDEDE",
+  soft: "#EAEAEA",
+  tint: "#D8D8D8",
+  onInk: "#FFFFFF",
+  hero: "#171717",
+  onHero: "#F8F8F8",
+  heroMuted: "#C8C8C8",
+  heroLine: "#454545",
+  viewer: "#090909",
+  viewerText: "#FFFFFF",
+  avatar1: "#DADADA",
+  avatar2: "#E4E4E4",
+  avatar3: "#D3D3D3",
+  avatar4: "#E0E0E0",
 };
-export const s = StyleSheet.create({
-  page: { flex: 1, backgroundColor: color.paper },
-  content: {
-    padding: 22,
-    paddingBottom: 100,
-    gap: 22,
-    width: "100%",
-    maxWidth: 760,
-    alignSelf: "center",
-  },
-  row: { flexDirection: "row", alignItems: "center", gap: 10 },
-  between: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  title: {
-    fontSize: 35,
-    lineHeight: 40,
-    fontWeight: "700",
-    letterSpacing: -1.6,
-    color: color.ink,
-  },
-  h2: {
-    fontSize: 22,
-    lineHeight: 27,
-    fontWeight: "600",
-    letterSpacing: -0.6,
-    color: color.ink,
-  },
-  h3: {
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: "600",
-    letterSpacing: -0.3,
-    color: color.ink,
-  },
-  body: { fontSize: 15, lineHeight: 23, color: color.ink },
-  small: { fontSize: 12, lineHeight: 18, color: color.muted },
-  overline: {
-    fontSize: 10,
-    lineHeight: 16,
-    letterSpacing: 1.8,
-    fontWeight: "700",
-    color: color.muted,
-  },
-  card: {
-    backgroundColor: color.card,
-    borderRadius: 22,
-    padding: 19,
-    borderWidth: 1,
-    borderColor: color.line,
-    gap: 13,
-  },
-  divider: { height: 1, backgroundColor: color.line },
-  grow: { flex: 1 },
-  wrap: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  field: {
-    color: color.ink,
-    backgroundColor: color.card,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: 14,
-    paddingHorizontal: 15,
-    paddingVertical: 14,
-    fontSize: 15,
-    minHeight: 50,
-  },
-  label: { fontSize: 12, fontWeight: "600", color: color.ink, marginBottom: 7 },
-  button: {
-    minHeight: 45,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 100,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 7,
-  },
-  buttonText: { fontSize: 13, fontWeight: "600", letterSpacing: 0.1 },
-  chip: {
-    borderRadius: 100,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    minHeight: 39,
-  },
-  empty: { alignItems: "center", padding: 32, gap: 12 },
-  emptySymbol: { fontSize: 38, color: color.muted },
-});
+const darkPalette: typeof lightPalette = {
+  ...lightPalette,
+  ink: "#F2F2F2",
+  paper: "#101010",
+  card: "#1C1C1C",
+  muted: "#ADADAD",
+  line: "#3D3D3D",
+  soft: "#292929",
+  tint: "#454545",
+  onInk: "#101010",
+  avatar1: "#343434",
+  avatar2: "#3D3D3D",
+  avatar3: "#393939",
+  avatar4: "#303030",
+};
+export type ThemeMode = "dark" | "light";
+const themeKey = "theloop.appearance.v1";
+let currentTheme: ThemeMode = "dark";
+// The native app has one appearance. Live bindings refresh every screen together
+// when LoopApp consumes ThemeContext; no route keys or drafts are reset.
+export const color = { ...darkPalette };
+function buildStyles() {
+  return StyleSheet.create({
+    page: { flex: 1, backgroundColor: color.paper },
+    content: {
+      padding: 22,
+      paddingBottom: 100,
+      gap: 22,
+      width: "100%",
+      maxWidth: 760,
+      alignSelf: "center",
+    },
+    row: { flexDirection: "row", alignItems: "center", gap: 10 },
+    between: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+    },
+    title: {
+      fontSize: 35,
+      lineHeight: 40,
+      fontWeight: "700",
+      letterSpacing: -1.6,
+      color: color.ink,
+    },
+    h2: {
+      fontSize: 22,
+      lineHeight: 27,
+      fontWeight: "600",
+      letterSpacing: -0.6,
+      color: color.ink,
+    },
+    h3: {
+      fontSize: 17,
+      lineHeight: 23,
+      fontWeight: "600",
+      letterSpacing: -0.3,
+      color: color.ink,
+    },
+    body: { fontSize: 15, lineHeight: 23, color: color.ink },
+    small: { fontSize: 12, lineHeight: 18, color: color.muted },
+    overline: {
+      fontSize: 10,
+      lineHeight: 16,
+      letterSpacing: 1.8,
+      fontWeight: "700",
+      color: color.muted,
+    },
+    card: {
+      backgroundColor: color.card,
+      borderRadius: 22,
+      padding: 19,
+      borderWidth: 1,
+      borderColor: color.line,
+      gap: 13,
+    },
+    divider: { height: 1, backgroundColor: color.line },
+    grow: { flex: 1 },
+    wrap: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+    field: {
+      color: color.ink,
+      backgroundColor: color.card,
+      borderWidth: 1,
+      borderColor: color.line,
+      borderRadius: 14,
+      paddingHorizontal: 15,
+      paddingVertical: 14,
+      fontSize: 15,
+      minHeight: 50,
+    },
+    label: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: color.ink,
+      marginBottom: 7,
+    },
+    button: {
+      minHeight: 45,
+      paddingHorizontal: 18,
+      paddingVertical: 12,
+      borderRadius: 100,
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row",
+      gap: 7,
+    },
+    buttonText: { fontSize: 13, fontWeight: "600", letterSpacing: 0.1 },
+    chip: {
+      borderRadius: 100,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderWidth: 1,
+      minHeight: 39,
+    },
+    empty: { alignItems: "center", padding: 32, gap: 12 },
+    emptySymbol: { fontSize: 38, color: color.muted },
+  });
+}
+export let s = buildStyles();
+const ThemeContext = createContext<{
+  theme: ThemeMode;
+  setTheme: (mode: ThemeMode) => Promise<void>;
+} | null>(null);
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (!context) throw new Error("Appearance requires ThemeProvider.");
+  return context;
+}
+function applyTheme(theme: ThemeMode) {
+  currentTheme = theme;
+  Object.assign(color, theme === "dark" ? darkPalette : lightPalette);
+  s = buildStyles();
+  if (Platform.OS !== "web") {
+    try {
+      Appearance.setColorScheme(theme);
+    } catch {
+      /* The JS palette still works if a host cannot override native appearance. */
+    }
+    void import("expo-system-ui")
+      .then((system) => {
+        if (currentTheme === theme)
+          return system.setBackgroundColorAsync(color.paper);
+      })
+      .catch(() => {});
+  } else if (typeof document !== "undefined") {
+    document.documentElement.style.colorScheme = theme;
+    document.body.style.backgroundColor = color.paper;
+  }
+}
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setCurrentTheme] = useState<ThemeMode>("dark");
+  const [ready, setReady] = useState(false);
+  const writes = useRef(Promise.resolve());
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(themeKey)
+      .catch(() => null)
+      .then((saved) => {
+        if (!active) return;
+        const next = saved === "light" ? "light" : "dark";
+        applyTheme(next);
+        setCurrentTheme(next);
+        setReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const setTheme = useCallback((next: ThemeMode) => {
+    applyTheme(next);
+    setCurrentTheme(next);
+    const save = writes.current
+      .catch(() => {})
+      .then(() => AsyncStorage.setItem(themeKey, next));
+    writes.current = save;
+    return save;
+  }, []);
+  return (
+    <ThemeContext.Provider value={{ theme, setTheme }}>
+      {ready ? (
+        children
+      ) : (
+        <View
+          style={[s.page, { justifyContent: "center", alignItems: "center" }]}
+        >
+          <ActivityIndicator color={color.ink} />
+        </View>
+      )}
+    </ThemeContext.Provider>
+  );
+}
+export function ThemeSwitcher({ compact = true }: { compact?: boolean }) {
+  const { theme, setTheme } = useTheme();
+  const next = theme === "dark" ? "light" : "dark";
+  return (
+    <Touch
+      label={`Switch to ${next} mode`}
+      onPress={() =>
+        void setTheme(next).catch(() =>
+          Alert.alert(
+            "Appearance changed",
+            "This choice could not be saved on this device. You can try again.",
+          ),
+        )
+      }
+      style={{
+        minWidth: 44,
+        minHeight: 44,
+        paddingHorizontal: 9,
+        justifyContent: "center",
+        alignItems: "center",
+        borderRadius: 21,
+        backgroundColor: color.soft,
+      }}
+    >
+      <Text style={{ color: color.ink, fontSize: compact ? 18 : 13 }}>
+        {compact
+          ? theme === "dark"
+            ? "☼"
+            : "☾"
+          : `Appearance: ${theme} · Switch to ${next}`}
+      </Text>
+    </Touch>
+  );
+}
 
 export function Touch({
   children,
@@ -176,7 +326,7 @@ export function Touch({
           if (!reduced)
             Animated.spring(scale, {
               toValue: 0.975,
-              useNativeDriver: true,
+              useNativeDriver: Platform.OS !== "web",
               speed: 30,
             }).start();
           if (Platform.OS !== "web")
@@ -186,7 +336,7 @@ export function Touch({
           !reduced &&
           Animated.spring(scale, {
             toValue: 1,
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== "web",
             speed: 25,
           }).start()
         }
@@ -221,7 +371,9 @@ export function Button({
         small && { minHeight: 36, paddingVertical: 8, paddingHorizontal: 14 },
       ]}
     >
-      <Text style={[s.buttonText, { color: secondary ? color.ink : "#fff" }]}>
+      <Text
+        style={[s.buttonText, { color: secondary ? color.ink : color.onInk }]}
+      >
         {title}
       </Text>
     </Touch>
@@ -253,7 +405,7 @@ export function Chip({
     >
       <Text
         style={{
-          color: selected ? "#fff" : color.muted,
+          color: selected ? color.onInk : color.muted,
           fontSize: 12,
           fontWeight: selected ? "600" : "400",
         }}
@@ -301,7 +453,7 @@ export function Avatar({
   size?: number;
   inverse?: boolean;
 }) {
-  const shades = ["#DADBD4", "#E7E4DC", "#D3D5D1", "#E2E2DF"];
+  const shades = [color.avatar1, color.avatar2, color.avatar3, color.avatar4];
   const shade = shades[(profile?.name.charCodeAt(0) || 0) % shades.length];
   return (
     <View
@@ -310,16 +462,16 @@ export function Avatar({
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: inverse ? "#33352F" : shade,
+        backgroundColor: inverse ? color.heroLine : shade,
         alignItems: "center",
         justifyContent: "center",
         borderWidth: 1,
-        borderColor: inverse ? "#505149" : "#ffffff",
+        borderColor: inverse ? color.heroLine : color.card,
       }}
     >
       <Text
         style={{
-          color: inverse ? "#fff" : color.ink,
+          color: inverse ? color.onHero : color.ink,
           fontWeight: "600",
           fontSize: size * 0.3,
           letterSpacing: -1,
@@ -338,35 +490,16 @@ export function Logo({
   size?: number;
 }) {
   return (
-    <View
+    <Image
+      source={require("../assets/loop-mark.png")}
       accessibilityLabel="TheLoop"
-      style={{ width: size * 1.5, height: size + 3 }}
-    >
-      <View
-        style={{
-          position: "absolute",
-          width: size,
-          height: size,
-          borderWidth: size * 0.12,
-          borderColor: light ? "#fff" : color.ink,
-          borderRadius: size / 2,
-          transform: [{ rotate: "-28deg" }, { scaleX: 0.72 }],
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          left: size * 0.45,
-          top: 2,
-          width: size,
-          height: size,
-          borderWidth: size * 0.12,
-          borderColor: light ? "#fff" : color.ink,
-          borderRadius: size / 2,
-          transform: [{ rotate: "-28deg" }, { scaleX: 0.72 }],
-        }}
-      />
-    </View>
+      resizeMode="contain"
+      style={{
+        width: size * 1.35,
+        height: size * 1.35,
+        tintColor: light ? color.onHero : color.ink,
+      }}
+    />
   );
 }
 export function Field({
@@ -396,6 +529,7 @@ export function Field({
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   disabled?: boolean;
 }) {
+  const { theme } = useTheme();
   return (
     <View>
       {label && <Text style={s.label}>{label}</Text>}
@@ -418,6 +552,8 @@ export function Field({
             : "sentences")
         }
         keyboardType={keyboardType}
+        keyboardAppearance={theme}
+        selectionColor={color.ink}
         autoCorrect={
           autoCorrect ??
           (!secureTextEntry &&
@@ -531,7 +667,7 @@ export function Label({
         style={{
           fontSize: 10,
           fontWeight: "600",
-          color: dark ? "#fff" : color.muted,
+          color: dark ? color.onInk : color.muted,
         }}
       >
         {children}
@@ -617,7 +753,13 @@ export function pickSubscription(
     "Follow what matters. Mute the rest. Hidden spaces leave your view until you discover them again.";
   if (Platform.OS === "ios") {
     ActionSheetIOS.showActionSheetWithOptions(
-      { title, message, options: [...labels, "Cancel"], cancelButtonIndex: 3 },
+      {
+        title,
+        message,
+        options: [...labels, "Cancel"],
+        cancelButtonIndex: 3,
+        userInterfaceStyle: currentTheme,
+      },
       (index) => {
         if (index >= 0 && index < 3) onPick(values[index]);
       },

@@ -15,6 +15,7 @@ import {
   s,
   Section,
   Touch,
+  ThemeSwitcher,
 } from "./ui";
 import type { Nav } from "./navigation";
 import {
@@ -128,6 +129,11 @@ export function You({ nav }: { nav: Nav }) {
       </View>
       <View style={s.card}>
         {[
+          {
+            title: "Your quick tour",
+            subtitle: "Group chats, topics, plans, and your boundaries",
+            route: "tutorial",
+          },
           {
             title: "Your professional profile",
             subtitle: "Your story, skills, and open doors",
@@ -453,8 +459,9 @@ function Toggle({
         accessibilityLabel={title}
         value={value}
         onValueChange={onChange}
-        trackColor={{ false: "#C7CAC0", true: color.ink }}
-        thumbColor="#fff"
+        trackColor={{ false: color.line, true: color.ink }}
+        thumbColor={value ? color.onInk : color.ink}
+        ios_backgroundColor={color.line}
       />
     </View>
   );
@@ -523,6 +530,13 @@ export function Settings({ nav }: { nav: Nav }) {
       <Text style={s.body}>
         Your boundaries make this a better place to be.
       </Text>
+      <View style={s.card}>
+        <Section
+          title="Your atmosphere"
+          subtitle="Dark by default. Your choice stays on this device."
+        />
+        <ThemeSwitcher compact={false} />
+      </View>
       <Section title="Your attention" />
       <DevicePushSettings nav={nav} />
       <View style={s.card}>
@@ -796,7 +810,9 @@ export function Onboarding({ nav }: { nav: Nav }) {
               <Text style={s.h3}>
                 {c.icon} {c.name}
               </Text>
-              <Text>{channels.includes(c.id) ? "●" : "○"}</Text>
+              <Text style={{ color: color.ink }}>
+                {channels.includes(c.id) ? "●" : "○"}
+              </Text>
             </View>
             <Text style={s.small}>{c.description}</Text>
           </Touch>
@@ -941,20 +957,23 @@ export function Trust({ nav }: { nav: Nav }) {
     <ScrollView contentContainerStyle={s.content}>
       <Text style={s.title}>Trust is earned.{`\n`}And explained.</Text>
       <View
-        style={[s.card, { backgroundColor: color.ink, borderColor: color.ink }]}
+        style={[
+          s.card,
+          { backgroundColor: color.hero, borderColor: color.heroLine },
+        ]}
       >
         <Text
           style={{
             fontSize: 70,
             fontWeight: "500",
             letterSpacing: -3,
-            color: "#fff",
+            color: color.onHero,
           }}
         >
           {trust?.score || 0}
-          <Text style={{ fontSize: 18, color: "#B4B8AB" }}>/100</Text>
+          <Text style={{ fontSize: 18, color: color.heroMuted }}>/100</Text>
         </Text>
-        <Text style={[s.small, { color: "#C5C9BC" }]}>
+        <Text style={[s.small, { color: color.heroMuted }]}>
           {mode === "demo"
             ? "Illustrative sample reputation. Live scores use verified activity."
             : "Your score is calculated by the server from verified community activity."}
@@ -963,7 +982,7 @@ export function Trust({ nav }: { nav: Nav }) {
       <Section title="What goes into it" />
       {trust?.reasons.map((r) => (
         <View key={r} style={[s.row, { alignItems: "flex-start" }]}>
-          <Text>✓</Text>
+          <Text style={{ color: color.ink }}>✓</Text>
           <Text style={[s.body, { flex: 1 }]}>{r}</Text>
         </View>
       ))}

@@ -155,16 +155,16 @@ export function People({ nav }: { nav: Nav }) {
         <View
           style={[
             s.card,
-            { backgroundColor: color.ink, borderColor: color.ink },
+            { backgroundColor: color.hero, borderColor: color.heroLine },
           ]}
         >
-          <Text style={[s.overline, { color: "#A5A99C" }]}>
+          <Text style={[s.overline, { color: color.heroMuted }]}>
             A LITTLE SERENDIPITY
           </Text>
-          <Text style={[s.h2, { color: "#fff" }]}>
+          <Text style={[s.h2, { color: color.onHero }]}>
             One good introduction{`\n`}can change everything.
           </Text>
-          <Text style={[s.small, { color: "#B9BDB0" }]}>
+          <Text style={[s.small, { color: color.heroMuted }]}>
             Find someone outside your usual circle.
           </Text>
           <Button
@@ -346,7 +346,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
           padding: 25,
           paddingTop: 30,
           borderRadius: 25,
-          backgroundColor: color.ink,
+          backgroundColor: color.hero,
           gap: 17,
           overflow: "hidden",
         }}
@@ -360,24 +360,27 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
             height: 210,
             borderRadius: 110,
             borderWidth: 1,
-            borderColor: "#494C40",
+            borderColor: color.heroLine,
             transform: [{ scaleX: 0.7 }, { rotate: "-30deg" }],
           }}
         />
         <Avatar profile={p} size={77} inverse />
         <Text
-          style={[s.title, { color: "#fff", fontSize: 30, lineHeight: 36 }]}
+          style={[
+            s.title,
+            { color: color.onHero, fontSize: 30, lineHeight: 36 },
+          ]}
         >
           {p.name}
           {p.verified ? " ✓" : ""}
         </Text>
-        <Text style={{ fontSize: 15, lineHeight: 23, color: "#D1D4C9" }}>
+        <Text style={{ fontSize: 15, lineHeight: 23, color: color.heroMuted }}>
           {p.headline}
         </Text>
-        <Text style={[s.small, { color: "#999E8E" }]}>
+        <Text style={[s.small, { color: color.heroMuted }]}>
           {[p.location, `@${p.handle}`].filter(Boolean).join(" · ")}
         </Text>
-        <Text style={[s.small, { color: "#C5C9BC" }]}>
+        <Text style={[s.small, { color: color.heroMuted }]}>
           {p.followerCount || 0} followers · {p.followingCount || 0} following
         </Text>
         {p.foundingYear && <Label>FOUNDING CIRCLE · {p.foundingYear}</Label>}
@@ -485,7 +488,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
                   ]}
                 >
                   <Text style={s.h3}>{link.label}</Text>
-                  <Text>↗</Text>
+                  <Text style={{ color: color.ink }}>↗</Text>
                 </Touch>
               ))}
             </>
@@ -847,7 +850,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
               >
                 <LinkifiedText
                   text={m.body}
-                  style={{ color: mine ? "#fff" : color.ink }}
+                  style={{ color: mine ? color.onInk : color.ink }}
                 />
                 <MediaImage image={m.image} caption={m.body} nav={nav} />
               </View>

@@ -111,7 +111,7 @@ export function Feed({ nav }: { nav: Nav }) {
             justifyContent: "center",
           }}
         >
-          <Text style={{ fontSize: 23 }}>♧</Text>
+          <Text style={{ fontSize: 23, color: color.ink }}>♧</Text>
           {unread > 0 && (
             <View
               style={{
@@ -126,7 +126,7 @@ export function Feed({ nav }: { nav: Nav }) {
                 justifyContent: "center",
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 9 }}>{unread}</Text>
+              <Text style={{ color: color.onInk, fontSize: 9 }}>{unread}</Text>
             </View>
           )}
         </Touch>
@@ -144,15 +144,15 @@ export function Feed({ nav }: { nav: Nav }) {
           },
         ]}
       >
-        <Text style={{ fontSize: 21 }}>⌕</Text>
+        <Text style={{ fontSize: 21, color: color.ink }}>⌕</Text>
         <Text style={s.small}>People, conversations, your next plan…</Text>
       </Touch>
       <View
         style={[
           s.card,
           {
-            backgroundColor: color.ink,
-            borderColor: color.ink,
+            backgroundColor: color.hero,
+            borderColor: color.heroLine,
             minHeight: 178,
             overflow: "hidden",
             padding: 23,
@@ -168,7 +168,7 @@ export function Feed({ nav }: { nav: Nav }) {
             height: 155,
             borderRadius: 90,
             borderWidth: 1,
-            borderColor: "#45463F",
+            borderColor: color.heroLine,
             transform: [{ scaleX: 0.8 }, { rotate: "-30deg" }],
           }}
         />
@@ -181,11 +181,11 @@ export function Feed({ nav }: { nav: Nav }) {
             height: 155,
             borderRadius: 90,
             borderWidth: 1,
-            borderColor: "#5D5F55",
+            borderColor: color.heroLine,
             transform: [{ scaleX: 0.8 }, { rotate: "-30deg" }],
           }}
         />
-        <Text style={[s.overline, { color: "#ABAEA1" }]}>
+        <Text style={[s.overline, { color: color.heroMuted }]}>
           BUILT ON REAL CONNECTION
         </Text>
         <Text
@@ -194,21 +194,34 @@ export function Feed({ nav }: { nav: Nav }) {
             lineHeight: 32,
             fontWeight: "500",
             letterSpacing: -0.8,
-            color: "#fff",
+            color: color.onHero,
             maxWidth: 235,
           }}
         >
           Less noise.{`\n`}More of your people.
         </Text>
-        <Touch
-          label="Find your communities"
-          onPress={() => nav.open({ kind: "communities" })}
-          style={{ paddingVertical: 7, alignSelf: "flex-start" }}
-        >
-          <Text style={{ color: "#D7D9CC", fontSize: 12 }}>
-            Find your corner ↗
-          </Text>
-        </Touch>
+        <View style={[s.row, { flexWrap: "wrap", gap: 18 }]}>
+          <Touch
+            label="Open group chats"
+            onPress={() => nav.navigate("Chat")}
+            style={{ minHeight: 44, justifyContent: "center" }}
+          >
+            <Text
+              style={{ color: color.onHero, fontSize: 13, fontWeight: "600" }}
+            >
+              Open group chats ↗
+            </Text>
+          </Touch>
+          <Touch
+            label="Find your communities"
+            onPress={() => nav.open({ kind: "communities" })}
+            style={{ minHeight: 44, justifyContent: "center" }}
+          >
+            <Text style={{ color: color.heroMuted, fontSize: 12 }}>
+              Find your corner ↗
+            </Text>
+          </Touch>
+        </View>
       </View>
       <Horizontal>
         <Chip
@@ -267,7 +280,7 @@ export function Feed({ nav }: { nav: Nav }) {
           {
             padding: 14,
             borderRadius: 18,
-            backgroundColor: "#E9EAE3",
+            backgroundColor: color.soft,
             gap: 12,
           },
         ]}
@@ -434,7 +447,9 @@ export function PostCard({
             <Text
               style={{
                 color:
-                  post.votes[state.currentUserId] === 1 ? "#fff" : color.ink,
+                  post.votes[state.currentUserId] === 1
+                    ? color.onInk
+                    : color.ink,
               }}
             >
               ↑ {votes}
@@ -1196,7 +1211,9 @@ export function Communities({ nav }: { nav: Nav }) {
         .map((c) => (
           <View key={c.id} style={s.card}>
             <View style={s.between}>
-              <Text style={{ fontSize: 30 }}>{c.icon || "◎"}</Text>
+              <Text style={{ fontSize: 30, color: color.ink }}>
+                {c.icon || "◎"}
+              </Text>
               <Label>{c.members.toLocaleString()} MEMBERS</Label>
             </View>
             <Text style={s.h2}>l/{c.slug}</Text>
@@ -1272,7 +1289,9 @@ export function CommunityDetail({ id, nav }: { id: string; nav: Nav }) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
     <ScrollView contentContainerStyle={s.content}>
-      <Text style={{ fontSize: 38 }}>{community.icon || "◎"}</Text>
+      <Text style={{ fontSize: 38, color: color.ink }}>
+        {community.icon || "◎"}
+      </Text>
       <Text style={s.title}>l/{community.slug}</Text>
       <Label>{community.members.toLocaleString()} MEMBERS</Label>
       <Text style={s.body}>{community.description}</Text>
