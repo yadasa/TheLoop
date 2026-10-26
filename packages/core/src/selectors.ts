@@ -80,7 +80,7 @@ const stamp = (v: string) =>
     .toISOString()
     .replace(/[-:]/g, "")
     .replace(/\.\d{3}/, "");
-export function eventICS(e: LoopEvent): string {
+export function eventICS(e: Pick<LoopEvent, "id" | "title" | "description" | "startAt" | "endAt" | "location">): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -103,7 +103,8 @@ export function eventICS(e: LoopEvent): string {
         let out = "";
         let width = 0;
         for (const ch of line) {
-          const bytes = new TextEncoder().encode(ch).length;
+          const point = ch.codePointAt(0)!;
+          const bytes = point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4;
           if (width + bytes > 73) {
             out += "\r\n ";
             width = 1;

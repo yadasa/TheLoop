@@ -61,6 +61,7 @@ import {
 import { documentIdBatches, matchesDirectory, mergeMessages, mergeSquadInvites, normalizeDirectoryQuery, previewChannelIds, revokePrivateProfiles, visibleSquadMessages } from "./data";
 import { directoryPageQuery, messagePageQuery, squadMessagePageQuery, squadMembershipQuery, squadParticipantInvitesQuery, squadIncomingInvitesQuery, squadOwnerInvitesQuery } from "./queries";
 import { MessagePages } from "./messagePages";
+export { useGuideEvents, type GuideEventsState } from "./guide";
 export type StorageDriver = {
   load(): Promise<LoopState | null>;
   save(state: LoopState): Promise<void>;
