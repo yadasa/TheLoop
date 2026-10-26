@@ -67,11 +67,14 @@ import { MessagePages } from "./messagePages";
 import { directConversationId, isDirectConversation, mergeDirectMessages, type DirectSnapshot } from "./directData";
 import { directMessagePageQuery } from "./directQueries";
 import { drainDirectRead } from "./directRead";
+import { DocumentWatch, type DocumentStatus } from "./documentWatch";
+import { DocumentCache, updateEventBuckets, type DocumentRead } from "./documentCache";
 import { encodeImageBase64, imageMetadata, imageUploadBytes, ImageMemoryCache, MediaScopeChanged, mediaAuthority, mediaScope, previewImageData, safeMediaId, type ImageUploadInput, type ImageDataResult } from "./media";
 export { useGuideEvents, type GuideEventsState } from "./guide";
 export type { ImageUploadInput, ImageDataResult } from "./media";
 export { stripWebPMetadata } from "./media";
 export { directParticipantSnapshot, type DirectSnapshot } from "./directData";
+export type { DocumentStatus } from "./documentWatch";
 export type StorageDriver = {
   load(): Promise<LoopState | null>;
   save(state: LoopState): Promise<void>;
@@ -129,6 +132,10 @@ type LoopContextValue = {
   watchDirectConversation(userId: string | null): void;
   loadOlderDirectMessages(): Promise<void>;
   directHistory: { loading: boolean; hasMore: boolean };
+  watchPost(id: string | null): void;
+  watchEvent(id: string | null): void;
+  postStatus: DocumentStatus;
+  eventStatus: DocumentStatus;
 };
 const Context = createContext<LoopContextValue | null>(null);
 let cloud: { auth: Auth; db: Firestore; functions: Functions } | undefined;
@@ -245,6 +252,7 @@ export function LoopProvider({
   const [ready, setReady] = useState(false),
     [error, setError] = useState<string | null>(null),
     [pending, setPending] = useState(0);
+  const readyRef = useRef(ready); readyRef.current = ready;
   const storageRef = useRef(storage);
   storageRef.current = storage;
   const previewReady = useRef(false);
@@ -252,12 +260,15 @@ export function LoopProvider({
   const [history, setHistory] = useState({ loading: false, hasMore: false });
   const [squadHistory, setSquadHistory] = useState({ loading: false, hasMore: false });
   const [directHistory, setDirectHistory] = useState({ loading: false, hasMore: false });
+  const [postStatus, setPostStatus] = useState<DocumentStatus>({ id: null, loading: false, notFound: false, error: null });
+  const [eventStatus, setEventStatus] = useState<DocumentStatus>({ id: null, loading: false, notFound: false, error: null });
   const [directory, setDirectory] = useState<{ results: Profile[]; loading: boolean; hasMore: boolean }>({ results: [], loading: false, hasMore: false });
   const [directoryQuery, updateDirectoryQuery] = useState("");
   const directoryQueryRef = useRef("");
   const conversationRef = useRef<{ channelId: string | null; topic?: string }>({ channelId: null });
   const squadRef = useRef<string | null>(null);
   const directRef = useRef<string | null>(null);
+  const postRef = useRef<string | null>(null), eventRef = useRef<string | null>(null);
   const liveActions = useRef<Partial<{
     watchConversation(channelId: string | null, topic?: string): void;
     loadOlderMessages(): Promise<void>;
@@ -271,6 +282,8 @@ export function LoopProvider({
     getImage(mediaId: string, reportId?: string): Promise<unknown>;
     watchDirectConversation(userId: string | null): void;
     loadOlderDirectMessages(): Promise<void>;
+    watchPost(id: string | null): void;
+    watchEvent(id: string | null): void;
   }>>({});
   const watchConversation = useCallback((channelId: string | null, topic?: string) => {
     const previous = conversationRef.current;
@@ -297,6 +310,21 @@ export function LoopProvider({
     else setDirectHistory({ loading: false, hasMore: false });
   }, []);
   const loadOlderDirectMessages = useCallback(async () => { await liveActions.current.loadOlderDirectMessages?.(); }, []);
+  const localDocumentStatus = (id: string | null, kind: "post" | "event"): DocumentStatus => {
+    if (!id) return { id: null, loading: false, notFound: false, error: null };
+    if (modeRef.current === "demo") return { id, loading: !previewReady.current, notFound: previewReady.current && !stateRef.current[kind === "post" ? "posts" : "events"].some(record => record.id === id), error: null };
+    return { id, loading: !readyRef.current, notFound: false, error: readyRef.current ? `Sign in or reconnect to open this ${kind}.` : null };
+  };
+  const watchPost = useCallback((id: string | null) => {
+    postRef.current = id;
+    if (liveActions.current.watchPost) liveActions.current.watchPost(id);
+    else setPostStatus(localDocumentStatus(id, "post"));
+  }, []);
+  const watchEvent = useCallback((id: string | null) => {
+    eventRef.current = id;
+    if (liveActions.current.watchEvent) liveActions.current.watchEvent(id);
+    else setEventStatus(localDocumentStatus(id, "event"));
+  }, []);
   const setDirectoryQuery = useCallback((value: string) => {
     const normalized = normalizeDirectoryQuery(value);
     if (directoryQueryRef.current === normalized) return;
@@ -400,6 +428,9 @@ export function LoopProvider({
   );
   useEffect(() => { synchronizeMedia(); }, [state, role, mode, synchronizeMedia]);
   useEffect(() => {
+    if (mode === "demo") { setPostStatus(localDocumentStatus(postRef.current, "post")); setEventStatus(localDocumentStatus(eventRef.current, "event")); }
+  }, [mode, ready, state.posts, state.events]);
+  useEffect(() => {
     if (mode === "demo") setDirectory({ results: state.profiles.filter(profile => matchesDirectory(profile, directoryQuery)), loading: false, hasMore: false });
   }, [mode, state.profiles, directoryQuery]);
   useEffect(() => {
@@ -411,6 +442,8 @@ export function LoopProvider({
     setHistory({ loading: false, hasMore: false });
     setSquadHistory({ loading: false, hasMore: false });
     setDirectHistory({ loading: false, hasMore: false });
+    setPostStatus({ id: postRef.current, loading: Boolean(postRef.current), notFound: false, error: null });
+    setEventStatus({ id: eventRef.current, loading: Boolean(eventRef.current), notFound: false, error: null });
     if (mode === "demo") {
       setState(initialState());
       storageRef.current
@@ -456,6 +489,8 @@ export function LoopProvider({
       setHistory({ loading: false, hasMore: false });
       setSquadHistory({ loading: false, hasMore: false });
       setDirectHistory({ loading: false, hasMore: false });
+      setPostStatus({ id: postRef.current, loading: Boolean(user && postRef.current), notFound: false, error: !user && postRef.current ? "Sign in to open this post." : null });
+      setEventStatus({ id: eventRef.current, loading: Boolean(user && eventRef.current), notFound: false, error: !user && eventRef.current ? "Sign in to open this event." : null });
       setDirectory({ results: [], loading: false, hasMore: false });
       setRole("member");
       setEmailVerified(user?.emailVerified ?? false);
@@ -1137,28 +1172,65 @@ export function LoopProvider({
           offPosts: (() => void) | undefined;
         let feedPosts: LoopState["posts"] = [];
         const savedPosts = new Map<string, LoopState["posts"][number]>();
+        const postCache = new DocumentCache<LoopState["posts"][number]>();
+        let savedReads: DocumentRead[] = [], postSubscriptionGeneration = 0;
         const publishPosts = () => {
           if (!current()) return;
-          const posts = new Map([...savedPosts.values(), ...feedPosts].map(post => [post.id, post]));
-          setState(s => ({ ...s, posts: [...posts.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)) }));
+          const posts = postCache.merge([[...savedPosts.values()], feedPosts]);
+          setState(s => ({ ...s, posts: posts.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)) }));
         };
+        const forgetPost = (id: string) => { savedPosts.delete(id); feedPosts = feedPosts.filter(post => post.id !== id); };
+        const postWatch = new DocumentWatch<LoopState["posts"][number]>({
+          current,
+          subscribe: (id, success, error) => {
+            if (!safeMediaId(id)) throw new Error("This shared post link is not valid.");
+            return onSnapshot(doc(c.db, "posts", id), { includeMetadataChanges: true }, snap => success(snap.exists() ? { ...snap.data(), id: snap.id } as LoopState["posts"][number] : undefined, snap.metadata.fromCache), error);
+          },
+          describeError: readableError,
+          publish: update => {
+            if (!current()) return;
+            const next = postCache.apply(update);
+            setPostStatus(next.status);
+            if (next.status.id && next.status.notFound && !next.fromCache) {
+              forgetPost(next.status.id);
+              imageCache.current.clear(); setMediaRevision(value => value + 1);
+            } else if (next.record && !next.fromCache) {
+              const record = next.record;
+              if (savedPostIds.includes(record.id)) savedPosts.set(record.id, record);
+              feedPosts = feedPosts.map(post => post.id === record.id ? record : post);
+            }
+            publishPosts();
+          },
+        });
+        liveActions.current.watchPost = id => { if (current()) { postCache.select(id); postWatch.watch(id); } };
+        liveActions.current.watchPost(postRef.current);
         let savedLoadGeneration = 0;
         liveActions.current.loadSavedPosts = async () => {
           const requestGeneration = ++savedLoadGeneration;
           const wanted = [...savedPostIds];
+          savedReads.forEach(read => postCache.endRead(read));
+          const batches = documentIdBatches(wanted), reads = batches.map(ids => postCache.beginRead(ids));
+          savedReads = reads;
           try {
-            const snapshots = await Promise.all(documentIdBatches(wanted).map(ids => getDocs(query(collection(c.db, "posts"), where(documentId(), "in", ids)))));
+            const snapshots = await Promise.all(batches.map(ids => getDocs(query(collection(c.db, "posts"), where(documentId(), "in", ids)))));
             if (!current() || requestGeneration !== savedLoadGeneration) return;
-            savedPosts.clear();
-            for (const snap of snapshots) for (const record of snap.docs) if (savedPostIds.includes(record.id)) savedPosts.set(record.id, { ...record.data(), id: record.id } as LoopState["posts"][number]);
+            snapshots.forEach((snap, index) => {
+              const records = snap.docs.map(record => ({ ...record.data(), id: record.id }) as LoopState["posts"][number]);
+              postCache.mergeRead(savedPosts, reads[index], records, !snap.metadata.fromCache).forEach(forgetPost);
+            });
+            savedPosts.forEach((_, id) => { if (!savedPostIds.includes(id)) savedPosts.delete(id); });
             publishPosts();
           } catch (error) {
             if (current() && requestGeneration === savedLoadGeneration) failure(error);
             throw error;
+          } finally {
+            reads.forEach(read => postCache.endRead(read));
+            if (savedReads === reads) savedReads = [];
           }
         };
         const subscribePosts = () => {
           offPosts?.();
+          const requestGeneration = ++postSubscriptionGeneration;
           offPosts = onSnapshot(
             query(
               collection(c.db, "posts"),
@@ -1166,7 +1238,7 @@ export function LoopProvider({
               limit(postLimit),
             ),
             (snap) => {
-              if (current()) {
+              if (current() && requestGeneration === postSubscriptionGeneration) {
                 feedPosts = snap.docs.map(
                     (d) =>
                       ({ ...d.data(), id: d.id }) as LoopState["posts"][number],
@@ -1179,11 +1251,11 @@ export function LoopProvider({
               }
               loaded("posts");
             },
-            (e) => failure(e, "posts"),
+            (e) => { if (requestGeneration === postSubscriptionGeneration) failure(e, "posts"); },
           );
         };
         subscribePosts();
-        dispose.push(() => offPosts?.());
+        dispose.push(() => { postSubscriptionGeneration++; savedLoadGeneration++; offPosts?.(); postWatch.stop(); savedReads.forEach(read => postCache.endRead(read)); savedReads = []; postCache.clear(); savedPosts.clear(); feedPosts = []; });
         catalogLoaders.current.posts = () => {
           if (current() && postLimit < 1000) {
             postLimit = Math.min(1000, postLimit + 100);
@@ -1196,22 +1268,19 @@ export function LoopProvider({
           offUpcoming: (() => void) | undefined,
           offPast: (() => void) | undefined;
         const eventBoundary = new Date().toISOString();
+        const eventCache = new DocumentCache<LoopState["events"][number]>();
+        let eventSubscriptionGeneration = 0;
         let futureEvents: LoopState["events"] = [],
           pastEvents: LoopState["events"] = [],
           futureMore = false,
           pastMore = false;
         const publishEvents = () => {
           if (current()) {
-            const events = new Map(
-              [...pastEvents, ...futureEvents].map((event) => [
-                event.id,
-                event,
-              ]),
-            );
+            const events = eventCache.merge([pastEvents, futureEvents]);
             setState((s) => ({
               ...s,
-              events: [...events.values()].sort((a, b) =>
-                a.startAt.localeCompare(b.startAt),
+              events: events.sort((a, b) =>
+                a.startAt.localeCompare(b.startAt) || a.id.localeCompare(b.id),
               ),
             }));
             setHasMore((value) => ({
@@ -1220,9 +1289,33 @@ export function LoopProvider({
             }));
           }
         };
+        const eventWatch = new DocumentWatch<LoopState["events"][number]>({
+          current,
+          subscribe: (id, success, error) => {
+            if (!safeMediaId(id)) throw new Error("This shared event link is not valid.");
+            return onSnapshot(doc(c.db, "events", id), { includeMetadataChanges: true }, snap => success(snap.exists() ? { ...snap.data(), id: snap.id } as LoopState["events"][number] : undefined, snap.metadata.fromCache), error);
+          },
+          describeError: readableError,
+          publish: update => {
+            if (!current()) return;
+            const next = eventCache.apply(update); setEventStatus(next.status);
+            if (next.status.id && next.status.notFound && !next.fromCache) {
+              futureEvents = futureEvents.filter(event => event.id !== next.status.id);
+              pastEvents = pastEvents.filter(event => event.id !== next.status.id);
+            } else if (next.record && !next.fromCache) {
+              const record = next.record;
+              const buckets = updateEventBuckets(futureEvents, pastEvents, record, eventBoundary);
+              futureEvents = buckets.future; pastEvents = buckets.past;
+            }
+            publishEvents();
+          },
+        });
+        liveActions.current.watchEvent = id => { if (current()) { eventCache.select(id); eventWatch.watch(id); } };
+        liveActions.current.watchEvent(eventRef.current);
         const subscribeEvents = () => {
           offUpcoming?.();
           offPast?.();
+          const requestGeneration = ++eventSubscriptionGeneration;
           offUpcoming = onSnapshot(
             query(
               collection(c.db, "events"),
@@ -1231,6 +1324,7 @@ export function LoopProvider({
               limit(eventLimit),
             ),
             (snap) => {
+              if (!current() || requestGeneration !== eventSubscriptionGeneration) return;
               futureEvents = snap.docs.map(
                 (d) =>
                   ({ ...d.data(), id: d.id }) as LoopState["events"][number],
@@ -1239,7 +1333,7 @@ export function LoopProvider({
               publishEvents();
               loaded("eventsUpcoming");
             },
-            (e) => failure(e, "eventsUpcoming"),
+            (e) => { if (requestGeneration === eventSubscriptionGeneration) failure(e, "eventsUpcoming"); },
           );
           offPast = onSnapshot(
             query(
@@ -1249,6 +1343,7 @@ export function LoopProvider({
               limit(eventLimit),
             ),
             (snap) => {
+              if (!current() || requestGeneration !== eventSubscriptionGeneration) return;
               pastEvents = snap.docs.map(
                 (d) =>
                   ({ ...d.data(), id: d.id }) as LoopState["events"][number],
@@ -1257,13 +1352,15 @@ export function LoopProvider({
               publishEvents();
               loaded("eventsPast");
             },
-            (e) => failure(e, "eventsPast"),
+            (e) => { if (requestGeneration === eventSubscriptionGeneration) failure(e, "eventsPast"); },
           );
         };
         subscribeEvents();
         dispose.push(() => {
+          eventSubscriptionGeneration++;
           offUpcoming?.();
           offPast?.();
+          eventWatch.stop(); eventCache.clear(); futureEvents = []; pastEvents = [];
         });
         catalogLoaders.current.events = () => {
           if (current() && eventLimit < 1000) {
@@ -1462,6 +1559,9 @@ export function LoopProvider({
       } catch (e) {
         if (active && turn === generation) {
           failureOutside(e);
+          const message = readableError(e);
+          setPostStatus({ id: postRef.current, loading: false, notFound: false, error: postRef.current ? message : null });
+          setEventStatus({ id: eventRef.current, loading: false, notFound: false, error: eventRef.current ? message : null });
           setReady(true);
         }
       }
@@ -1667,6 +1767,10 @@ export function LoopProvider({
         watchDirectConversation,
         loadOlderDirectMessages,
         directHistory,
+        watchPost,
+        watchEvent,
+        postStatus,
+        eventStatus,
         clearError: () => setError(null),
         resetDemo: () => {
           setState(initialState());
