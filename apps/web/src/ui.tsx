@@ -5,8 +5,11 @@ let openModals = 0,
   originalOverflow = "";
 export const Logo = ({ small = false }: { small?: boolean }) => (
   <span className={`logo ${small ? "small" : ""}`} aria-hidden="true">
-    <i />
-    <i />
+    <svg viewBox="0 0 48 48" fill="none">
+      <path d="M31 7.4A17 17 0 1 0 37.4 35L43 38l-2.3-9.2" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M18 16v15h12" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="37" cy="12" r="4" fill="currentColor" />
+    </svg>
   </span>
 );
 export function Avatar({

@@ -1,0 +1,495 @@
+/* Appearance palette; brand covers and photographs retain their own colors. */
+:root{--page:#141414;--ink:#f1f1f1;--secondary:#c4c4c4;--muted:#ababab;--black:#f1f1f1;--surface:#1e1e1e;--cream:#282828;--raised:#363636;--line:#3a3a3a;--line-strong:#707070;--accent:#e8e8e8;--on-accent:#1b1b1b;--focus:#dedede;--danger:#f4b1a6;--danger-bg:#382724;color-scheme:dark}
+:root[data-theme="light"]{--page:#f7f7f5;--ink:#242424;--secondary:#595d53;--muted:#6b7064;--black:#141414;--surface:#fff;--cream:#f5f5f1;--raised:#e8e8df;--line:#e2e3dc;--line-strong:#969b8c;--accent:#141414;--on-accent:#fff;--focus:#535d40;--danger:#8a332c;--danger-bg:#f6e9e5;color-scheme:light}
+body{background:var(--page);color:var(--ink)}
+::selection{background:var(--accent);color:var(--on-accent)}
+input,textarea,select{color-scheme:inherit}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--focus);outline-offset:4px}
+.theme-switcher{flex-shrink:0;gap:8px;min-width:40px;min-height:40px}
+.theme-switcher svg{pointer-events:none}
+:where(:root:not([data-theme="light"])) button:focus-visible{outline:2px solid var(--focus)}
+:where(:root:not([data-theme="light"])) a:focus-visible{outline:2px solid var(--focus)}
+:where(:root:not([data-theme="light"])) input:focus-visible{outline:2px solid var(--focus)}
+:where(:root:not([data-theme="light"])) textarea:focus-visible{outline:2px solid var(--focus)}
+:where(:root:not([data-theme="light"])) select:focus-visible{outline:2px solid var(--focus)}
+:where(:root:not([data-theme="light"])) input{border:1px solid var(--line);background:var(--surface)}
+:where(:root:not([data-theme="light"])) textarea{border:1px solid var(--line);background:var(--surface)}
+:where(:root:not([data-theme="light"])) select{border:1px solid var(--line);background:var(--surface)}
+:where(:root:not([data-theme="light"])) input:focus{border-color:var(--line-strong)}
+:where(:root:not([data-theme="light"])) textarea:focus{border-color:var(--line-strong)}
+:where(:root:not([data-theme="light"])) select:focus{border-color:var(--line-strong)}
+:where(:root:not([data-theme="light"])) .button.primary{color:var(--on-accent)}
+:where(:root:not([data-theme="light"])) .button.primary:hover{background:var(--accent)}
+:where(:root:not([data-theme="light"])) .button.subtle{background:var(--surface);border-color:var(--line)}
+:where(:root:not([data-theme="light"])) .button.subtle:hover{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .icon-button:hover{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .selected{color:var(--ink)}
+:where(:root:not([data-theme="light"])) .skip-link{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .sidebar{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .wordmark > span{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .sidebar-search{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .sidebar-search kbd{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .nav-list button{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .nav-list button.active{background:var(--cream);color:var(--ink)}
+:where(:root:not([data-theme="light"])) .nav-list button:hover{background:var(--cream);color:var(--ink)}
+:where(:root:not([data-theme="light"])) .nav-list b{background:var(--accent);color:var(--on-accent)}
+:where(:root:not([data-theme="light"])) .channel-nav b{background:var(--accent);color:var(--on-accent)}
+:where(:root:not([data-theme="light"])) .nav-dot{background:var(--accent)}
+:where(:root:not([data-theme="light"])) .section-label{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .section-label button{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .conference-symbol{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .conference-select small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .conference-select > svg{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .channel-nav > button{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .channel-nav button:hover{background:var(--cream);color:var(--ink)}
+:where(:root:not([data-theme="light"])) .channel-nav button.active{background:var(--cream);color:var(--ink)}
+:where(:root:not([data-theme="light"])) .channel-nav .browse-channels{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .saved-nav{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .members-note{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .members-note > span{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .members-note svg{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .my-profile small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .my-profile > svg{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .avatar{border:2px solid var(--line)}
+:where(:root:not([data-theme="light"])) .topbar{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .breadcrumb{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .breadcrumb span{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .breadcrumb strong{color:var(--ink)}
+:where(:root:not([data-theme="light"])) .preview-badge{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .preview-badge i{background:var(--raised)}
+:where(:root:not([data-theme="light"])) .notification-bell i{background:var(--accent);border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .page-heading .eyebrow{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .period{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .page-heading p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .live-dot{background:var(--raised)}
+:where(:root:not([data-theme="light"])) .feed-tabs > button{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .feed-tabs > button.active{color:var(--ink)}
+:where(:root:not([data-theme="light"])) .feed-tabs > button.active:after{background:var(--accent)}
+:where(:root:not([data-theme="light"])) .feed-tabs > button.feed-filter{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .composer-prompt{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .composer-prompt > span{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .composer-prompt > svg{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .composer-prompt:hover{border-color:var(--line)}
+:where(:root:not([data-theme="light"])) .post-card{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .name-button svg{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .post-author > div > span{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .post-author .more{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .post-kind{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .post-title:hover{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .post-body > p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .tags > span{border:1px solid var(--line);background:var(--surface);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .post-actions{border-top:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .post-actions > button{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .post-actions .selected{color:var(--ink)}
+:where(:root:not([data-theme="light"])) .post-actions .selected svg{fill:var(--muted)}
+:where(:root:not([data-theme="light"])) .vote{border:1px solid var(--line);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .poll > button{border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .poll > button.selected{border-color:var(--line-strong)}
+:where(:root:not([data-theme="light"])) .poll-bar{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .poll > small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .event-card{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .event-date{border:1px solid var(--line);background:var(--surface)}
+:where(:root:not([data-theme="light"])) .event-date > span{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .event-info > .eyebrow{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .event-info p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .event-attendees > span{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .rail-intro{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .person-mini p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .daily-prompt{background:var(--cream);border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .daily-prompt > .eyebrow{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .prompt-mark{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .daily-prompt > button{border-top:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .rail-footer{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .caught-up{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .workspace-footer{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .channel-heading-icon{border:1px solid var(--line);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .chat-heading p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .topic-tabs > button{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .topic-tabs > button.active{background:var(--cream);color:var(--ink)}
+:where(:root:not([data-theme="light"])) .chat-welcome p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .chat-welcome small{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .message time{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .topic-label{background:var(--cream);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .message p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .reactions button{border:1px solid var(--line);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .reactions button.selected{background:var(--cream);border-color:var(--line);color:var(--ink)}
+:where(:root:not([data-theme="light"])) .chat-composer{border:1px solid var(--line);background:var(--surface)}
+:where(:root:not([data-theme="light"])) .composer-topic{background:var(--cream);border-bottom:1px solid var(--line);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .composer-topic select{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .composer-topic span{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .chat-composer footer > span{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .send-button{background:var(--accent);color:var(--on-accent)}
+:where(:root:not([data-theme="light"])) .send-button:hover{background:var(--accent)}
+:where(:root:not([data-theme="light"])) .chat-details > .eyebrow{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .chat-details > p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .topic-setting select{border-color:var(--line)}
+:where(:root:not([data-theme="light"])) .reply-preview{border-left:2px solid var(--line-strong);color:var(--secondary);background:var(--cream)}
+:where(:root:not([data-theme="light"])) .community-tabs > button{color:var(--secondary);background:var(--surface)}
+:where(:root:not([data-theme="light"])) .community-tabs > button.active{border-color:var(--line-strong);background:var(--accent);color:var(--on-accent)}
+:where(:root:not([data-theme="light"])) .community-card{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .community-card .eyebrow{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .community-card p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .community-card footer > span{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .community-banner{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .community-banner p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .community-rule{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .community-rule b{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .calendar-box{border:1px solid var(--line);background:var(--surface)}
+:where(:root:not([data-theme="light"])) .weekday{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .calendar-day.outside{background:var(--surface);color:var(--muted)}
+:where(:root:not([data-theme="light"])) .calendar-day.today > span{background:var(--accent);color:var(--on-accent)}
+:where(:root:not([data-theme="light"])) .calendar-day > button{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .calendar-day > button i{background:var(--accent)}
+:where(:root:not([data-theme="light"])) .event-list-heading small{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .people-search{border:1px solid var(--line);background:var(--surface);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .count-pill{border:1px solid var(--line);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .person-card{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .trust-pill{border:1px solid var(--line);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .person-title svg{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .person-card > p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .person-location{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .match-note{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .person-card footer > .icon-button.selected svg{fill:var(--ink);color:var(--ink)}
+:where(:root:not([data-theme="light"])) .requests{background:var(--cream);border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .requests p span{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .profile-top{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .profile-top h1 svg{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .profile-top > p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .profile-top > span{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .profile-section > .eyebrow{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .profile-section > p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .open-to > span{border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .trust-card{border:1px solid var(--line);background:var(--cream)}
+:where(:root:not([data-theme="light"])) .trust-card > svg{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .trust-card > .eyebrow{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .trust-card > strong small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .trust-card > p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .trust-reason{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .trust-card > small{color:var(--secondary);border-top:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .dm-layout{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .dm-layout > aside > button.active{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .dm-layout > aside small{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .dm-layout header p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .dm-bubble{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .dm-bubble.mine{background:var(--accent);color:var(--on-accent)}
+:where(:root:not([data-theme="light"])) .empty{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .empty h3{color:var(--ink)}
+:where(:root:not([data-theme="light"])) .empty .logo{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .modal{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .modal > header p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .field > span{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .field input{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .field select{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .field textarea{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .modal-form > footer > span{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .callout{background:var(--cream);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .interest-chips > button{border:1px solid var(--line);background:var(--surface);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .interest-chips > button.selected{background:var(--accent);color:var(--on-accent);border-color:var(--line-strong)}
+:where(:root:not([data-theme="light"])) .subscription-legend > span{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .subscription-legend b{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .subscription-icon{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .subscription-row p{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .switch-row small{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .notification-item.unread{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .notification-symbol{border:1px solid var(--line);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .notification-item p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .notification-item small{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .notification-item > i{background:var(--accent)}
+:where(:root:not([data-theme="light"])) .search-results > button:hover{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .search-results small{color:var(--muted)}
+:where(:root:not([data-theme="light"])) .search-hint{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .comments > .eyebrow{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .comment p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .comment small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .import-preview p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .form-error{color:var(--danger);background:var(--cream)}
+:where(:root:not([data-theme="light"])) .toast{background:var(--accent);color:var(--on-accent)}
+:where(:root:not([data-theme="light"])) .loading{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .auth-page{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .auth-story > .eyebrow{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .auth-story em{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .auth-story p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .auth-card{background:var(--surface);border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .auth-card > p{color:var(--secondary)}
+@media (max-width: 760px){
+:where(:root:not([data-theme="light"])) .calendar-day.outside{color:var(--muted)}
+}
+:where(:root:not([data-theme="light"])) .profile-counts{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .profile-counts button{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .profile-counts button strong{color:var(--ink)}
+:where(:root:not([data-theme="light"])) .profile-counts span strong{color:var(--ink)}
+:where(:root:not([data-theme="light"])) .subscription-note{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .moderation-card{border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .moderation-card blockquote{color:var(--secondary);border-left:2px solid var(--line)}
+:where(:root:not([data-theme="light"])) .action-row:hover{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .action-row small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .comment-options{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .directory-status{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .squad-card:hover{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .squad-card.active{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .squad-symbol{border:1px solid var(--line);background:var(--cream);color:var(--ink)}
+:where(:root:not([data-theme="light"])) .squad-avatar{border:1px solid var(--line);background:var(--cream);color:var(--ink)}
+:where(:root:not([data-theme="light"])) .squad-card small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .squad-assurance{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .squad-note{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .squad-invitations article{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .squad-invitations p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .squad-invitations small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .squad-conversation{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .squad-chat-heading p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .squad-history-note{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .squad-composer{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .squad-composer textarea{background:var(--cream);border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .squad-composer > small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .squad-jump{background:var(--accent);color:var(--on-accent)}
+:where(:root:not([data-theme="light"])) .squad-member small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .squad-pending{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .squad-pending small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .guide-context p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .guide-event{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .guide-date{background:var(--cream);border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .guide-date > span{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .guide-date small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .guide-host{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .guide-event-meta{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .guide-description{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .guide-loading p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .guide-loading-ring{border:2px solid var(--line);border-top-color:var(--line-strong)}
+:where(:root:not([data-theme="light"])) .guide-footnote{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .image-add{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .image-add:hover{color:var(--ink)}
+:where(:root:not([data-theme="light"])) .image-draft{background:var(--cream);border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .image-draft > .icon-button{background:var(--surface)}
+:where(:root:not([data-theme="light"])) .image-draft > span{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .image-error{color:var(--danger)}
+:where(:root:not([data-theme="light"])) .protected-image{background:var(--cream)}
+:where(:root:not([data-theme="light"])) .image-loading{background:var(--cream);border:1px solid var(--line);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .image-unavailable{background:var(--cream);color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .photo-view{background:var(--cream)}
+:where(:root:not([data-theme="light"])) input::placeholder{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) textarea::placeholder{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .detail-connection{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .direct-unread{background:var(--accent);color:var(--on-accent)}
+:where(:root:not([data-theme="light"])) .event-detail-time small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .event-editor-fields .field > small{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .event-form-errors{background:var(--cream);border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .event-offsets{border:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .event-offsets p{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .direct-catalog-note{color:var(--secondary);border-top:1px solid var(--line)}
+:where(:root:not([data-theme="light"])) .event-status{border:1px solid var(--line);color:var(--ink)}
+:where(:root:not([data-theme="light"])) .event-cancellation-note{border-left:2px solid var(--line-strong);background:var(--cream);color:var(--ink)}
+:where(:root:not([data-theme="light"])) .event-cancel-explanation{color:var(--secondary)}
+:where(:root:not([data-theme="light"])) .event-management{border-top:1px solid var(--line)}
+:where(:root[data-theme="light"]) .sidebar-search{color:var(--muted)}
+:where(:root[data-theme="light"]) .conference-select small{color:var(--muted)}
+:where(:root[data-theme="light"]) .conference-select > svg{color:var(--muted)}
+:where(:root[data-theme="light"]) .channel-nav > button{color:var(--muted)}
+:where(:root[data-theme="light"]) .members-note > span{color:var(--muted)}
+:where(:root[data-theme="light"]) .my-profile small{color:var(--muted)}
+:where(:root[data-theme="light"]) .breadcrumb{color:var(--muted)}
+:where(:root[data-theme="light"]) .breadcrumb span{color:var(--muted)}
+:where(:root[data-theme="light"]) .preview-badge{color:var(--muted)}
+:where(:root[data-theme="light"]) .page-heading .eyebrow{color:var(--muted)}
+:where(:root[data-theme="light"]) .period{color:var(--muted)}
+:where(:root[data-theme="light"]) .page-heading p{color:var(--muted)}
+:where(:root[data-theme="light"]) .feed-tabs > button{color:var(--muted)}
+:where(:root[data-theme="light"]) .composer-prompt > span{color:var(--muted)}
+:where(:root[data-theme="light"]) .composer-prompt > svg{color:var(--muted)}
+:where(:root[data-theme="light"]) .name-button svg{color:var(--muted)}
+:where(:root[data-theme="light"]) .post-author > div > span{color:var(--muted)}
+:where(:root[data-theme="light"]) .post-author .more{color:var(--muted)}
+:where(:root[data-theme="light"]) .post-kind{color:var(--muted)}
+:where(:root[data-theme="light"]) .post-body > p{color:var(--muted)}
+:where(:root[data-theme="light"]) .tags > span{color:var(--muted)}
+:where(:root[data-theme="light"]) .post-actions > button{color:var(--muted)}
+:where(:root[data-theme="light"]) .vote{color:var(--muted)}
+:where(:root[data-theme="light"]) .poll > small{color:var(--muted)}
+:where(:root[data-theme="light"]) .event-date > span{color:var(--muted)}
+:where(:root[data-theme="light"]) .event-info > .eyebrow{color:var(--muted)}
+:where(:root[data-theme="light"]) .event-info p{color:var(--muted)}
+:where(:root[data-theme="light"]) .event-attendees > span{color:var(--muted)}
+:where(:root[data-theme="light"]) .rail-intro{color:var(--muted)}
+:where(:root[data-theme="light"]) .person-mini p{color:var(--muted)}
+:where(:root[data-theme="light"]) .daily-prompt > .eyebrow{color:var(--muted)}
+:where(:root[data-theme="light"]) .prompt-mark{color:var(--muted)}
+:where(:root[data-theme="light"]) .rail-footer{color:var(--muted)}
+:where(:root[data-theme="light"]) .caught-up{color:var(--muted)}
+:where(:root[data-theme="light"]) .workspace-footer{color:var(--muted)}
+:where(:root[data-theme="light"]) .chat-heading p{color:var(--muted)}
+:where(:root[data-theme="light"]) .topic-tabs > button{color:var(--muted)}
+:where(:root[data-theme="light"]) .chat-welcome p{color:var(--muted)}
+:where(:root[data-theme="light"]) .chat-welcome small{color:var(--muted)}
+:where(:root[data-theme="light"]) .message time{color:var(--muted)}
+:where(:root[data-theme="light"]) .reactions button{color:var(--muted)}
+:where(:root[data-theme="light"]) .composer-topic{color:var(--muted)}
+:where(:root[data-theme="light"]) .composer-topic span{color:var(--muted)}
+:where(:root[data-theme="light"]) .chat-composer footer > span{color:var(--muted)}
+:where(:root[data-theme="light"]) .chat-details > .eyebrow{color:var(--muted)}
+:where(:root[data-theme="light"]) .chat-details > p{color:var(--muted)}
+:where(:root[data-theme="light"]) .reply-preview{color:var(--muted)}
+:where(:root[data-theme="light"]) .community-tabs > button{color:var(--muted)}
+:where(:root[data-theme="light"]) .community-card .eyebrow{color:var(--muted)}
+:where(:root[data-theme="light"]) .community-card p{color:var(--muted)}
+:where(:root[data-theme="light"]) .community-card footer > span{color:var(--muted)}
+:where(:root[data-theme="light"]) .community-rule{color:var(--muted)}
+:where(:root[data-theme="light"]) .community-rule b{color:var(--muted)}
+:where(:root[data-theme="light"]) .weekday{color:var(--muted)}
+:where(:root[data-theme="light"]) .calendar-day.outside{color:var(--muted)}
+:where(:root[data-theme="light"]) .event-list-heading small{color:var(--muted)}
+:where(:root[data-theme="light"]) .people-search{color:var(--muted)}
+:where(:root[data-theme="light"]) .count-pill{color:var(--muted)}
+:where(:root[data-theme="light"]) .person-title svg{color:var(--muted)}
+:where(:root[data-theme="light"]) .person-card > p{color:var(--muted)}
+:where(:root[data-theme="light"]) .person-location{color:var(--muted)}
+:where(:root[data-theme="light"]) .match-note{color:var(--muted)}
+:where(:root[data-theme="light"]) .requests p span{color:var(--muted)}
+:where(:root[data-theme="light"]) .profile-top h1 svg{color:var(--muted)}
+:where(:root[data-theme="light"]) .profile-top > span{color:var(--muted)}
+:where(:root[data-theme="light"]) .profile-section > .eyebrow{color:var(--muted)}
+:where(:root[data-theme="light"]) .profile-section > p{color:var(--muted)}
+:where(:root[data-theme="light"]) .trust-card > .eyebrow{color:var(--muted)}
+:where(:root[data-theme="light"]) .trust-card > strong small{color:var(--muted)}
+:where(:root[data-theme="light"]) .trust-card > p{color:var(--muted)}
+:where(:root[data-theme="light"]) .trust-card > small{color:var(--muted)}
+:where(:root[data-theme="light"]) .dm-layout > aside small{color:var(--muted)}
+:where(:root[data-theme="light"]) .dm-layout header p{color:var(--muted)}
+:where(:root[data-theme="light"]) .empty{color:var(--muted)}
+:where(:root[data-theme="light"]) .empty .logo{color:var(--muted)}
+:where(:root[data-theme="light"]) .modal > header p{color:var(--muted)}
+:where(:root[data-theme="light"]) .modal-form > footer > span{color:var(--muted)}
+:where(:root[data-theme="light"]) .callout{color:var(--muted)}
+:where(:root[data-theme="light"]) .interest-chips > button{color:var(--muted)}
+:where(:root[data-theme="light"]) .subscription-legend > span{color:var(--muted)}
+:where(:root[data-theme="light"]) .subscription-icon{color:var(--muted)}
+:where(:root[data-theme="light"]) .subscription-row p{color:var(--muted)}
+:where(:root[data-theme="light"]) .switch-row small{color:var(--muted)}
+:where(:root[data-theme="light"]) .notification-symbol{color:var(--muted)}
+:where(:root[data-theme="light"]) .notification-item p{color:var(--muted)}
+:where(:root[data-theme="light"]) .notification-item small{color:var(--muted)}
+:where(:root[data-theme="light"]) .search-results small{color:var(--muted)}
+:where(:root[data-theme="light"]) .search-hint{color:var(--muted)}
+:where(:root[data-theme="light"]) .comments > .eyebrow{color:var(--muted)}
+:where(:root[data-theme="light"]) .comment p{color:var(--muted)}
+:where(:root[data-theme="light"]) .comment small{color:var(--muted)}
+:where(:root[data-theme="light"]) .import-preview p{color:var(--muted)}
+:where(:root[data-theme="light"]) .loading{color:var(--muted)}
+:where(:root[data-theme="light"]) .auth-story > .eyebrow{color:var(--muted)}
+:where(:root[data-theme="light"]) .auth-story em{color:var(--muted)}
+:where(:root[data-theme="light"]) .auth-story p{color:var(--muted)}
+:where(:root[data-theme="light"]) .auth-card > p{color:var(--muted)}
+@media (max-width: 760px){
+:where(:root[data-theme="light"]) .calendar-day.outside{color:var(--muted)}
+}
+:where(:root[data-theme="light"]) .profile-counts{color:var(--muted)}
+:where(:root[data-theme="light"]) .profile-counts button{color:var(--muted)}
+:where(:root[data-theme="light"]) .subscription-note{color:var(--muted)}
+:where(:root[data-theme="light"]) .moderation-card blockquote{color:var(--muted)}
+:where(:root[data-theme="light"]) .squad-assurance{color:var(--muted)}
+:where(:root[data-theme="light"]) .squad-invitations small{color:var(--muted)}
+:where(:root[data-theme="light"]) .squad-chat-heading p{color:var(--muted)}
+:where(:root[data-theme="light"]) .squad-history-note{color:var(--muted)}
+:where(:root[data-theme="light"]) .squad-composer > small{color:var(--muted)}
+:where(:root[data-theme="light"]) .squad-member small{color:var(--muted)}
+:where(:root[data-theme="light"]) .squad-pending small{color:var(--muted)}
+:where(:root[data-theme="light"]) .guide-context p{color:var(--muted)}
+:where(:root[data-theme="light"]) .guide-date small{color:var(--muted)}
+:where(:root[data-theme="light"]) .guide-loading p{color:var(--muted)}
+:where(:root[data-theme="light"]) .guide-footnote{color:var(--muted)}
+:where(:root[data-theme="light"]) .image-loading{color:var(--muted)}
+:root:not([data-theme="light"]) .button.primary{color:var(--on-accent)}
+:root:not([data-theme="light"]) .button.primary:hover{background:#d2d2d2}
+:root:not([data-theme="light"]) .modal-backdrop{background:#000a}
+:root:not([data-theme="light"]) .form-error{background:var(--danger-bg);color:var(--danger)}
+:root:not([data-theme="light"]) .avatar{border-color:var(--surface)}
+:root:not([data-theme="light"]) .hero-bottom .avatar{border-color:#1c1c1b}
+/* Shared interaction and layout rules remain the same in both appearances. */
+.mobile-primary-nav{display:none}
+.app-shell,.workspace,.main-content,.feed-column,.content-columns>*,.chat-panel,.dm-layout>section{min-width:0}
+.heading-actions{flex-wrap:wrap}
+.post-title,.event-title,.modal h2,.squad-chat-heading h2{overflow-wrap:anywhere}
+.theme-switcher{border:1px solid var(--line);border-radius:12px}
+.theme-switcher:hover{background:var(--cream)}
+.nav-list button.active{box-shadow:inset 3px 0 var(--accent)}
+.modal{isolation:isolate}
+input[type="checkbox"]{accent-color:var(--accent)}
+:root:not([data-theme="light"]) .send-button:hover{background:#d2d2d2}
+@media(hover:hover) and (pointer:fine){
+  .post-card,.event-card,.community-card,.person-card{transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+  .post-card:hover,.event-card:hover,.community-card:hover,.person-card:hover{border-color:var(--line-strong);box-shadow:0 10px 30px #0000000d;transform:translateY(-2px)}
+}
+@media(prefers-reduced-motion:no-preference){
+  body,.sidebar,.topbar,.modal,.post-card,.chat-composer,.squad-conversation{transition:background-color .18s ease,color .18s ease,border-color .18s ease}
+  .main-content{animation:loop-arrive .24s ease-out}
+  .modal{animation:loop-dialog .18s ease-out}
+}
+@keyframes loop-arrive{from{opacity:.6;transform:translateY(5px)}to{opacity:1;transform:none}}
+@keyframes loop-dialog{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+@media(max-width:760px){
+  .space-rail{display:none}
+  .sidebar{left:0;width:min(300px,88vw)}
+  .workspace{margin-left:0;width:100%;padding-bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+  .topbar{height:72px;padding:0 14px;gap:8px;position:sticky;top:0;z-index:25}
+  .top-actions{gap:4px;min-width:0}
+  .top-actions .preview-badge{display:none}
+  .top-actions .button{font-size:12px;padding:10px}
+  .top-actions .icon-button,.mobile-menu{min-width:44px;min-height:44px}
+  .top-actions .theme-switcher{border:0}
+  .main-content{padding:26px 16px 0}
+  .page-heading{gap:16px}
+  .page-heading h1{font-size:clamp(26px,7vw,34px);line-height:1.2}
+  .page-heading p{font-size:14px;line-height:1.65}
+  .page-heading>.button,.heading-actions .button{font-size:13px;min-height:44px;padding:11px 14px}
+  .heading-actions{gap:8px;justify-content:flex-start}
+  .button,.text-button{min-height:44px;font-size:13px}
+  .poll>button,.community-tabs>button,.feed-tabs>button,.topic-tabs>button,.interest-chips>button{min-height:44px;font-size:12px}
+  .poll>button{font-size:13px}
+  .icon-button{min-width:44px;min-height:44px}
+  .field>span,.modal>header p,.modal-form>footer>span{font-size:13px}
+  input,textarea,select{font-size:16px}
+  .field input,.field textarea,.field select{font-size:16px}
+  .modal-backdrop{padding:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+  .modal{max-width:calc(100vw - 24px);max-height:calc(100dvh - 32px - env(safe-area-inset-bottom,0px));padding:22px 20px}
+  .modal>header{gap:12px}
+  .modal>header h2{font-size:23px}
+  .form-row{flex-wrap:wrap;grid-template-columns:minmax(0,1fr)}
+  .form-row>.field{min-width:0;flex:1 1 180px}
+  .post-body>p,.message p,.dm-bubble p,.squad-message p,.event-description{font-size:14px;line-height:1.7}
+  .post-title{font-size:20px;line-height:1.45}
+  .post-kind,.post-author>div>span,.post-actions>button,.vote strong,.tags>span{font-size:12px}
+  .post-actions{gap:16px;flex-wrap:wrap}
+  .post-actions>button,.vote>button{min-height:44px;min-width:32px}
+  .name-button{font-size:13px;min-height:32px}
+  .avatar-stack{flex-shrink:0}
+  .avatar-stack .avatar{min-width:28px;min-height:28px;font-size:10px}
+  .calendar-box{overflow-x:auto;overscroll-behavior-x:contain}
+  .calendar-box>header{min-width:350px;padding:18px 14px;gap:12px}
+  .calendar-box>header h2{font-size:20px}
+  .calendar-grid{min-width:630px}
+  .weekday{font-size:12px;padding:12px 6px}
+  .calendar-day{min-height:110px;padding:10px 6px;font-size:13px}
+  .calendar-day>span{min-height:30px;min-width:30px;font-size:13px}
+  .calendar-day>button{font-size:12px;min-height:44px;padding:7px;line-height:1.4}
+  .event-info p,.event-attendees>span,.event-list-heading small{font-size:12px}
+  .event-actions{flex-wrap:wrap;gap:8px}
+  .chat-layout{height:calc(100dvh - 210px - env(safe-area-inset-bottom,0px));min-height:360px}
+  .squads-layout{height:calc(100dvh - 245px - env(safe-area-inset-bottom,0px))}
+  .workspace-footer{font-size:11px;line-height:1.6}
+  .mobile-primary-nav{position:fixed;inset:auto 0 0;z-index:45;display:flex;align-items:stretch;gap:4px;min-height:72px;padding:7px 8px calc(7px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -6px 28px #0000000b}
+  .mobile-primary-nav button,.mobile-primary-nav a{flex:1;min-width:0;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:7px 3px;border-radius:12px;font-size:12px;line-height:1.2;font-weight:550;color:var(--muted);text-align:center}
+  .mobile-primary-nav button.active,.mobile-primary-nav a.active,.mobile-primary-nav [aria-current="page"]{background:var(--cream);color:var(--ink);font-weight:700}
+  .mobile-primary-nav svg{width:20px;height:20px;flex-shrink:0}
+  .toast,.error-toast{bottom:calc(90px + env(safe-area-inset-bottom,0px));left:50%;font-size:13px}
+}
+@media(max-width:380px){
+  .topbar{padding:0 8px;gap:2px}
+  .top-actions{gap:1px}
+  .main-content{padding-right:12px;padding-left:12px}
+  .top-actions>.button{width:44px;min-width:44px;padding:0}
+  .top-actions>.button>span{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+  .post-actions{gap:10px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+  .post-card:hover,.event-card:hover,.community-card:hover,.person-card:hover{transform:none}
+}

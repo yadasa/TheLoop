@@ -47,6 +47,7 @@ import {
   CheckCheck,
   Copy,
   UsersRound,
+  CircleHelp,
 } from "lucide-react";
 import { useLoop } from "@theloop/client";
 import { Avatar, Empty, Field, Logo, ModalShell } from "./ui";
@@ -62,6 +63,8 @@ import EventEditor from "./EventEditor";
 import EventManager, { type EventManagementAction } from "./EventManager";
 import { useWebRoute } from "./useWebRoute";
 import type { Page } from "./routes";
+import Tutorial, { hasSeenTour } from "./Tutorial";
+import { ThemeSwitcher } from "./theme";
 import { ImageComposer, ProtectedImage, useImageDraft } from "./images";
 import {
   channelUnread,
@@ -106,7 +109,7 @@ type Modal =
   | null;
 const nav = [
   ["home", Home, "Your loop"],
-  ["chat", MessageCircle, "Conversations"],
+  ["chat", MessageCircle, "Group chats"],
   ["communities", Compass, "Communities"],
   ["calendar", CalendarDays, "Calendar"],
   ["people", Users, "People"],
@@ -199,6 +202,7 @@ export default function App() {
     [calendarScope, setCalendarScope] = useState("all"),
     [authRegister, setAuthRegister] = useState(false),
     [intro, setIntro] = useState(false),
+    [tourOpen, setTourOpen] = useState(false),
     [contentTarget, setContentTarget] = useState<ContentTarget | null>(null),
     [contentMode, setContentMode] = useState<ContentMode>("menu"),
     [eventAction, setEventAction] = useState<EventManagementAction | null>(
@@ -286,6 +290,7 @@ export default function App() {
     if (accountId.current === s.currentUserId) return;
     const hadAccount = !!accountId.current;
     accountId.current = s.currentUserId;
+    setTourOpen(false);
     setEventAction(null);
     welcomed.current = false;
     setModal(null);
@@ -346,17 +351,18 @@ export default function App() {
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
+        if (tourOpen) return;
         setSearchOpen((v) => !v);
       }
       if (e.key === "Escape") setSearchOpen(false);
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, []);
+  }, [tourOpen]);
   useEffect(() => {
-    if (page === "chat" && activeChannel)
+    if (page === "chat" && activeChannel && !tourOpen)
       void act({ type: "channel.read", channelId: activeChannel.id });
-  }, [page, activeChannel?.id]);
+  }, [page, activeChannel?.id, tourOpen]);
   useEffect(() => {
     setReplyTo(null);
   }, [channelId]);
@@ -370,6 +376,21 @@ export default function App() {
       setTopic("All topics");
   }, [s.preferences.subscriptions]);
   const welcomed = useRef(false);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const animation = document.getElementById("main")?.animate?.(
+      [{ opacity: 0.6, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }],
+      { duration: 220, easing: "cubic-bezier(.2,.7,.2,1)" },
+    );
+    return () => animation?.cancel();
+  }, [page]);
+  const tourChecked = useRef(false);
+  useEffect(() => {
+    if (ready && me && s.preferences.onboardingComplete && page === "home" && !modal && !searchOpen && !postDetail && !eventDetail && !tourChecked.current) {
+      tourChecked.current = true;
+      if (!hasSeenTour()) setTourOpen(true);
+    }
+  }, [ready, me?.id, s.preferences.onboardingComplete, page, modal, searchOpen, postDetail, eventDetail]);
   useEffect(() => {
     if (modal === "compose") {
       setComposeKind("discussion");
@@ -520,6 +541,7 @@ export default function App() {
         <div className="auth-brand">
           <Logo />
           <span>TheLoop</span>
+          <ThemeSwitcher />
         </div>
         <div className="auth-story">
           <span className="eyebrow">GOOD PEOPLE. REAL CONNECTION.</span>
@@ -1273,6 +1295,8 @@ export default function App() {
             </strong>
           </div>
           <div className="top-actions">
+            <button className="icon-button" aria-label="Show me around TheLoop" title="Show me around" onClick={() => { setModal(null); setSearchOpen(false); setTourOpen(true); }}><CircleHelp size={19}/></button>
+            <ThemeSwitcher />
             {mode === "demo" && (
               <span className="preview-badge">
                 <i />
@@ -2661,6 +2685,14 @@ export default function App() {
           </button>
         </footer>
       </div>
+      <nav className="mobile-primary-nav" aria-label="Main navigation">
+        <button className={page === "chat" ? "active" : ""} aria-current={page === "chat" ? "page" : undefined} onClick={() => navigate("chat")}><MessageCircle size={21}/><span>Group chats</span></button>
+        <button className={page === "home" ? "active" : ""} aria-current={page === "home" ? "page" : undefined} onClick={() => navigate("home")}><Home size={21}/><span>Your loop</span></button>
+        <button className={page === "calendar" ? "active" : ""} aria-current={page === "calendar" ? "page" : undefined} onClick={() => navigate("calendar")}><CalendarDays size={21}/><span>Calendar</span></button>
+        <button className={page === "inbox" ? "active" : ""} aria-current={page === "inbox" ? "page" : undefined} onClick={() => navigate("inbox")}><Mail size={21}/><span>Inbox</span></button>
+        <button aria-expanded={mobileNav} onClick={() => setMobileNav(!mobileNav)}><Menu size={21}/><span>More</span></button>
+      </nav>
+      {tourOpen && <Tutorial navigate={navigate} tune={() => setModal("interests")} close={() => setTourOpen(false)}/>}
       {error && (
         <div className="error-toast" role="alert">
           <span>{error}</span>
@@ -2675,7 +2707,7 @@ export default function App() {
           {notice}
         </div>
       )}
-      {searchOpen && (
+      {searchOpen && !tourOpen && (
         <ModalShell
           title="Find your next thing."
           subtitle="People, communities, channels, and plans."
@@ -3974,7 +4006,7 @@ export default function App() {
           }}
         />
       )}
-      {postDetail &&
+      {postDetail && !tourOpen &&
         !modal &&
         !contentTarget &&
         !searchOpen &&
@@ -4109,7 +4141,7 @@ export default function App() {
             </ModalShell>
           );
         })()}
-      {eventDetail &&
+      {eventDetail && !tourOpen &&
         !modal &&
         !eventAction &&
         !contentTarget &&
