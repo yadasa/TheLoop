@@ -33,6 +33,7 @@ import { documentIdBatches, matchesDirectory, mergeMessages, mergeSquadInvites, 
 import { MessagePages } from "./messagePages";
 import { directConversationId, isDirectConversation, mergeDirectMessages, type DirectSnapshot } from "./directData";
 import { lazyRuntime, resolveLiveRuntime } from "./lazyRuntime";
+import { readableError } from "./errorCopy";
 import { deriveDirectCatalog, emptyDirectCatalog, mergeDirectWatermark, newerDirectCatalogProgress, normalizeDirectConversation, normalizeDirectRead, parseDirectCatalogProgress, parseDirectConversation, type DirectCatalogState, type DirectWatermark } from "./directCatalog";
 import { drainDirectRead } from "./directRead";
 import { DocumentWatch, type DocumentStatus } from "./documentWatch";
@@ -44,6 +45,7 @@ export { stripWebPMetadata } from "./media";
 export { directParticipantSnapshot, type DirectSnapshot } from "./directData";
 export type { DocumentStatus } from "./documentWatch";
 export type { DirectCatalogState } from "./directCatalog";
+export { readableError } from "./errorCopy";
 export type StorageDriver = {
   load(): Promise<LoopState | null>;
   save(state: LoopState): Promise<void>;
@@ -114,13 +116,6 @@ type FirebaseRuntime = typeof import("./firebaseRuntime");
 type Cloud = ReturnType<FirebaseRuntime["setup"]>;
 let cloud: Cloud | undefined;
 const loadFirebaseRuntime = lazyRuntime(() => import("./firebaseRuntime"));
-const readableError = (e: unknown) => {
-  const message =
-    e instanceof Error ? e.message : "Something went wrong. Please try again.";
-  return message
-    .replace(/^Firebase:\s*/, "")
-    .replace(/\s*\(auth\/[^)]+\)\.?/, "");
-};
 const requestId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 export function restorePreview(saved: LoopState): LoopState {

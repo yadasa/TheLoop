@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>TheLoop · Product copy guide</title>
+<style>
+:root{color-scheme:light dark;--bg:#f7f7f5;--panel:#fff;--ink:#202020;--muted:#626262;--line:#d9d9d4;--soft:#eeeee9;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+*{box-sizing:border-box}body{margin:0}main{max-width:1040px;margin:auto;padding:52px 28px 80px}h1,h2,h3{letter-spacing:-.04em;line-height:1.15}h1{font-size:clamp(36px,7vw,62px);max-width:850px;margin:18px 0}h2{font-size:28px;margin:46px 0 18px}h3{font-size:19px;margin:0 0 10px}p,li{font-size:16px;line-height:1.65}p{margin:12px 0}.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}.intro{font-size:19px;max-width:790px}.muted,small{color:var(--muted)}.note{padding:18px 22px;border-left:3px solid var(--ink);background:var(--soft);margin:24px 0}.note p{margin:0}.rules{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{padding:20px;background:var(--panel);border:1px solid var(--line);border-radius:14px}.card p{margin:0}.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px}table{width:100%;border-collapse:collapse;min-width:650px}th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:15px;font-size:14px;line-height:1.5}th{background:var(--soft);font-size:12px;text-transform:uppercase;letter-spacing:.05em}tr:last-child td{border-bottom:0}td:last-child{color:var(--muted)}code{font-size:12px;overflow-wrap:anywhere}a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px}a:hover{text-decoration-thickness:2px}a:focus-visible{outline:2px solid var(--ink);outline-offset:4px}ul,ol{padding-left:24px}.sources li{margin:17px 0}.sources strong{display:block}.sources small{display:block;font-size:13px;line-height:1.6;margin-top:5px}.checks li{margin:7px 0}footer{border-top:1px solid var(--line);margin-top:44px;padding-top:20px;font-size:13px;color:var(--muted);line-height:1.6}
+@media(prefers-color-scheme:dark){:root{--bg:#141414;--panel:#1e1e1e;--ink:#f0f0f0;--muted:#b6b6b6;--line:#3d3d3d;--soft:#282828}}
+@media(max-width:650px){main{padding:28px 18px 56px}.rules{grid-template-columns:1fr}h2{font-size:25px;margin-top:36px}.intro{font-size:18px}.card{padding:18px}}
+@media print{:root{color-scheme:light;--bg:#fff;--panel:#fff;--ink:#111;--muted:#444;--line:#ccc;--soft:#f4f4f4}main{padding:0;max-width:none}h2,h3{break-after:avoid}.card,tr{break-inside:avoid}.table-wrap{overflow:visible}table{min-width:0}a{overflow-wrap:anywhere}.rules{gap:10px}}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">TheLoop / Product language / October 26, 2026</div>
+<h1>Clear enough to use.<br>Warm enough to welcome.</h1>
+<p class="intro">Write like a capable, considerate host: explain what people can do, respect their choices, and leave room for members to bring their own voices.</p>
+<div class="note"><p><strong>Scope:</strong> Edit system-owned navigation, buttons, onboarding, helper text, and loading, empty, and error states. Preserve member messages, posts, names, event titles, imported listings, and users’ grammar or dialect.</p></div>
+
+<h2>The writing rules</h2>
+<div class="rules">
+<article class="card"><h3>1. Name the thing</h3><p>Use <strong>group chats, topics, direct messages, posts, replies, people, events, and photos</strong> consistently. Explain a branded name such as Squad once. Do not call both a post and a chat a “conversation” when the distinction matters.</p></article>
+<article class="card"><h3>2. Make actions predictable</h3><p>Prefer <strong>Send, Create event, Join waitlist, Delete post</strong>. Keep the next step clear before someone taps. Remove decorative arrows from internal action names; reserve external-link cues for actual external destinations.</p></article>
+<article class="card"><h3>3. Keep warmth useful</h3><p>A greeting or brief welcome can carry personality. Routine controls do not need a slogan. Repeated “a little,” “your people,” “thoughtful,” and “good plan” phrasing makes different screens sound alike and can conceal their purpose.</p></article>
+<article class="card"><h3>4. Describe the actual state</h3><p>Distinguish loading, no results, missing access, and failure. Label bounded results as shown or loaded. Do not imply an exhaustive search, guaranteed identity, saved draft, successful delivery, or RSVP to an outside event unless the product confirms it.</p></article>
+<article class="card"><h3>5. Give errors a next step</h3><p>Say what could not be completed and what someone can do next. Use calm language and a realistic recovery action. Do not invent a cause, blame the person, add a joke, or announce that a private item was deleted when its status is unknown.</p></article>
+<article class="card"><h3>6. Explain consequences</h3><p>For deletion, cancellation, privacy, and invitations, keep the information needed to decide. “Cancel event” is clearer than “Yes.” Explain who can see a private group and which history a new member can access.</p></article>
+<article class="card"><h3>7. Respect a varied audience</h3><p>Black audiences span ages, regions, industries, dialects, and reasons for joining. Use cultural context where it is relevant. Do not manufacture slang, intimacy, hustle language, or a single “Black professional” register.</p></article>
+<article class="card"><h3>8. Edit for the screen</h3><p>Use familiar words, sentence case, natural contractions, short paragraphs, and descriptive accessibility labels. Preserve essential detail instead of enforcing arbitrary word limits. Read the string in its actual loading, error, and small-screen context.</p></article>
+</div>
+
+<h2>Before and after in the native source</h2>
+<p class="muted">These are observed replacements in the current copy pass, not quotations from the research. The original text is from the earlier source; the updated text was checked in the native working copy on October 26, 2026.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Earlier copy</th><th>Updated copy</th><th>Context / reason</th></tr></thead>
+<tbody>
+<tr><td>Your group chats.</td><td>Group chats</td><td><code>Chat.tsx</code> · Direct screen label.</td></tr>
+<tr><td>Name this conversation</td><td>Topic name</td><td><code>Chat.tsx</code> · Names the object being created.</td></tr>
+<tr><td>Your topic is ready</td><td>Topic created</td><td><code>Chat.tsx</code> · Reports the completed action.</td></tr>
+<tr><td>Just between us.</td><td>Direct messages</td><td><code>DirectInbox.tsx</code> · Recognizable destination; avoids implied intimacy.</td></tr>
+<tr><td>Muted · still in your loop</td><td>Notifications muted</td><td><code>DirectInbox.tsx</code> · States what mute changes.</td></tr>
+<tr><td>Be there.</td><td>Events</td><td><code>Events.tsx</code> · Explains the screen.</td></tr>
+<tr><td>A little breathing room</td><td>No events in this view</td><td><code>Events.tsx</code> · Identifies an empty filtered view.</td></tr>
+<tr><td>A host, a topic, a little after-hours energy…</td><td>Event name, organizer, or topic</td><td><code>Guide.tsx</code> · Useful search examples.</td></tr>
+<tr><td>Finding your people…</td><td>Loading people…</td><td><code>People.tsx</code> · Loading is not a matching recommendation.</td></tr>
+<tr><td>A thoughtful hello…</td><td>Write a message…</td><td><code>People.tsx</code> · Clear composer prompt.</td></tr>
+<tr><td>Delete your conversation?</td><td>Delete your post?</td><td><code>Feed.tsx</code> · Matches the item that will be removed.</td></tr>
+<tr><td>Create a thoughtful corner of the internet for a shared interest.</td><td>Create a community for a shared interest.</td><td><code>Feed.tsx</code> · Keeps the purpose and removes the metaphor.</td></tr>
+</tbody></table></div>
+
+<h2>What the research supports</h2>
+<p>These recommendations are editorial judgments informed by the sources below. Research on generated academic prose does not establish a universal “AI word list,” identify the author of an individual sentence, or validate every conclusion for app interfaces.</p>
+<ul class="sources">
+<li><strong><a href="https://www.nngroup.com/articles/chatgpt-and-tone/">NN/g: ChatGPT and Tone</a> · Taylor Dykes, March 8, 2024</strong><small>Experiments described in the article found exaggerated output when tone adjectives were used alone. Internal, approved examples, several alternatives, and human editing are more useful than asking for a vague persona. Do not ask the model to imitate a Blavity writer or celebrity.</small></li>
+<li><strong><a href="https://www.nngroup.com/articles/genai-write-for-the-web/">NN/g: Product-Specific GenAI Needs to Write for the Web</a> · Taylor Dykes, April 4, 2025</strong><small>The UX study supports concise, scan-friendly output with important information first and familiar language. For TheLoop, the control’s purpose should appear before any brand flourish.</small></li>
+<li><strong><a href="https://www.nngroup.com/articles/7-ai-sins/">NN/g: 7 Deadly AI Sins for UX Professionals</a> · Tanner Kohler, September 26, 2025</strong><small>This practitioner article argues for human judgment rather than outsourcing taste. Treat generated copy as a draft to test against the task, not as a final brand decision.</small></li>
+<li><strong><a href="https://aclanthology.org/2025.coling-main.426/">Juzek and Ward: Why Does ChatGPT “Delve” So Much?</a> · COLING, January 2025</strong><small>The study examines unusual word frequencies in scientific abstracts and possible reasons for them; its evidence about feedback training is qualified. <a href="https://news.fsu.edu/news/science-technology/2025/02/17/why-does-chatgpt-delve-so-much-fsu-researchers-begin-to-uncover-why-chatgpt-overuses-certain-words/">FSU’s February 17 research report</a> summarizes the work. It is not a detector for individual UI strings.</small></li>
+<li><strong><a href="https://arxiv.org/abs/2510.05136">Terčon and Dobrovoljc: Linguistic Characteristics of AI-Generated Text</a> · Research survey, October 2025</strong><small>The survey reports recurring linguistic tendencies, while noting concentration on English, GPT-family models, and insufficient attention to prompt wording. Avoid universal claims based on a single model, genre, or phrase.</small></li>
+<li><strong><a href="https://arxiv.org/abs/2406.08818">Fleisig and colleagues: Linguistic Bias in ChatGPT</a> · 2024 study</strong><small>Tests of GPT-3.5 and GPT-4 found stereotyping and comprehension problems across dialects; imitation prompts were also problematic. This supports avoiding race-as-dialect prompts. It does not make members’ own language an editing problem.</small></li>
+</ul>
+
+<h2>Reading Blavity for context, not imitation</h2>
+<p>These articles show a range of reporting and personal perspectives. They are not representative audience research or proof that all Black readers prefer one tone. Borrow the attention to people, specific needs, and cultural context; do not copy sentences or perform an author’s voice.</p>
+<ul class="sources">
+<li><strong><a href="https://blavity.com/AFROTECH-FIRST-TIME-ATTENDEES-EXPERIENCES">First-time AFROTECH attendees describe their experiences</a> · Aria Bell, November 21, 2024</strong><small>Attendees describe distinct reasons for attending, including recruiting, professional learning, and community. The reporting names people and concrete opportunities. TheLoop should likewise make specific activities easy to find without assuming every member has the same goal.</small></li>
+<li><strong><a href="https://blavity.com/is-afrotech-worth-it">Is AfroTech Conference Worth It?</a> · Lilian Ogbuefi, October 6, 2026</strong><small>The first-person account distinguishes hiring, learning, entrepreneurship, and social connection, including roles outside engineering. Our interpretation: professional usefulness and community enjoyment can coexist; neither should be treated as the only valid reason to join.</small></li>
+<li><strong><a href="https://blavity.com/issa-rae-says-the-best-support-she-received-in-career-were-from-people-she-met-organically">Issa Rae on support from organic relationships</a> · Aria Bell, November 7, 2023</strong><small>The interview connects sustained relationships with practical mutual support. Our interpretation: invitations can be low-pressure and specific. The interface should not turn every hello into a pitch or presume closeness between strangers.</small></li>
+<li><strong><a href="https://blavity.com/am-i-doing-this-right-navigate-racial-politics-at-work">Am I doing this right? Racial politics at work</a> · Ebony F., June 2016; updated March 2022</strong><small>This personal opinion piece addresses workplace pressure and code-switching. It demonstrates a different register from conference reporting. Our interpretation: respect boundaries, take safety language seriously, and avoid telling members how they must express their identities.</small></li>
+</ul>
+
+<h2>Product language to learn from</h2>
+<ul class="sources">
+<li><strong><a href="https://support.microsoft.com/en-us/groupme/what-is-groupme">GroupMe: navigation and chat basics</a></strong><small>Its help names concrete destinations and actions such as “Search chats” and “Start a new chat.” Use recognizable product nouns before inventing a metaphor for a destination.</small></li>
+<li><strong><a href="https://support.discord.com/hc/en-us/articles/7924992471191-Message-Requests">Discord: Message Requests</a></strong><small>The documentation distinguishes “Accept” and “Ignore” and explains what content becomes accessible. The useful pattern is explicit consent and consequences, not copying Discord’s policies or implying TheLoop has the same features.</small></li>
+<li><strong><a href="https://slack.com/help/articles/201402297-Create-a-channel">Slack: Create a channel</a></strong><small>The mobile flow uses “Next” and “Create,” while explaining the public/private choice. Short controls work because the nearby context explains the decision.</small></li>
+<li><strong><a href="https://learn.microsoft.com/en-us/windows/apps/design/style/writing-style">Microsoft: Writing style for apps</a></strong><small>The guidance supports familiar language, action-oriented controls, context-sensitive tone, and non-blaming errors with useful next steps. Warmth can be expressed through helpfulness rather than extra adjectives.</small></li>
+</ul>
+
+<h2>Review before release</h2>
+<ol class="checks">
+<li>Can a new member predict what the button opens or changes?</li>
+<li>Does the same object have the same name across navigation, forms, confirmations, and accessibility labels?</li>
+<li>Does the string match the actual state, permission, result limit, and recovery action?</li>
+<li>Are destructive, privacy, invitation, and calendar consequences clear?</li>
+<li>Does the copy fit with large text enabled and make sense when read aloud?</li>
+<li>Were member content and imported source material preserved?</li>
+<li>Have members with different backgrounds and purposes tried the flow, rather than approving copy only in isolation?</li>
+</ol>
+<footer>Prepared for TheLoop on October 26, 2026. Native examples reflect the copy pass in the working tree, not a claim that every screen or physical device has been verified. Research findings are scoped to their sources; the practical copy rules are TheLoop editorial recommendations. This document is self-contained, has no analytics or scripts, follows the device’s light/dark preference, and can be printed.</footer>
+</main></body></html>
