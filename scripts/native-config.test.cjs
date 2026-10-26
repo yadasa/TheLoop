@@ -57,6 +57,34 @@ test("sample preview stays explicit; live release profiles cannot silently becom
     /must be sample, live, or emulator/,
   );
 });
+
+test("an inherited Expo inline-manifest override cannot bypass validated runtime authority", () => {
+  const hostile = JSON.stringify({
+    extra: {
+      theloop: {
+        schemaVersion: 1,
+        mode: "live",
+        firebaseConfig: { apiKey: "HOSTILE-MANIFEST-CANARY" },
+      },
+    },
+  });
+  for (const env of [{}, live(), emulator()])
+    assert.throws(
+      () => resolveNativeRuntime({ ...env, APP_MANIFEST: hostile }),
+      (error) =>
+        /Remove APP_MANIFEST/.test(error.message) &&
+        !error.message.includes("HOSTILE-MANIFEST-CANARY"),
+    );
+  assert.equal(
+    cleanNativeEnvironment({ APP_MANIFEST: hostile }).APP_MANIFEST,
+    undefined,
+  );
+  assert.equal(
+    resolveNativeRuntime(liveEnvironment(config, { APP_MANIFEST: hostile }))
+      .mode,
+    "live",
+  );
+});
 test("live requires every dedicated identifier and emits public config only", () => {
   for (const key of Object.values(FIELDS)) {
     const env = live();
@@ -195,6 +223,7 @@ test("local live environment removes inherited public/emulator values and disabl
     FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080",
     EXPO_PUBLIC_EMULATOR_HOST: "localhost",
     THELOOP_NATIVE_MODE: "emulator",
+    APP_MANIFEST: "HOSTILE-MANIFEST-CANARY",
   };
   const clean = cleanNativeEnvironment(inherited);
   assert.deepEqual(clean, { PATH: "system-path", EXPO_NO_DOTENV: "1" });
@@ -390,4 +419,104 @@ test("native file reader validates real bytes and fails without exposing JSON ex
     fs.unlinkSync(invalid);
     fs.rmdirSync(directory);
   }
+});
+
+const { nativeMetroCacheVersion } = require("./native-metro-cache.cjs");
+test("Metro transform caches separate sample, live and emulator while retaining the upstream version", () => {
+  const sample = nativeMetroCacheVersion("upstream-v1", {});
+  const production = nativeMetroCacheVersion("upstream-v1", live());
+  const demo = nativeMetroCacheVersion("upstream-v1", emulator());
+  assert.equal(new Set([sample, production, demo]).size, 3);
+  assert.ok(sample.startsWith("upstream-v1|theloop-runtime-v1:"));
+  assert.notEqual(sample, nativeMetroCacheVersion("upstream-v2", {}));
+  assert.equal(
+    sample,
+    nativeMetroCacheVersion("upstream-v1", {
+      EXPO_PUBLIC_FIREBASE_API_KEY: "foreign-key",
+      EXPO_PUBLIC_FIREBASE_PROJECT_ID: "foreign-project",
+      EXPO_PUBLIC_EMULATOR_HOST: "foreign.example",
+      THELOOP_GOOGLE_SERVICES_FILE: "/foreign/private.json",
+    }),
+  );
+  assert.equal(
+    production,
+    nativeMetroCacheVersion("upstream-v1", {
+      ...live(),
+      THELOOP_GOOGLE_SERVICES_FILE: "/different/validated/file.json",
+      UNRELATED_FLAG: "different",
+    }),
+  );
+});
+test("all six Firebase identifier changes are rejected or produce a different live cache key", () => {
+  const base = nativeMetroCacheVersion("upstream", live());
+  for (const [key, change] of Object.entries({
+    EXPO_PUBLIC_FIREBASE_API_KEY: `AIza${"y".repeat(35)}`,
+    EXPO_PUBLIC_FIREBASE_APP_ID: "1:36048778692:web:anotherRegisteredApp",
+    EXPO_PUBLIC_FIREBASE_PROJECT_ID: "different-project",
+    EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: "different.firebaseapp.com",
+    EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: "different.firebasestorage.app",
+    EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "999999999999",
+  })) {
+    const changed = { ...live(), [key]: change };
+    if ([FIELDS.apiKey, FIELDS.appId].includes(key))
+      assert.notEqual(nativeMetroCacheVersion("upstream", changed), base);
+    else
+      assert.throws(
+        () => nativeMetroCacheVersion("upstream", changed),
+        /dedicated/,
+      );
+  }
+});
+test("emulator project, host and each port affect the Metro cache namespace", () => {
+  const base = nativeMetroCacheVersion("upstream", emulator());
+  for (const [key, change] of Object.entries({
+    EXPO_PUBLIC_FIREBASE_PROJECT_ID: "demo-other-test",
+    EXPO_PUBLIC_EMULATOR_HOST: "192.168.1.7",
+    EXPO_PUBLIC_AUTH_EMULATOR_PORT: "10001",
+    EXPO_PUBLIC_FIRESTORE_EMULATOR_PORT: "10002",
+    EXPO_PUBLIC_FUNCTIONS_EMULATOR_PORT: "10003",
+  }))
+    assert.notEqual(
+      nativeMetroCacheVersion("upstream", { ...emulator(), [key]: change }),
+      base,
+    );
+});
+
+test("resolved public Expo metadata participates in the cache key without restoring foreign runtime authority", () => {
+  const runtime = resolveNativeRuntime({});
+  const publicConfig = {
+    name: "TheLoop",
+    version: "0.3.0",
+    icon: "./assets/icon.png",
+    extra: { theloop: runtime },
+  };
+  const base = nativeMetroCacheVersion("upstream", {}, publicConfig);
+  for (const [key, changed] of Object.entries({
+    name: "TheLoop Updated",
+    version: "0.3.1",
+    icon: "./assets/new-icon.png",
+  }))
+    assert.notEqual(
+      nativeMetroCacheVersion(
+        "upstream",
+        {},
+        { ...publicConfig, [key]: changed },
+      ),
+      base,
+    );
+  assert.equal(
+    nativeMetroCacheVersion(
+      "upstream",
+      {
+        EXPO_PUBLIC_FIREBASE_PROJECT_ID: "foreign-project",
+        EXPO_PUBLIC_FIREBASE_API_KEY: "foreign-key",
+      },
+      publicConfig,
+    ),
+    base,
+  );
+  assert.throws(
+    () => nativeMetroCacheVersion("upstream", live(), publicConfig),
+    /must contain the validated TheLoop runtime/,
+  );
 });

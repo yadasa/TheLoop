@@ -80,6 +80,10 @@ function port(env, key, fallback) {
   return Number(raw);
 }
 function resolveNativeRuntime(env = process.env) {
+  if (value(env, "APP_MANIFEST"))
+    invalid(
+      "Remove APP_MANIFEST overrides so Expo uses the validated app configuration.",
+    );
   const mode = value(env, "THELOOP_NATIVE_MODE") || "sample";
   const profile = value(env, "EAS_BUILD_PROFILE");
   if (!["sample", "live", "emulator"].includes(mode))
@@ -156,6 +160,7 @@ function cleanNativeEnvironment(input = process.env) {
       key.startsWith("EXPO_PUBLIC_") ||
       key.startsWith("THELOOP_NATIVE_") ||
       key === "THELOOP_GOOGLE_SERVICES_FILE" ||
+      key === "APP_MANIFEST" ||
       EMULATOR_KEYS.includes(key) ||
       key === "EAS_BUILD_PROFILE"
     )
