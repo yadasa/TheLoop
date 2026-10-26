@@ -34,6 +34,7 @@ import { MessagePages } from "./messagePages";
 import { directConversationId, isDirectConversation, mergeDirectMessages, type DirectSnapshot } from "./directData";
 import { lazyRuntime, resolveLiveRuntime } from "./lazyRuntime";
 import { readableError } from "./errorCopy";
+import { StartupGate, startupPreferences, startupProfile } from "./startupGate";
 import { deriveDirectCatalog, emptyDirectCatalog, mergeDirectWatermark, newerDirectCatalogProgress, normalizeDirectConversation, normalizeDirectRead, parseDirectCatalogProgress, parseDirectConversation, type DirectCatalogState, type DirectWatermark } from "./directCatalog";
 import { drainDirectRead } from "./directRead";
 import { DocumentWatch, type DocumentStatus } from "./documentWatch";
@@ -62,6 +63,9 @@ type LoopContextValue = {
   dispatch(command: Command): Promise<void>;
   mode: "demo" | "live";
   ready: boolean;
+  startupError: string | null;
+  retryStartup(): void;
+  accountEmail: string | null;
   error: string | null;
   clearError(): void;
   resetDemo(): void;
@@ -203,7 +207,20 @@ export function LoopProvider({
   const [ready, setReady] = useState(false),
     [error, setError] = useState<string | null>(null),
     [pending, setPending] = useState(0);
+  const [startupError, setStartupError] = useState<string | null>(null);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  const [startupAttempt, setStartupAttempt] = useState(0);
+  const startupCleanup = useRef<(() => void) | null>(null);
   const readyRef = useRef(ready); readyRef.current = ready;
+  const retryStartup = useCallback(() => {
+    if (modeRef.current !== "live") return;
+    startupCleanup.current?.();
+    readyRef.current = false;
+    setReady(false);
+    setStartupError(null);
+    setError(null);
+    setStartupAttempt(attempt => attempt + 1);
+  }, []);
   const storageRef = useRef(storage);
   storageRef.current = storage;
   const previewReady = useRef(false);
@@ -405,6 +422,9 @@ export function LoopProvider({
     liveActions.current = {};
     catalogLoaders.current = {};
     previewReady.current = false;
+    setStartupError(null);
+    setAccountEmail(null);
+    readyRef.current = false;
     setReady(false);
     setHistory({ loading: false, hasMore: false });
     setSquadHistory({ loading: false, hasMore: false });
@@ -438,15 +458,66 @@ export function LoopProvider({
     let dispose: (() => void)[] = [];
     let generation = 0;
     let off = () => {};
+    let observedAuth = false;
+    let sessionStartup: StartupGate | undefined;
+    const publishStartup = (status: { ready: boolean; error: string | null }) => {
+      readyRef.current = status.ready;
+      setReady(status.ready);
+      setStartupError(status.error);
+    };
+    const abortStartup = (message: string) => {
+      dispose.forEach(fn => fn());
+      dispose = [];
+      liveActions.current = {};
+      catalogLoaders.current = {};
+      imageCache.current.clear(); setMediaRevision(value => value + 1);
+      setRole("member");
+      setHasMore({ posts: false, events: false });
+      setHistory({ loading: false, hasMore: false });
+      setSquadHistory({ loading: false, hasMore: false });
+      setDirectHistory({ loading: false, hasMore: false });
+      setDirectory({ results: [], loading: false, hasMore: false });
+      setDirectCatalog(emptyDirectCatalog());
+      setPostStatus({ id: postRef.current, loading: false, notFound: false, error: postRef.current ? message : null });
+      setEventStatus({ id: eventRef.current, loading: false, notFound: false, error: eventRef.current ? message : null });
+      const empty = emptyState(cloud?.auth.currentUser?.uid ?? "");
+      stateRef.current = empty;
+      setState(empty);
+    };
+    const runtimeStartup = new StartupGate({ pending: ["runtime"], current: () => active && modeRef.current === "live", publish: publishStartup, describeError: readableError, abort: abortStartup });
+    const cleanup = () => {
+      if (!active) return;
+      active = false;
+      transportGeneration.current++;
+      previewReady.current = false;
+      imageCache.current.clear();
+      generation++;
+      runtimeStartup.stop();
+      sessionStartup?.stop();
+      off();
+      dispose.forEach(fn => fn());
+      dispose = [];
+      liveActions.current = {};
+      catalogLoaders.current = {};
+      if (startupCleanup.current === cleanup) startupCleanup.current = null;
+    };
+    startupCleanup.current = cleanup;
     void (async () => {
-      const resolved = await resolveLiveRuntime({ load: loadFirebaseRuntime, prepare: () => cloud ? undefined : authPersistence ?? authPersistenceFactory?.(), current: () => active && modeRef.current === "live" });
+      const resolved = await resolveLiveRuntime({ load: loadFirebaseRuntime, prepare: () => cloud ? undefined : authPersistence ?? authPersistenceFactory?.(), current: () => runtimeStartup.current });
       if (!resolved) return;
       const sdk = resolved.runtime, c = sdk.setup(firebaseConfig!, useEmulators, resolved.prepared, emulators);
       cloud = c;
       const { onAuthStateChanged, httpsCallable, collection, doc, onSnapshot, query, where, limit, orderBy, documentId, getDocs, directoryPageQuery, messagePageQuery, squadMessagePageQuery, squadMembershipQuery, squadParticipantInvitesQuery, squadIncomingInvitesQuery, squadOwnerInvitesQuery, directMessagePageQuery, directCatalogPageQuery } = sdk;
       off = onAuthStateChanged(c.auth, async (user) => {
-      if (!active) return;
+      if (!active || (c.auth.currentUser?.uid ?? null) !== (user?.uid ?? null)) return;
+      if (!observedAuth && !runtimeStartup.current && user) return;
+      observedAuth = true;
       const turn = ++generation;
+      setAccountEmail(user?.email ?? null);
+      runtimeStartup.stop();
+      sessionStartup?.stop();
+      setStartupError(null);
+      setError(null);
       imageCache.current.clear(); setMediaRevision(value => value + 1);
       dispose.forEach((fn) => fn());
       dispose = [];
@@ -464,47 +535,35 @@ export function LoopProvider({
       setEmailVerified(user?.emailVerified ?? false);
       setState(emptyState(user?.uid ?? ""));
       if (!user) {
+        readyRef.current = true;
         setReady(true);
         return;
       }
+      readyRef.current = false;
       setReady(false);
+      const startup = new StartupGate({
+        pending: ["bootstrap", "preferences", "owner", "publicProfiles", "conferences", "communities", "posts", "eventsUpcoming", "eventsPast", "connections", "follows", "directMessages", "directCatalog", "notifications", "publicChannels", "privateChannels", "reports", "squads", "squadInvites", "squadIncomingInvites"],
+        required: ["bootstrap", "owner", "preferences"],
+        current: () => active && turn === generation && c.auth.currentUser?.uid === user.uid,
+        publish: publishStartup,
+        describeError: readableError,
+        optionalError: e => setError(readableError(e)),
+        abort: abortStartup,
+      });
+      sessionStartup = startup;
       try {
         await httpsCallable(
           c.functions,
           "bootstrap",
         )({ name: user.displayName ?? "" });
-        if (!active || turn !== generation || c.auth.currentUser?.uid !== user.uid) return;
-        const current = () => active && turn === generation && c.auth.currentUser?.uid === user.uid;
-        const waiting = new Set([
-          "preferences",
-          "owner",
-          "publicProfiles",
-          "conferences",
-          "communities",
-          "posts",
-          "eventsUpcoming",
-          "eventsPast",
-          "connections",
-          "follows",
-          "directMessages",
-          "directCatalog",
-          "notifications",
-          "publicChannels",
-          "privateChannels",
-          "reports",
-          "squads",
-          "squadInvites",
-          "squadIncomingInvites",
-        ]);
-        const loaded = (key: string) => {
-          waiting.delete(key);
-          if (current() && !waiting.size) setReady(true);
-        };
+        if (!startup.current) return;
+        startup.loaded("bootstrap");
+        const current = () => startup.current;
+        const loaded = (key: string) => startup.loaded(key);
         const failure = (e: unknown, key?: string) => {
-          if (current()) {
-            setError(readableError(e));
-            if (key) loaded(key);
-          }
+          if (!current()) return;
+          if (key) startup.fail(e, key);
+          else setError(readableError(e));
         };
         liveActions.current.uploadImage = async payload => {
           if (!current()) throw new MediaScopeChanged();
@@ -773,14 +832,13 @@ export function LoopProvider({
         dispose.push(
           onSnapshot(
             doc(c.db, "profiles", user.uid),
+            { includeMetadataChanges: true },
             (snap) => {
-              if (current()) {
-                ownProfile = snap.exists()
-                  ? ({ ...snap.data(), id: snap.id } as Profile)
-                  : undefined;
+              startup.receive("owner", snap.metadata.fromCache, () => {
+                if (!snap.exists()) throw new Error("Your profile could not be loaded. Try again or sign out.");
+                ownProfile = startupProfile(snap.data(), snap.id);
                 publishProfiles();
-              }
-              loaded("owner");
+              });
             },
             (e) => failure(e, "owner"),
           ),
@@ -824,13 +882,12 @@ export function LoopProvider({
         dispose.push(
           onSnapshot(
             doc(c.db, "users", user.uid),
+            { includeMetadataChanges: true },
             (snap) => {
-              if (snap.exists() && current()) {
+              startup.receive("preferences", snap.metadata.fromCache, () => {
+                if (!snap.exists()) throw new Error("Your account settings could not be loaded. Try again or sign out.");
                 const data = snap.data();
-                const preferences = {
-                  ...defaultPreferences(),
-                  ...(data.preferences ?? data),
-                };
+                const preferences = startupPreferences(data);
                 const nextRole: LoopRole =
                   data.role === "moderator" || data.role === "admin"
                     ? data.role
@@ -851,12 +908,10 @@ export function LoopProvider({
                 publishDirectCatalog();
                 maybeBootstrapDirectCatalog();
                 publishPosts();
-              } else loaded("reports");
-              loaded("preferences");
+              });
             },
             (e) => {
               failure(e, "preferences");
-              loaded("reports");
             },
           ),
         );
@@ -1653,38 +1708,14 @@ export function LoopProvider({
           ),
         );
       } catch (e) {
-        if (active && turn === generation) {
-          failureOutside(e);
-          const message = readableError(e);
-          setPostStatus({ id: postRef.current, loading: false, notFound: false, error: postRef.current ? message : null });
-          setEventStatus({ id: eventRef.current, loading: false, notFound: false, error: eventRef.current ? message : null });
-          setReady(true);
-        }
+        startup.fail(e);
       }
       });
     })().catch(e => {
-      if (!active) return;
-      failureOutside(e);
-      const message = readableError(e);
-      setPostStatus({ id: postRef.current, loading: false, notFound: false, error: postRef.current ? message : null });
-      setEventStatus({ id: eventRef.current, loading: false, notFound: false, error: eventRef.current ? message : null });
-      setReady(true);
+      runtimeStartup.fail(e);
     });
-    function failureOutside(e: unknown) {
-      if (active) setError(readableError(e));
-    }
-    return () => {
-      active = false;
-      transportGeneration.current++;
-      previewReady.current = false;
-      imageCache.current.clear();
-      generation++;
-      off();
-      dispose.forEach((fn) => fn());
-      liveActions.current = {};
-      catalogLoaders.current = {};
-    };
-  }, [mode, firebaseConfig?.projectId, useEmulators, authPersistence, authPersistenceFactory, emulators?.host, emulators?.authPort, emulators?.firestorePort, emulators?.functionsPort]);
+    return cleanup;
+  }, [mode, firebaseConfig?.projectId, useEmulators, authPersistence, authPersistenceFactory, emulators?.host, emulators?.authPort, emulators?.firestorePort, emulators?.functionsPort, startupAttempt]);
   useEffect(() => {
     let active = true;
     if (mode === "demo" && ready && previewReady.current)
@@ -1856,6 +1887,9 @@ export function LoopProvider({
         dispatch,
         mode,
         ready,
+        startupError,
+        retryStartup,
+        accountEmail: mode === "live" ? accountEmail : null,
         error,
         pending,
         hasMore,
