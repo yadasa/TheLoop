@@ -25,6 +25,8 @@ import {
   Section,
   Touch,
   useReducedMotion,
+  useAppActive,
+  isAppActive,
 } from "./ui";
 import type { Nav } from "./navigation";
 import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
@@ -448,6 +450,7 @@ export function CreateSquad({ nav }: { nav: Nav }) {
 }
 
 export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
+  const appActive = useAppActive();
   const { state, watchSquad, loadOlderSquadMessages, squadHistory } = useLoop();
   const attachment = useImageAttachment(nav);
   const squad = (state.squads ?? []).find(
@@ -485,8 +488,23 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
     return () => watchSquad(null);
   }, [id, watchSquad]);
   useEffect(() => {
-    if (squad) void nav.run({ type: "squad.read", squadId: id });
-  }, [id, messages.at(-1)?.id, !!squad]);
+    if (
+      appActive &&
+      isAppActive() &&
+      !showJump &&
+      !squadHistory.loading &&
+      messages.length &&
+      squad
+    )
+      void nav.run({ type: "squad.read", squadId: id });
+  }, [
+    id,
+    messages.at(-1)?.id,
+    !!squad,
+    appActive,
+    showJump,
+    squadHistory.loading,
+  ]);
   if (!squad)
     return (
       <Empty

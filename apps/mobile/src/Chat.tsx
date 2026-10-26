@@ -27,6 +27,8 @@ import {
   s,
   Touch,
   useReducedMotion,
+  useAppActive,
+  isAppActive,
 } from "./ui";
 import type { Nav } from "./navigation";
 import { SquadSummary } from "./Squads";
@@ -235,6 +237,7 @@ export function ChannelDetail({
   nav: Nav;
 }) {
   const { state, watchConversation, loadOlderMessages, history } = useLoop();
+  const appActive = useAppActive();
   const attachment = useImageAttachment(nav);
   const channel = state.channels.find((c) => c.id === id);
   const [topic, setTopic] = useState(() =>
@@ -260,6 +263,10 @@ export function ChannelDetail({
   const loadingOlder = useRef(false);
   const [showJump, setShowJump] = useState(false);
   const reducedMotion = useReducedMotion();
+  const newestMessageId = state.messages
+    .filter((message) => message.channelId === id)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .at(-1)?.id;
   useEffect(() => {
     stickToBottom.current = true;
     firstLayout.current = true;
@@ -269,8 +276,18 @@ export function ChannelDetail({
     return () => watchConversation(null);
   }, [id, topic, watchConversation]);
   useEffect(() => {
-    void nav.run({ type: "channel.read", channelId: id });
-  }, [id, state.messages.length]);
+    if (
+      appActive &&
+      isAppActive() &&
+      !showJump &&
+      !history.loading &&
+      newestMessageId &&
+      channel &&
+      (channel.visibility === "public" ||
+        channel.memberIds?.includes(state.currentUserId))
+    )
+      void nav.run({ type: "channel.read", channelId: id });
+  }, [id, newestMessageId, appActive, showJump, history.loading]);
   if (
     !channel ||
     (channel.visibility === "private" &&
@@ -352,7 +369,6 @@ export function ChannelDetail({
         setBody("");
         setReply(null);
         setEditing(null);
-        void nav.run({ type: "channel.read", channelId: id });
       }
     } catch (error) {
       nav.toast(

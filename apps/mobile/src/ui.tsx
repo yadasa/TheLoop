@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   Appearance,
+  AppState,
   ActionSheetIOS,
   AccessibilityInfo,
   Alert,
@@ -32,6 +33,20 @@ import type { Profile, Subscription } from "@theloop/core";
 import { safeURL } from "@theloop/core";
 
 const MotionContext = createContext(false);
+export function isAppActive() {
+  return AppState.currentState === "active";
+}
+export function useAppActive() {
+  const [active, setActive] = useState(isAppActive);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (next) =>
+      setActive(next === "active"),
+    );
+    setActive(isAppActive());
+    return () => subscription.remove();
+  }, []);
+  return active;
+}
 export const useReducedMotion = () => useContext(MotionContext);
 export function MotionProvider({ children }: { children: React.ReactNode }) {
   const [reduced, setReduced] = useState(true);
@@ -314,6 +329,12 @@ export function Touch({
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   const reduced = useReducedMotion();
+  useEffect(() => {
+    if (reduced) {
+      scale.stopAnimation();
+      scale.setValue(1);
+    }
+  }, [reduced, scale]);
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable

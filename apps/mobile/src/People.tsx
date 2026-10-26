@@ -35,6 +35,8 @@ import {
   Section,
   Touch,
   useReducedMotion,
+  useAppActive,
+  isAppActive,
 } from "./ui";
 import type { Nav } from "./navigation";
 import { shareTargetURL } from "./sharedLinks";
@@ -590,6 +592,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
 }
 
 export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
+  const appActive = useAppActive();
   const {
     state,
     watchDirectConversation,
@@ -665,6 +668,8 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
   }, [id, blocked, watchDirectConversation]);
   useEffect(() => {
     if (
+      !appActive ||
+      !isAppActive() ||
       blocked ||
       showJump ||
       directHistory.loading ||
@@ -693,6 +698,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     showJump,
     directHistory.loading,
     readRevision,
+    appActive,
   ]);
   return (
     <KeyboardAvoidingView

@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Platform, ScrollView, Text, View } from "react-native";
+import {
+  Animated,
+  Platform,
+  ScrollView,
+  Text,
+  View,
+  type ScrollViewInstance,
+} from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Button, color, Logo, s, useReducedMotion, useTheme } from "./ui";
 import type { Nav } from "./navigation";
@@ -193,6 +200,7 @@ function Illustration({ step }: { step: number }) {
 export function Tutorial({ nav }: { nav: Nav }) {
   useTheme();
   const reducedMotion = useReducedMotion();
+  const scroll = useRef<ScrollViewInstance>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
@@ -230,6 +238,7 @@ export function Tutorial({ nav }: { nav: Nav }) {
     };
   }, [load]);
   useEffect(() => {
+    scroll.current?.scrollTo({ y: 0, animated: false });
     opacity.stopAnimation();
     if (reducedMotion) {
       opacity.setValue(1);
@@ -270,7 +279,7 @@ export function Tutorial({ nav }: { nav: Nav }) {
 
   if (loading || !progress)
     return (
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView ref={scroll} contentContainerStyle={s.content}>
         <Logo size={42} />
         <Text style={s.title}>A little way around.</Text>
         {loading ? (
@@ -308,6 +317,7 @@ export function Tutorial({ nav }: { nav: Nav }) {
   });
   return (
     <ScrollView
+      ref={scroll}
       contentContainerStyle={s.content}
       keyboardShouldPersistTaps="handled"
     >
