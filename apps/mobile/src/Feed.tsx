@@ -1375,10 +1375,10 @@ export function CreateCommunity({ nav }: { nav: Nav }) {
         multiline
       />
       <View style={s.card}>
-        <Text style={s.h3}>You will moderate this community</Text>
+        <Text style={s.h3}>Community moderator</Text>
         <Text style={s.small}>
-          Set clear rules and review reports from members. App-wide guidelines
-          also apply.
+          You will be listed as this community’s moderator. App-wide guidelines
+          apply.
         </Text>
       </View>
       <Button
