@@ -186,8 +186,27 @@ export function applyCommand(
       });
       break;
     }
+    case 'post.edit': {
+      const p=post(cmd.postId);if(p.authorId!==uid)throw new Error('Only the author can edit this post.');
+      if(Object.keys(cmd.post).some(key=>!['title','body','tags','url'].includes(key)))throw new Error('Only the post text, tags and link can be edited.');
+      if(cmd.post.title!==undefined)p.title=clean(cmd.post.title,180);
+      if(cmd.post.body!==undefined)p.body=clean(cmd.post.body,10000);
+      if(cmd.post.tags!==undefined){if(cmd.post.tags.length>5)throw new Error('Use up to five tags.');p.tags=cmd.post.tags.map(tag=>clean(tag,40));}
+      if(cmd.post.url!==undefined){if(cmd.post.url===''){if(p.kind==='link')throw new Error('A shared link post needs its link.');delete p.url;}else{if(!safeURL(cmd.post.url))throw new Error('Use a valid HTTPS link.');p.url=cmd.post.url;}}
+      p.editedAt=ctx.now;break;
+    }
+    case 'post.delete': {
+      const p=post(cmd.postId);if(p.authorId!==uid)throw new Error('Only the author can delete this post.');s.posts=s.posts.filter(p=>p.id!==cmd.postId);s.preferences.savedPostIds=s.preferences.savedPostIds.filter(id=>id!==cmd.postId);break;
+    }
+    case 'comment.edit': {
+      const p=post(cmd.postId);const comment=p.comments.find(c=>c.id===cmd.commentId);if(!comment||comment.authorId!==uid)throw new Error('Only the author can edit this reply.');comment.body=clean(cmd.body,2000);comment.editedAt=ctx.now;break;
+    }
+    case 'comment.delete': {
+      const p=post(cmd.postId);const comment=p.comments.find(c=>c.id===cmd.commentId);if(!comment||comment.authorId!==uid)throw new Error('Only the author can delete this reply.');p.comments=p.comments.filter(c=>c.id!==cmd.commentId);break;
+    }
     case "post.vote": {
       const p = post(cmd.postId);
+      if(!s.preferences.joinedCommunityIds.includes(p.communityId))throw new Error('Join this community before voting.');
       if (p.votes[uid] === cmd.value) delete p.votes[uid];
       else p.votes[uid] = cmd.value;
       break;
@@ -200,6 +219,7 @@ export function applyCommand(
         : [...s.preferences.savedPostIds, post(cmd.postId).id];
       break;
     case "post.comment":
+      if(!s.preferences.joinedCommunityIds.includes(post(cmd.postId).communityId))throw new Error('Join this community before replying.');
       post(cmd.postId).comments.push({
         id: ctx.id,
         authorId: uid,
@@ -209,6 +229,7 @@ export function applyCommand(
       break;
     case "poll.vote": {
       const p = post(cmd.postId);
+      if(!s.preferences.joinedCommunityIds.includes(p.communityId))throw new Error('Join this community before voting.');
       if (!p.poll || p.poll.closesAt <= ctx.now)
         throw new Error("This poll has closed.");
       if (!p.poll.options.some((o) => o.id === cmd.optionId))
@@ -416,23 +437,32 @@ export function applyCommand(
     case "onboarding.complete":
       s.preferences.interests = cmd.interests.slice(0, 12);
       s.preferences.onboardingComplete = true;
+      if(cmd.replaceChannels){if(!cmd.channelScopeIds||cmd.channelIds.some(id=>!cmd.channelScopeIds!.includes(id)))throw new Error('Choose channels from the displayed scope.');for(const id of cmd.channelScopeIds){const channel=s.channels.find(c=>c.id===id);if(!channel||(channel.visibility==='private'&&!channel.memberIds?.includes(uid)))throw new Error('Choose channels you can access.');if(!cmd.channelIds.includes(id)&&(s.preferences.subscriptions[id]??s.preferences.subscriptions[channel.conferenceId]??'muted')==='following')s.preferences.subscriptions[id]='muted';}}
       cmd.channelIds.forEach((id) => {
         if (s.channels.some((c) => c.id === id))
           s.preferences.subscriptions[id] = "following";
       });
       if (me) me.interests = s.preferences.interests;
       break;
-    case "report.create":
+    case "report.create": {
+      if(cmd.targetType==='comment'&&(!cmd.postId||!s.posts.find(p=>p.id===cmd.postId)?.comments.some(c=>c.id===cmd.targetId)))throw new Error('Choose a reply that is still available.');
+      const target=cmd.targetType==='post'?s.posts.find(p=>p.id===cmd.targetId):cmd.targetType==='comment'?s.posts.find(p=>p.id===cmd.postId)?.comments.find(c=>c.id===cmd.targetId):cmd.targetType==='message'?s.messages.find(m=>m.id===cmd.targetId):cmd.targetType==='directMessage'?s.directMessages.find(d=>d.id===cmd.targetId&&[d.fromId,d.toId].includes(uid)):s.profiles.find(p=>p.id===cmd.targetId);
+      if(!target)throw new Error('Choose content that is still available to you.');
+      const body='body' in target?target.body:'bio' in target?target.bio:'';
+      const authorId='authorId' in target?target.authorId:'fromId' in target?target.fromId:target.id;
       s.reports.push({
         id: ctx.id,
         reporterId: uid,
         targetId: cmd.targetId,
         targetType: cmd.targetType,
+        ...(cmd.postId?{postId:cmd.postId}:{}),
         reason: clean(cmd.reason, 1500),
         createdAt: ctx.now,
         status: "open",
+          snapshot:{body:body.slice(0,2000),authorId,capturedAt:ctx.now,...('title' in target&&typeof target.title==='string'?{title:target.title}: {})},
       });
       break;
+    }
     default:
       throw new Error(
         "This moderation action is available in the connected live app.",

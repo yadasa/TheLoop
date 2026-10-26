@@ -16,6 +16,8 @@ import {
   validateProfile,
 } from "./policy";
 import { withContributors } from "./contributions";
+import { commandFields, editablePost } from "./authorControls";
+import { directoryFields } from "./directory.js";
 
 export interface TransactionStore {
   get(path: string): Promise<Doc | undefined>;
@@ -44,7 +46,14 @@ export async function bootstrap(
     store.get(profilePath),
     store.get(`trustSignals/${actor.uid}`),
   ]);
-  if (existingUser && existingProfile)
+  if (existingUser && existingProfile) {
+    const fields = directoryFields(existingProfile);
+    if (
+      existingProfile.nameKey !== fields.nameKey ||
+      JSON.stringify(existingProfile.searchKeys) !==
+        JSON.stringify(fields.searchKeys)
+    )
+      store.set(profilePath, { ...existingProfile, ...fields });
     return {
       userId: actor.uid,
       preferences: existingUser.preferences,
@@ -53,6 +62,7 @@ export async function bootstrap(
           ? existingUser.role
           : "member",
     };
+  }
   const displayName = text(name || actor.name || "Loop member", "Name", 80);
   const profile: Doc = existingProfile || {
     id: actor.uid,
@@ -85,6 +95,7 @@ export async function bootstrap(
     verifiedAttendance: signals?.verifiedAttendance || 0,
   };
   profile.trust = calculateTrust(profile, serverSignals, now);
+  Object.assign(profile, directoryFields(profile));
   const preferences = existingUser?.preferences || defaultPreferences();
   store.set(userPath, {
     ...(existingUser || {}),
@@ -248,6 +259,25 @@ export async function execute(
   }
   function savePreferences(): void {
     prefsChanged = true;
+  }
+  function auditRemoval(
+    targetType: "post" | "comment",
+    targetId: string,
+    subjectAuthorId: string,
+    postId: string,
+  ): void {
+    store.set(`moderationAudit/${requestId}`, {
+      id: requestId,
+      actorId: actor.uid,
+      action: `${targetType}.delete`,
+      targetType,
+      targetId,
+      postId,
+      subjectAuthorId,
+      authorization:
+        subjectAuthorId === actor.uid ? "author" : "global-moderator",
+      createdAt: now,
+    });
   }
 
   switch (commandType) {
@@ -494,25 +524,56 @@ export async function execute(
     case "onboarding.complete": {
       const interests = list(command.interests, "Interests", 30);
       const channelIds = list(command.channelIds, "Channels", 80, 128);
-      for (const channelId of channelIds) {
+      assert(
+        command.replaceChannels === undefined ||
+          typeof command.replaceChannels === "boolean",
+        "invalid-argument",
+        "Choose whether to replace the displayed channel selection.",
+      );
+      const replacing = command.replaceChannels === true;
+      const scopeIds = replacing
+        ? list(command.channelScopeIds, "Displayed channel scope", 80, 128)
+        : channelIds;
+      assert(
+        !replacing ||
+          channelIds.every((channelId) => scopeIds.includes(channelId)),
+        "invalid-argument",
+        "Selected channels must be within the displayed channel scope.",
+      );
+      const subscriptions = { ...prefs.subscriptions };
+      for (const channelId of scopeIds) {
         const channel = await channelAccess(channelId);
+        const previous = prefs.subscriptions[channelId];
+        const effective =
+          previous || prefs.subscriptions[channel.conferenceId] || "muted";
+        const next = channelIds.includes(channelId)
+          ? "following"
+          : effective === "following"
+            ? "muted"
+            : previous;
+        if (next !== undefined) subscriptions[channelId] = next;
+        const wasExplicitlyFollowing = previous === "following";
+        const nowExplicitlyFollowing = next === "following";
         if (
           channel.visibility === "public" &&
-          prefs.subscriptions[channelId] !== "following"
+          wasExplicitlyFollowing !== nowExplicitlyFollowing
         )
           store.set(`channels/${channel.id}`, {
             ...channel,
-            members: Number(channel.members || 0) + 1,
+            members: Math.max(
+              0,
+              Number(channel.members || 0) + (nowExplicitlyFollowing ? 1 : -1),
+            ),
           });
       }
+      assert(
+        Object.keys(subscriptions).length <= 1000,
+        "resource-exhausted",
+        "Subscription limit reached.",
+      );
       prefs.interests = interests;
       prefs.onboardingComplete = true;
-      prefs.subscriptions = {
-        ...prefs.subscriptions,
-        ...Object.fromEntries(
-          channelIds.map((channelId) => [channelId, "following"]),
-        ),
-      };
+      prefs.subscriptions = subscriptions;
       profile.interests = interests;
       profileChanged = true;
       savePreferences();
@@ -744,22 +805,103 @@ export async function execute(
       store.set(`posts/${entityId}`, withContributors(post));
       break;
     }
-    case "post.vote":
-    case "post.save":
-    case "post.comment":
-    case "poll.vote": {
+    case "post.edit": {
+      commandFields(command, ["type", "postId", "post"]);
       const post = await requireDoc("posts", command.postId);
-      if (commandType !== "post.save") await communityAccess(post.communityId);
-      if (commandType === "post.save") {
+      assert(
+        post.authorId === actor.uid,
+        "permission-denied",
+        "Only the author can edit this post.",
+      );
+      const { patch, removeUrl } = editablePost(command.post, post.kind);
+      const updated: Doc = { ...post, ...patch, editedAt: now };
+      if (removeUrl) delete updated.url;
+      assert(
+        updated.kind !== "link" || updated.url,
+        "invalid-argument",
+        "Link posts must retain a valid HTTPS URL.",
+      );
+      store.set(`posts/${post.id}`, withContributors(updated));
+      break;
+    }
+    case "post.delete": {
+      commandFields(command, ["type", "postId"]);
+      const post = await requireDoc("posts", command.postId);
+      assert(
+        post.authorId === actor.uid ||
+          user.role === "admin" ||
+          user.role === "moderator",
+        "permission-denied",
+        "Only the author or a global moderator can remove this post.",
+      );
+      auditRemoval("post", post.id, post.authorId, post.id);
+      store.remove(`posts/${post.id}`);
+      break;
+    }
+    case "comment.edit":
+    case "comment.delete": {
+      commandFields(
+        command,
+        commandType === "comment.edit"
+          ? ["type", "postId", "commentId", "body"]
+          : ["type", "postId", "commentId"],
+      );
+      const post = await requireDoc("posts", command.postId);
+      const commentId = id(command.commentId);
+      const comment = (post.comments || []).find(
+        (item: Doc) => item.id === commentId,
+      );
+      assert(comment, "not-found", "This reply is no longer available.");
+      assert(
+        comment.authorId === actor.uid ||
+          (commandType === "comment.delete" &&
+            (user.role === "admin" || user.role === "moderator")),
+        "permission-denied",
+        commandType === "comment.edit"
+          ? "Only the author can edit this reply."
+          : "Only the reply author or a global moderator can remove it.",
+      );
+      const comments =
+        commandType === "comment.edit"
+          ? post.comments.map((item: Doc) =>
+              item.id === commentId
+                ? {
+                    ...item,
+                    body: text(command.body, "Reply", 3000),
+                    editedAt: now,
+                  }
+                : item,
+            )
+          : post.comments.filter((item: Doc) => item.id !== commentId);
+      if (commandType === "comment.delete")
+        auditRemoval("comment", commentId, comment.authorId, post.id);
+      store.set(`posts/${post.id}`, withContributors({ ...post, comments }));
+      break;
+    }
+    case "post.save": {
+      const postId = id(command.postId);
+      if (prefs.savedPostIds.includes(postId))
+        prefs.savedPostIds = prefs.savedPostIds.filter(
+          (savedId: string) => savedId !== postId,
+        );
+      else {
+        await requireDoc("posts", postId);
         assert(
-          prefs.savedPostIds.length < 1000 ||
-            prefs.savedPostIds.includes(post.id),
+          prefs.savedPostIds.length < 1000,
           "resource-exhausted",
           "Saved post limit reached.",
         );
-        prefs.savedPostIds = toggle(prefs.savedPostIds, post.id);
-        savePreferences();
-      } else if (commandType === "post.vote") {
+        prefs.savedPostIds = [...prefs.savedPostIds, postId];
+      }
+      savePreferences();
+      break;
+    }
+    case "post.vote":
+    case "post.comment":
+    case "poll.vote": {
+      const post = await requireDoc("posts", command.postId);
+      await communityAccess(post.communityId);
+      if (commandType === "post.vote") {
         assert(
           command.value === 1 || command.value === -1,
           "invalid-argument",
@@ -1258,25 +1400,74 @@ export async function execute(
     case "report.create": {
       const targetType = command.targetType;
       assert(
-        ["message", "post", "profile"].includes(targetType),
+        ["message", "post", "profile", "comment", "directMessage"].includes(
+          targetType,
+        ),
         "invalid-argument",
         "Invalid report target.",
       );
       const targetId = id(command.targetId);
-      const target = await requireDoc(
-        targetType === "message"
-          ? "messages"
-          : targetType === "post"
-            ? "posts"
-            : "profiles",
-        targetId,
-      );
+      let target: Doc;
+      let postId: string | undefined;
+      if (targetType === "comment") {
+        const post = await requireDoc("posts", command.postId);
+        postId = post.id;
+        target = (post.comments || []).find(
+          (comment: Doc) => comment.id === targetId,
+        );
+        assert(target, "not-found", "This reply is no longer available.");
+      } else
+        target = await requireDoc(
+          targetType === "message"
+            ? "messages"
+            : targetType === "post"
+              ? "posts"
+              : targetType === "directMessage"
+                ? "directMessages"
+                : "profiles",
+          targetId,
+        );
       if (targetType === "message") await channelAccess(target.channelId);
+      if (targetType === "directMessage")
+        assert(
+          target.participantIds?.includes(actor.uid),
+          "permission-denied",
+          "Only a participant can report this private message.",
+        );
+      if (
+        targetType === "profile" &&
+        target.visibility !== "public" &&
+        target.id !== actor.uid
+      ) {
+        const connection = await store.get(
+          `connections/${pairId(actor.uid, target.id)}`,
+        );
+        assert(
+          connection?.status === "accepted",
+          "permission-denied",
+          "This profile is visible to connections only.",
+        );
+      }
+      const snapshotBody =
+        targetType === "profile"
+          ? [target.headline, target.bio].filter(Boolean).join("\n")
+          : target.body;
+      const snapshot = {
+        body: String(snapshotBody || "").slice(0, 2000),
+        authorId: target.authorId || target.fromId || target.id,
+        capturedAt: now,
+        ...(targetType === "post"
+          ? { title: String(target.title || "").slice(0, 180) }
+          : {}),
+      };
       store.set(`reports/${entityId}`, {
         id: entityId,
         reporterId: actor.uid,
         targetId,
         targetType,
+        ...(postId ? { postId } : {}),
+        targetAuthorId: snapshot.authorId,
+        snapshot,
         reason: text(command.reason, "Reason", 2000),
         createdAt: now,
         status: "open",
@@ -1298,12 +1489,47 @@ export async function execute(
       assert(
         report.targetType !== "profile" || command.outcome !== "remove",
         "failed-precondition",
-        "Profile reports require an account review; this action only removes messages or posts.",
+        "Profile reports require an account review; this action only removes messages, posts or replies.",
       );
-      if (command.outcome === "remove" && report.targetType !== "profile")
-        store.remove(
-          `${report.targetType === "message" ? "messages" : "posts"}/${report.targetId}`,
+      if (command.outcome === "remove" && report.targetType === "comment") {
+        const postId = id(report.postId);
+        const post = await store.get(`posts/${postId}`);
+        const comment = (post?.comments || []).find(
+          (item: Doc) => item.id === report.targetId,
         );
+        auditRemoval(
+          "comment",
+          report.targetId,
+          comment?.authorId || report.targetAuthorId || "unavailable",
+          postId,
+        );
+        if (post && comment)
+          store.set(
+            `posts/${post.id}`,
+            withContributors({
+              ...post,
+              comments: post.comments.filter(
+                (item: Doc) => item.id !== report.targetId,
+              ),
+            }),
+          );
+      } else if (
+        command.outcome === "remove" &&
+        report.targetType !== "profile"
+      ) {
+        if (report.targetType === "post") {
+          const post = await store.get(`posts/${id(report.targetId)}`);
+          auditRemoval(
+            "post",
+            report.targetId,
+            post?.authorId || report.targetAuthorId || "unavailable",
+            report.targetId,
+          );
+        }
+        store.remove(
+          `${report.targetType === "message" ? "messages" : report.targetType === "directMessage" ? "directMessages" : "posts"}/${report.targetId}`,
+        );
+      }
       store.set(`reports/${report.id}`, {
         ...report,
         status: "reviewed",
@@ -1380,6 +1606,7 @@ export async function execute(
     signals?.emailVerified !== actor.emailVerified
   ) {
     profile.trust = calculateTrust(profile, serverSignals, now);
+    Object.assign(profile, directoryFields(profile));
     store.set(`profiles/${actor.uid}`, profile);
     store.set(`trustSignals/${actor.uid}`, serverSignals);
   }

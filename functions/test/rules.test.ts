@@ -34,12 +34,7 @@ before(async () => {
       rules: readFileSync(resolve(__dirname, "../../firestore.rules"), "utf8"),
     },
   });
-});
-after(async () => {
-  await env?.cleanup();
-});
-// These cases only read records or assert rejected writes, so the fixture is immutable.
-before(async () => {
+  // These cases only read records or assert rejected writes, so the fixture is immutable.
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
@@ -124,6 +119,12 @@ before(async () => {
         reporterId: "alice",
         reason: "Private report",
       },
+      "moderationAudit/removal": {
+        actorId: "mod",
+        subjectAuthorId: "bob",
+        action: "comment.delete",
+        targetId: "reply",
+      },
       "trustSignals/alice": { emailVerified: true },
       "users/alice/system/rate": { count: 1 },
       "users/alice/pushTokens/token": { token: "ExpoPushToken[test]" },
@@ -134,6 +135,10 @@ before(async () => {
       Object.entries(rows).map(([path, data]) => setDoc(doc(db, path), data)),
     );
   });
+});
+
+after(async () => {
+  await env?.cleanup();
 });
 
 test("anonymous and disabled accounts cannot read community content", async () => {
@@ -293,6 +298,18 @@ test("reports are private to reporter and server-owned moderator roles", async (
   );
   await assertSucceeds(
     getDocs(collection(env.authenticatedContext("mod").firestore(), "reports")),
+  );
+});
+test("removal audit is read-only and restricted to global moderators", async () => {
+  const alice = env.authenticatedContext("alice").firestore();
+  const mod = env.authenticatedContext("mod").firestore();
+  await assertFails(getDoc(doc(alice, "moderationAudit/removal")));
+  await assertSucceeds(getDoc(doc(mod, "moderationAudit/removal")));
+  await assertFails(
+    setDoc(doc(mod, "moderationAudit/forged"), {
+      actorId: "mod",
+      action: "post.delete",
+    }),
   );
 });
 test("trust inputs, rate counters, push tokens, receipts, grants and deletion jobs are inaccessible", async () => {

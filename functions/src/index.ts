@@ -588,6 +588,17 @@ export const processAccountDeletion = onDocumentCreated(
       ["trustAppeals", "userId", "=="],
     ] as const)
       await mutateMatching(collection, field, operator, uid);
+    await mutateMatching("moderationAudit", "actorId", "==", uid, (data) => ({
+      ...data,
+      actorId: "deleted-member",
+    }));
+    await mutateMatching(
+      "moderationAudit",
+      "subjectAuthorId",
+      "==",
+      uid,
+      (data) => ({ ...data, subjectAuthorId: "deleted-member" }),
+    );
     // Decrement community counts exactly once by clearing the disappearing membership in the
     // same transaction. This also remains safe if the worker resumes after a partial failure.
     const privateUser = await db.doc(`users/${uid}`).get();

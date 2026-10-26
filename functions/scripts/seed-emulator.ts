@@ -2,6 +2,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { withContributors } from "../src/contributions";
+import { directoryFields } from "../src/directory.js";
 import { initialState, defaultPreferences } from "../../packages/core/src/seed";
 if (
   !process.env.FIRESTORE_EMULATOR_HOST ||
@@ -35,7 +36,10 @@ async function main() {
         )
           throw error;
       });
-    batch.set(db.doc(`profiles/${profile.id}`), profile);
+    batch.set(db.doc(`profiles/${profile.id}`), {
+      ...profile,
+      ...directoryFields(profile),
+    });
     batch.set(db.doc(`users/${profile.id}`), {
       id: profile.id,
       preferences:

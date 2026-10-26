@@ -62,6 +62,8 @@ test("profile input cannot forge verification, founding-year badges, or trust", 
     "id",
     "followerCount",
     "followingCount",
+    "nameKey",
+    "searchKeys",
   ])
     assert.throws(() => validateProfile({ [field]: true }), DomainError);
   assert.throws(

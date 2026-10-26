@@ -609,3 +609,440 @@ test("post mutation handlers maintain the contributor query index without accept
   });
   assert.deepEqual(db.get(`posts/${created.id}`).contributorIds, ["bob"]);
 });
+test("replacing displayed onboarding choices mutes deselected follows and preserves explicit mutes/hides", async () => {
+  const db = await database();
+  for (const channelId of ["chosen", "inherited", "quiet", "hidden", "outside"])
+    db.documents.set(`channels/${channelId}`, {
+      id: channelId,
+      conferenceId: "afrotech",
+      visibility: "public",
+      members: channelId === "outside" ? 1 : 0,
+    });
+  await db.command("alice", {
+    type: "subscription.set",
+    targetId: "lobby",
+    value: "following",
+  });
+  db.get("users/alice").preferences.subscriptions = {
+    ...db.get("users/alice").preferences.subscriptions,
+    afrotech: "following",
+    quiet: "muted",
+    hidden: "hidden",
+    outside: "following",
+  };
+  await db.command("alice", {
+    type: "onboarding.complete",
+    interests: ["Technology"],
+    channelIds: ["chosen"],
+    replaceChannels: true,
+    channelScopeIds: ["lobby", "chosen", "inherited", "quiet", "hidden"],
+  });
+  assert.deepEqual(db.get("users/alice").preferences.subscriptions, {
+    afrotech: "following",
+    lobby: "muted",
+    chosen: "following",
+    inherited: "muted",
+    quiet: "muted",
+    hidden: "hidden",
+    outside: "following",
+  });
+  assert.equal(db.get("channels/lobby").members, 0);
+  assert.equal(db.get("channels/chosen").members, 1);
+  assert.equal(db.get("channels/inherited").members, 0);
+  assert.equal(db.get("channels/outside").members, 1);
+  await db.command("alice", {
+    type: "onboarding.complete",
+    interests: [],
+    channelIds: ["chosen"],
+    replaceChannels: true,
+    channelScopeIds: ["lobby", "chosen"],
+  });
+  assert.equal(db.get("channels/chosen").members, 1);
+});
+test("default onboarding stays additive and empty interest-only update never clears follows", async () => {
+  const db = await database();
+  await db.command("alice", {
+    type: "subscription.set",
+    targetId: "lobby",
+    value: "following",
+  });
+  await db.command("alice", {
+    type: "onboarding.complete",
+    interests: ["Design"],
+    channelIds: [],
+  });
+  assert.equal(
+    db.get("users/alice").preferences.subscriptions.lobby,
+    "following",
+  );
+  assert.equal(db.get("channels/lobby").members, 1);
+});
+test("replacement scope rejects hidden unauthorized private channels and selected IDs outside scope atomically", async () => {
+  const db = await database();
+  await assert.rejects(
+    () =>
+      db.command("bob", {
+        type: "onboarding.complete",
+        interests: [],
+        channelIds: ["lobby"],
+        replaceChannels: true,
+        channelScopeIds: ["lobby", "private"],
+      }),
+    /Join this private/,
+  );
+  assert.equal(db.get("channels/lobby").members, undefined);
+  assert.deepEqual(db.get("users/bob").preferences.subscriptions, {});
+  await assert.rejects(
+    () =>
+      db.command("bob", {
+        type: "onboarding.complete",
+        interests: [],
+        channelIds: ["lobby"],
+        replaceChannels: true,
+        channelScopeIds: [],
+      }),
+    /within the displayed/,
+  );
+  await assert.rejects(
+    () =>
+      db.command("bob", {
+        type: "onboarding.complete",
+        interests: [],
+        channelIds: [],
+        replaceChannels: true,
+      }),
+    /scope/,
+  );
+});
+test("post authors can edit their content without changing identity, votes, or community", async () => {
+  const db = await database();
+  await db.command("alice", {
+    type: "community.join",
+    communityId: "builders",
+  });
+  const created = await db.command("alice", {
+    type: "post.create",
+    communityId: "builders",
+    title: "Original",
+    body: "Original body",
+    kind: "discussion",
+    url: "https://example.com/original",
+  });
+  const postBefore = structuredClone(db.get(`posts/${created.id}`));
+  await db.command("alice", {
+    type: "post.edit",
+    postId: created.id,
+    post: {
+      title: "Clearer title",
+      body: "Corrected context",
+      tags: ["Community"],
+      url: "",
+    },
+  });
+  const edited = db.get(`posts/${created.id}`);
+  assert.equal(edited.authorId, "alice");
+  assert.equal(edited.communityId, "builders");
+  assert.equal(edited.createdAt, postBefore.createdAt);
+  assert.deepEqual(edited.votes, postBefore.votes);
+  assert.equal(edited.editedAt, now);
+  assert.equal(edited.url, undefined);
+  await assert.rejects(
+    () =>
+      db.command("bob", {
+        type: "post.edit",
+        postId: created.id,
+        post: { body: "Impersonation" },
+      }),
+    /Only the author/,
+  );
+  db.get("users/eve").role = "moderator";
+  await assert.rejects(
+    () =>
+      db.command("eve", {
+        type: "post.edit",
+        postId: created.id,
+        post: { body: "Moderator impersonation" },
+      }),
+    /Only the author/,
+  );
+  await assert.rejects(
+    () =>
+      db.command("alice", {
+        type: "post.edit",
+        postId: created.id,
+        post: { votes: { alice: 100 }, authorId: "eve" },
+      }),
+    /Only title/,
+  );
+});
+test("link-kind post edits cannot silently remove the required HTTPS destination", async () => {
+  const db = await database();
+  await db.command("alice", {
+    type: "community.join",
+    communityId: "builders",
+  });
+  const created = await db.command("alice", {
+    type: "post.create",
+    communityId: "builders",
+    title: "Useful resource",
+    body: "Read this",
+    kind: "link",
+    url: "https://example.com/resource",
+  });
+  await assert.rejects(
+    () =>
+      db.command("alice", {
+        type: "post.edit",
+        postId: created.id,
+        post: { url: "" },
+      }),
+    /retain a valid HTTPS/,
+  );
+  assert.equal(
+    db.get(`posts/${created.id}`).url,
+    "https://example.com/resource",
+  );
+});
+test("post authors can remove after leaving and members can unsave a deleted post", async () => {
+  const db = await database();
+  await db.command("alice", {
+    type: "community.join",
+    communityId: "builders",
+  });
+  const created = await db.command("alice", {
+    type: "post.create",
+    communityId: "builders",
+    title: "My post",
+    body: "My context",
+    kind: "discussion",
+  });
+  await db.command("bob", { type: "post.save", postId: created.id });
+  await db.command("alice", {
+    type: "community.join",
+    communityId: "builders",
+  });
+  await db.command(
+    "alice",
+    { type: "post.delete", postId: created.id },
+    "author-delete",
+  );
+  assert.equal(db.documents.has(`posts/${created.id}`), false);
+  assert.equal(db.get("moderationAudit/author-delete").authorization, "author");
+  assert.equal(
+    db.get("moderationAudit/author-delete").subjectAuthorId,
+    "alice",
+  );
+  assert.equal(db.get("moderationAudit/author-delete").body, undefined);
+  await db.command("bob", { type: "post.save", postId: created.id });
+  assert.deepEqual(db.get("users/bob").preferences.savedPostIds, []);
+  await assert.rejects(
+    () => db.command("bob", { type: "post.save", postId: created.id }),
+    /no longer available/,
+  );
+});
+test("reply edit/delete obeys reply authorship, survives leaving, and preserves other replies", async () => {
+  const db = await database();
+  for (const uid of ["alice", "bob", "eve"])
+    await db.command(uid, { type: "community.join", communityId: "builders" });
+  const created = await db.command("alice", {
+    type: "post.create",
+    communityId: "builders",
+    title: "Discussion",
+    body: "Context",
+    kind: "discussion",
+  });
+  const bobReply = await db.command("bob", {
+    type: "post.comment",
+    postId: created.id,
+    body: "My reply",
+  });
+  const eveReply = await db.command("eve", {
+    type: "post.comment",
+    postId: created.id,
+    body: "Other reply",
+  });
+  await assert.rejects(
+    () =>
+      db.command("alice", {
+        type: "comment.delete",
+        postId: created.id,
+        commentId: bobReply.id,
+      }),
+    /reply author/,
+  );
+  db.get("users/eve").role = "moderator";
+  await assert.rejects(
+    () =>
+      db.command("eve", {
+        type: "comment.edit",
+        postId: created.id,
+        commentId: bobReply.id,
+        body: "Forged",
+      }),
+    /Only the author/,
+  );
+  await db.command("bob", { type: "community.join", communityId: "builders" });
+  await db.command("bob", {
+    type: "comment.edit",
+    postId: created.id,
+    commentId: bobReply.id,
+    body: "Corrected reply",
+  });
+  assert.equal(
+    db
+      .get(`posts/${created.id}`)
+      .comments.find((comment: Doc) => comment.id === bobReply.id).editedAt,
+    now,
+  );
+  await db.command("bob", {
+    type: "comment.delete",
+    postId: created.id,
+    commentId: bobReply.id,
+  });
+  assert.deepEqual(
+    db.get(`posts/${created.id}`).comments.map((comment: Doc) => comment.id),
+    [eveReply.id],
+  );
+  assert.deepEqual(db.get(`posts/${created.id}`).contributorIds, ["eve"]);
+  await db.command(
+    "eve",
+    { type: "post.delete", postId: created.id },
+    "mod-delete",
+  );
+  assert.equal(
+    db.get("moderationAudit/mod-delete").authorization,
+    "global-moderator",
+  );
+});
+test("comment reports remove exactly the reported reply, retain the parent thread, and audit the decision", async () => {
+  const db = await database();
+  for (const uid of ["alice", "bob", "eve"])
+    await db.command(uid, { type: "community.join", communityId: "builders" });
+  const created = await db.command("alice", {
+    type: "post.create",
+    communityId: "builders",
+    title: "Keep this thread",
+    body: "Parent context",
+    kind: "discussion",
+  });
+  const reported = await db.command("bob", {
+    type: "post.comment",
+    postId: created.id,
+    body: "Reported reply",
+  });
+  const retained = await db.command("eve", {
+    type: "post.comment",
+    postId: created.id,
+    body: "Keep this reply",
+  });
+  const report = await db.command("alice", {
+    type: "report.create",
+    targetType: "comment",
+    targetId: reported.id,
+    postId: created.id,
+    reason: "Please review only this reply",
+  });
+  db.get("users/eve").role = "moderator";
+  await db.command(
+    "eve",
+    { type: "report.review", reportId: report.id, outcome: "remove" },
+    "review-comment",
+  );
+  assert.equal(db.get(`posts/${created.id}`).title, "Keep this thread");
+  assert.deepEqual(
+    db.get(`posts/${created.id}`).comments.map((comment: Doc) => comment.id),
+    [retained.id],
+  );
+  assert.deepEqual(db.get(`posts/${created.id}`).contributorIds, ["eve"]);
+  assert.equal(db.get("moderationAudit/review-comment").targetId, reported.id);
+  await assert.rejects(
+    () =>
+      db.command("alice", {
+        type: "report.create",
+        targetType: "comment",
+        targetId: retained.id,
+        reason: "Missing parent",
+      }),
+    /ID/,
+  );
+});
+test("reported snapshots are bounded and available only after the reporter can read the target", async () => {
+  const db = await database();
+  const sent = await db.command("alice", {
+    type: "message.send",
+    channelId: "private",
+    topic: "Private",
+    body: "Sensitive contextual message",
+  });
+  await assert.rejects(
+    () =>
+      db.command("bob", {
+        type: "report.create",
+        targetType: "message",
+        targetId: sent.id,
+        reason: "Unauthorized read attempt",
+      }),
+    /Join this private/,
+  );
+  const ownReport = await db.command("alice", {
+    type: "report.create",
+    targetType: "message",
+    targetId: sent.id,
+    reason: "Review this context",
+  });
+  assert.equal(
+    db.get(`reports/${ownReport.id}`).snapshot.body,
+    "Sensitive contextual message",
+  );
+  assert.equal(db.get(`reports/${ownReport.id}`).snapshot.authorId, "alice");
+  await db.command("alice", { type: "message.delete", messageId: sent.id });
+  assert.equal(
+    db.get(`reports/${ownReport.id}`).snapshot.body,
+    "Sensitive contextual message",
+  );
+  await db.command("bob", {
+    type: "profile.update",
+    profile: { visibility: "connections", bio: "Private profile context" },
+  });
+  await assert.rejects(
+    () =>
+      db.command("eve", {
+        type: "report.create",
+        targetType: "profile",
+        targetId: "bob",
+        reason: "Cannot read this profile",
+      }),
+    /connections only/,
+  );
+  db.documents.set("directMessages/private-dm", {
+    id: "private-dm",
+    fromId: "alice",
+    toId: "bob",
+    participantIds: ["alice", "bob"],
+    body: "x".repeat(3000),
+  });
+  await assert.rejects(
+    () =>
+      db.command("eve", {
+        type: "report.create",
+        targetType: "directMessage",
+        targetId: "private-dm",
+        reason: "Unauthorized private conversation",
+      }),
+    /participant/,
+  );
+  const dmReport = await db.command("bob", {
+    type: "report.create",
+    targetType: "directMessage",
+    targetId: "private-dm",
+    reason: "Review a received message",
+  });
+  assert.equal(db.get(`reports/${dmReport.id}`).snapshot.body.length, 2000);
+  db.get("users/eve").role = "moderator";
+  await db.command("eve", {
+    type: "report.review",
+    reportId: dmReport.id,
+    outcome: "remove",
+  });
+  assert.equal(db.documents.has("directMessages/private-dm"), false);
+});
