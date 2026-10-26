@@ -1,11 +1,16 @@
-import * as auth from "firebase/auth";
 import type { Persistence } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Firebase exposes this function in its react-native package condition; the
-// browser declaration selected by TypeScript does not include that export.
-const nativeAuth = auth as typeof auth & {
-  getReactNativePersistence(storage: typeof AsyncStorage): Persistence;
-};
-export const authPersistence =
-  nativeAuth.getReactNativePersistence(AsyncStorage);
+export async function loadAuthPersistence(): Promise<Persistence> {
+  const auth = await import("firebase/auth");
+  // Metro selects Firebase's react-native condition. Its browser declaration
+  // does not include this native-only export.
+  const nativeAuth = auth as unknown as {
+    getReactNativePersistence?: (storage: typeof AsyncStorage) => Persistence;
+  };
+  if (typeof nativeAuth.getReactNativePersistence !== "function")
+    throw new Error(
+      "Native authentication persistence is unavailable in this build.",
+    );
+  return nativeAuth.getReactNativePersistence(AsyncStorage);
+}

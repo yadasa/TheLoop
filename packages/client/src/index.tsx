@@ -6,43 +6,9 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { initializeApp, getApps, type FirebaseOptions } from "firebase/app";
-import {
-  getAuth,
-  initializeAuth,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  updateProfile,
-  signOut as firebaseSignOut,
-  sendPasswordResetEmail,
-  sendEmailVerification,
-  reload,
-  connectAuthEmulator,
-  type Auth,
-  type Persistence,
-} from "firebase/auth";
-import {
-  getFirestore,
-  collection,
-  doc,
-  onSnapshot,
-  query,
-  where,
-  limit,
-  orderBy,
-  documentId,
-  getDocs,
-  connectFirestoreEmulator,
-  type Firestore,
-  type Query,
-} from "firebase/firestore";
-import {
-  getFunctions,
-  httpsCallable,
-  connectFunctionsEmulator,
-  type Functions,
-} from "firebase/functions";
+import type { FirebaseOptions } from "firebase/app";
+import type { Auth, Persistence } from "firebase/auth";
+import type { Query } from "firebase/firestore";
 import {
   applyCommand,
   initialState,
@@ -64,10 +30,9 @@ import {
   type DirectCatalogProgress,
 } from "@theloop/core";
 import { documentIdBatches, matchesDirectory, mergeMessages, mergeSquadInvites, normalizeDirectoryQuery, previewChannelIds, revokePrivateProfiles, visibleSquadMessages } from "./data";
-import { directoryPageQuery, messagePageQuery, squadMessagePageQuery, squadMembershipQuery, squadParticipantInvitesQuery, squadIncomingInvitesQuery, squadOwnerInvitesQuery } from "./queries";
 import { MessagePages } from "./messagePages";
 import { directConversationId, isDirectConversation, mergeDirectMessages, type DirectSnapshot } from "./directData";
-import { directMessagePageQuery, directCatalogPageQuery } from "./directQueries";
+import { lazyRuntime, resolveLiveRuntime } from "./lazyRuntime";
 import { deriveDirectCatalog, emptyDirectCatalog, mergeDirectWatermark, newerDirectCatalogProgress, normalizeDirectConversation, normalizeDirectRead, parseDirectCatalogProgress, parseDirectConversation, type DirectCatalogState, type DirectWatermark } from "./directCatalog";
 import { drainDirectRead } from "./directRead";
 import { DocumentWatch, type DocumentStatus } from "./documentWatch";
@@ -145,39 +110,10 @@ type LoopContextValue = {
   syncDirectConversations(): Promise<void>;
 };
 const Context = createContext<LoopContextValue | null>(null);
-let cloud: { auth: Auth; db: Firestore; functions: Functions } | undefined;
-function setup(
-  config: FirebaseOptions,
-  emulator = false,
-  persistence?: Persistence,
-  emulators: EmulatorConfig = {},
-) {
-  if (cloud) return cloud;
-  const app =
-    getApps().find((a) => a.name === "theloop") ??
-    initializeApp(config, "theloop");
-  const auth = persistence
-      ? initializeAuth(app, { persistence })
-      : getAuth(app),
-    db = getFirestore(app),
-    functions = getFunctions(app, "us-central1");
-  if (emulator) {
-    const host = (emulators.host || "127.0.0.1").trim();
-    if (!host || /[\s/?#]/.test(host)) throw new Error("Use a hostname or IP address for the emulator host.");
-    const address = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-    const authPort = emulators.authPort ?? 9099;
-    const firestorePort = emulators.firestorePort ?? 8080;
-    const functionsPort = emulators.functionsPort ?? 5001;
-    if ([authPort, firestorePort, functionsPort].some(port => !Number.isInteger(port) || port < 1 || port > 65535)) throw new Error("Emulator ports must be whole numbers from 1 to 65,535.");
-    connectAuthEmulator(auth, `http://${address}:${authPort}`, {
-      disableWarnings: true,
-    });
-    connectFirestoreEmulator(db, address, firestorePort);
-    connectFunctionsEmulator(functions, address, functionsPort);
-  }
-  cloud = { auth, db, functions };
-  return cloud;
-}
+type FirebaseRuntime = typeof import("./firebaseRuntime");
+type Cloud = ReturnType<FirebaseRuntime["setup"]>;
+let cloud: Cloud | undefined;
+const loadFirebaseRuntime = lazyRuntime(() => import("./firebaseRuntime"));
 const readableError = (e: unknown) => {
   const message =
     e instanceof Error ? e.message : "Something went wrong. Please try again.";
@@ -238,6 +174,7 @@ export function LoopProvider({
   firebaseConfig,
   useEmulators = false,
   authPersistence,
+  authPersistenceFactory,
   emulators,
 }: {
   children: React.ReactNode;
@@ -245,6 +182,7 @@ export function LoopProvider({
   firebaseConfig?: FirebaseOptions;
   useEmulators?: boolean;
   authPersistence?: Persistence;
+  authPersistenceFactory?: () => Promise<Persistence | undefined>;
   emulators?: EmulatorConfig;
 }) {
   const mode = firebaseConfig?.apiKey ? "live" : "demo";
@@ -255,6 +193,16 @@ export function LoopProvider({
   stateRef.current = state;
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  const transportGeneration = useRef(0);
+  const liveCloud = async () => {
+    const generation = transportGeneration.current, actorId = cloud?.auth.currentUser?.uid;
+    const current = () => modeRef.current === "live" && generation === transportGeneration.current && cloud?.auth.currentUser?.uid === actorId;
+    const resolved = await resolveLiveRuntime({ load: loadFirebaseRuntime, prepare: () => cloud ? undefined : authPersistence ?? authPersistenceFactory?.(), current });
+    if (!resolved) throw new MediaScopeChanged();
+    const sdk = resolved.runtime, c = sdk.setup(firebaseConfig!, useEmulators, resolved.prepared, emulators);
+    cloud = c;
+    return { sdk, c };
+  };
   const imageCache = useRef(new ImageMemoryCache());
   const [mediaRevision, setMediaRevision] = useState(0);
   const [ready, setReady] = useState(false),
@@ -458,6 +406,7 @@ export function LoopProvider({
   }, [mode, state.profiles, directoryQuery]);
   useEffect(() => {
     let active = true;
+    transportGeneration.current++;
     liveActions.current = {};
     catalogLoaders.current = {};
     previewReady.current = false;
@@ -486,23 +435,22 @@ export function LoopProvider({
       if (!storageRef.current) { previewReady.current = true; setReady(true); }
       return () => {
         active = false;
+        transportGeneration.current++;
         previewReady.current = false;
         imageCache.current.clear();
       };
     }
-    let c: ReturnType<typeof setup>;
-    try {
-      c = setup(firebaseConfig!, useEmulators, authPersistence, emulators);
-    } catch (e) {
-      setError(readableError(e));
-      setReady(true);
-      return () => {
-        active = false;
-      };
-    }
     let dispose: (() => void)[] = [];
     let generation = 0;
-    const off = onAuthStateChanged(c.auth, async (user) => {
+    let off = () => {};
+    void (async () => {
+      const resolved = await resolveLiveRuntime({ load: loadFirebaseRuntime, prepare: () => cloud ? undefined : authPersistence ?? authPersistenceFactory?.(), current: () => active && modeRef.current === "live" });
+      if (!resolved) return;
+      const sdk = resolved.runtime, c = sdk.setup(firebaseConfig!, useEmulators, resolved.prepared, emulators);
+      cloud = c;
+      const { onAuthStateChanged, httpsCallable, collection, doc, onSnapshot, query, where, limit, orderBy, documentId, getDocs, directoryPageQuery, messagePageQuery, squadMessagePageQuery, squadMembershipQuery, squadParticipantInvitesQuery, squadIncomingInvitesQuery, squadOwnerInvitesQuery, directMessagePageQuery, directCatalogPageQuery } = sdk;
+      off = onAuthStateChanged(c.auth, async (user) => {
+      if (!active) return;
       const turn = ++generation;
       imageCache.current.clear(); setMediaRevision(value => value + 1);
       dispose.forEach((fn) => fn());
@@ -1718,12 +1666,21 @@ export function LoopProvider({
           setReady(true);
         }
       }
+      });
+    })().catch(e => {
+      if (!active) return;
+      failureOutside(e);
+      const message = readableError(e);
+      setPostStatus({ id: postRef.current, loading: false, notFound: false, error: postRef.current ? message : null });
+      setEventStatus({ id: eventRef.current, loading: false, notFound: false, error: eventRef.current ? message : null });
+      setReady(true);
     });
     function failureOutside(e: unknown) {
       if (active) setError(readableError(e));
     }
     return () => {
       active = false;
+      transportGeneration.current++;
       previewReady.current = false;
       imageCache.current.clear();
       generation++;
@@ -1732,7 +1689,7 @@ export function LoopProvider({
       liveActions.current = {};
       catalogLoaders.current = {};
     };
-  }, [mode, firebaseConfig?.projectId, useEmulators, emulators?.host, emulators?.authPort, emulators?.firestorePort, emulators?.functionsPort]);
+  }, [mode, firebaseConfig?.projectId, useEmulators, authPersistence, authPersistenceFactory, emulators?.host, emulators?.authPort, emulators?.firestorePort, emulators?.functionsPort]);
   useEffect(() => {
     let active = true;
     if (mode === "demo" && ready && previewReady.current)
@@ -1747,9 +1704,11 @@ export function LoopProvider({
   }, [state, ready, mode]);
   const dispatch = useCallback(
     async (command: Command) => {
+      const actionGeneration = transportGeneration.current;
       setError(null);
       setPending((n) => n + 1);
       try {
+        if (modeRef.current !== mode) throw new MediaScopeChanged();
         if (mode === "demo") {
           const next = applyCommand(stateRef.current, command, {
             now: new Date().toISOString(),
@@ -1758,10 +1717,10 @@ export function LoopProvider({
           stateRef.current = next;
           setState(next);
         } else {
-          const c = setup(firebaseConfig!, useEmulators, authPersistence, emulators);
+          const { sdk, c } = await liveCloud();
           if (!c.auth.currentUser) throw new Error("Sign in to continue.");
           const actorId = c.auth.currentUser.uid;
-          const execute = httpsCallable(c.functions, "executeCommand");
+          const execute = sdk.httpsCallable(c.functions, "executeCommand");
           if (command.type === "dm.read") {
             await drainDirectRead({
               send: async id => (await execute({ command, requestId: id })).data,
@@ -1772,69 +1731,77 @@ export function LoopProvider({
         }
       } catch (e) {
         const m = readableError(e);
-        setError(m);
+        if (actionGeneration === transportGeneration.current && modeRef.current === mode) setError(m);
         throw new Error(m);
       } finally {
         setPending((n) => Math.max(0, n - 1));
       }
     },
-    [mode, firebaseConfig?.projectId, useEmulators, emulators?.host, emulators?.authPort, emulators?.firestorePort, emulators?.functionsPort],
+    [mode, firebaseConfig?.projectId, useEmulators, authPersistence, authPersistenceFactory, emulators?.host, emulators?.authPort, emulators?.firestorePort, emulators?.functionsPort],
   );
-  const authAction = async (fn: (auth: Auth) => Promise<unknown>) => {
+  const authAction = async (fn: (auth: Auth, sdk: FirebaseRuntime, c: Cloud) => Promise<unknown>) => {
+    const actionGeneration = transportGeneration.current;
     setError(null);
     try {
       if (mode === "demo")
         throw new Error(
           "Account sign-in is available in the connected live app. This preview uses fictional sample data.",
         );
-      await fn(setup(firebaseConfig!, useEmulators, authPersistence, emulators).auth);
+      const { sdk, c } = await liveCloud();
+      await fn(c.auth, sdk, c);
     } catch (e) {
       const m = readableError(e);
-      setError(m);
+      if (actionGeneration === transportGeneration.current && modeRef.current === mode) setError(m);
       throw new Error(m);
     }
   };
   const refreshVerification = async () => {
     let verified = false;
-    await authAction(async (auth) => {
+    await authAction(async (auth, sdk, c) => {
       const user = auth.currentUser;
       if (!user) throw new Error("Sign in to refresh your verification.");
-      await reload(user);
+      await sdk.reload(user);
       await user.getIdToken(true);
+      if (auth.currentUser?.uid !== user.uid || modeRef.current !== "live") throw new MediaScopeChanged();
       verified = user.emailVerified;
       setEmailVerified(verified);
       if (verified)
-        await httpsCallable(
-          setup(firebaseConfig!, useEmulators, authPersistence, emulators).functions,
+        await sdk.httpsCallable(
+          c.functions,
           "executeCommand",
         )({ command: { type: "profile.update", profile: {} }, requestId: requestId() });
     });
     return verified;
   };
   const sendVerificationEmail = () =>
-    authAction(async (auth) => {
+    authAction(async (auth, sdk) => {
       const user = auth.currentUser;
       if (!user) throw new Error("Sign in to verify your email.");
       if (user.emailVerified)
         throw new Error("Your email is already verified.");
-      await sendEmailVerification(user);
+      await sdk.sendEmailVerification(user);
     });
   const accountCall = async (name: string, payload: unknown) => {
+    const actionGeneration = transportGeneration.current;
     setError(null);
     if (mode === "demo")
       throw new Error(
         "This account action is available in the connected live app.",
       );
     try {
-      return (
-        await httpsCallable(
-          setup(firebaseConfig!, useEmulators, authPersistence, emulators).functions,
+      const { sdk, c } = await liveCloud();
+      const actorId = c.auth.currentUser?.uid;
+      const result = (
+        await sdk.httpsCallable(
+          c.functions,
           name,
         )(payload)
       ).data;
+      if (actionGeneration !== transportGeneration.current || modeRef.current !== "live" || c.auth.currentUser?.uid !== actorId) throw new MediaScopeChanged();
+      return result;
     } catch (e) {
       const message = readableError(e);
-      setError(message);
+      if (actionGeneration === transportGeneration.current && modeRef.current === mode) setError(message);
       throw new Error(message);
     }
   };
@@ -1933,24 +1900,27 @@ export function LoopProvider({
           setError(null);
         },
         signIn: (email, password) =>
-          authAction((auth) =>
-            signInWithEmailAndPassword(auth, email, password),
+          authAction((auth, sdk) =>
+            sdk.signInWithEmailAndPassword(auth, email, password),
           ),
         signUp: (email, password, name) =>
-          authAction(async (auth) => {
+          authAction(async (auth, sdk, c) => {
             if (name.trim().length < 2) throw new Error("Enter your name.");
-            const result = await createUserWithEmailAndPassword(
+            const result = await sdk.createUserWithEmailAndPassword(
               auth,
               email,
               password,
             );
-            await updateProfile(result.user, { displayName: name.trim() });
-            await httpsCallable(
-              setup(firebaseConfig!, useEmulators, authPersistence, emulators).functions,
+            await sdk.updateProfile(result.user, { displayName: name.trim() });
+            const current = () => auth.currentUser?.uid === result.user.uid && modeRef.current === "live";
+            if (!current()) throw new MediaScopeChanged();
+            await sdk.httpsCallable(
+              c.functions,
               "bootstrap",
             )({ name: name.trim() });
-            await httpsCallable(
-              setup(firebaseConfig!, useEmulators, authPersistence, emulators).functions,
+            if (!current()) throw new MediaScopeChanged();
+            await sdk.httpsCallable(
+              c.functions,
               "executeCommand",
             )({
               command: {
@@ -1959,33 +1929,36 @@ export function LoopProvider({
               },
               requestId: requestId(),
             });
-            await sendEmailVerification(result.user);
+            if (!current()) throw new MediaScopeChanged();
+            await sdk.sendEmailVerification(result.user);
           }),
-        signOut: () => authAction(async (auth) => {
+        signOut: () => authAction(async (auth, sdk, c) => {
+          const actorId = auth.currentUser?.uid;
           const registered = registeredPushToken.current;
           if (registered && registered.userId === auth.currentUser?.uid) {
             // Logging out remains possible offline; the native client also retains a token for retry.
-            await httpsCallable(
-              setup(firebaseConfig!, useEmulators, authPersistence, emulators).functions,
+            await sdk.httpsCallable(
+              c.functions,
               "registerPushToken",
               { timeout: 5000 },
             )({ token: registered.token, platform: registered.platform, remove: true }).catch(() => undefined);
           }
+          if (auth.currentUser?.uid !== actorId || modeRef.current !== "live") throw new MediaScopeChanged();
           registeredPushToken.current = null;
-          await firebaseSignOut(auth);
+          await sdk.firebaseSignOut(auth);
         }),
         resetPassword: (email) =>
-          authAction((auth) => sendPasswordResetEmail(auth, email)),
+          authAction((auth, sdk) => sdk.sendPasswordResetEmail(auth, email)),
         appealTrust: async (reason) => {
           await accountCall("appealTrust", { reason });
         },
         exportAccount,
         deleteAccount: async (confirmation) => {
           await accountCall("deleteAccount", { confirmation });
-          await firebaseSignOut(setup(firebaseConfig!, useEmulators, authPersistence, emulators).auth);
+          await authAction((auth, sdk) => sdk.firebaseSignOut(auth));
         },
         registerPushToken: async (token, platform = "web", remove = false) => {
-          const userId = mode === "live" ? setup(firebaseConfig!, useEmulators, authPersistence, emulators).auth.currentUser?.uid : undefined;
+          const userId = mode === "live" ? cloud?.auth.currentUser?.uid : undefined;
           await accountCall("registerPushToken", { token, platform, remove });
           if (remove) {
             if (registeredPushToken.current?.token === token) registeredPushToken.current = null;
