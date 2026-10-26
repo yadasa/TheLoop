@@ -34,7 +34,7 @@ class CallableFailure extends Error {
 
 test(
   "two real emulator accounts enforce callable state transitions and Firestore privacy",
-  { skip: !enabled, timeout: 180_000 },
+  { skip: !enabled, timeout: 300_000 },
   async (t) => {
     assert.equal(
       projectId,
@@ -66,7 +66,7 @@ test(
     const fetchJSON = async (url: string, options: RequestInit) => {
       const response = await fetch(url, {
         ...options,
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(60_000),
       });
       const body = (await response.json()) as Record<string, any>;
       return { response, body };
@@ -143,12 +143,23 @@ test(
     try {
       // Load only this repository's rules into the explicitly isolated test namespace.
       // No database-wide clear is used, including on shared emulator hosts.
-      const rules = await readFile(resolve(__dirname, "../../firestore.rules"), "utf8");
-      const rulesResponse = await fetch(`http://${firestoreHost}/emulator/v1/projects/${projectId}:securityRules`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rules: { files: [{ content: rules }] } }), signal: AbortSignal.timeout(20_000),
-      });
-      assert.ok(rulesResponse.ok, `Could not install isolated test rules: ${rulesResponse.status}`);
+      const rules = await readFile(
+        resolve(__dirname, "../../firestore.rules"),
+        "utf8",
+      );
+      const rulesResponse = await fetch(
+        `http://${firestoreHost}/emulator/v1/projects/${projectId}:securityRules`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rules: { files: [{ content: rules }] } }),
+          signal: AbortSignal.timeout(20_000),
+        },
+      );
+      assert.ok(
+        rulesResponse.ok,
+        `Could not install isolated test rules: ${rulesResponse.status}`,
+      );
       alice = await createActor("alice");
       bob = await createActor("bob");
       await db.doc(`users/${alice.uid}`).update({ role: "admin" });
@@ -291,13 +302,32 @@ test(
       await t.test(
         "profile authority and private profile grants survive the full connection lifecycle",
         async () => {
-          assert.equal((await readDocument(bob, `users/${bob.uid}`)).response.status, 200);
-          assert.equal((await readDocument(bob, `users/${alice.uid}`)).response.status, 403);
-          const forgedRole = await fetchJSON(`http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents/users/${bob.uid}?updateMask.fieldPaths=role`, {
-            method: "PATCH", headers: { Authorization: `Bearer ${bob.token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ fields: { role: { stringValue: "admin" } } }),
-          });
-          assert.equal(forgedRole.response.status, 403, "an owner cannot directly grant their account a role");
+          assert.equal(
+            (await readDocument(bob, `users/${bob.uid}`)).response.status,
+            200,
+          );
+          assert.equal(
+            (await readDocument(bob, `users/${alice.uid}`)).response.status,
+            403,
+          );
+          const forgedRole = await fetchJSON(
+            `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents/users/${bob.uid}?updateMask.fieldPaths=role`,
+            {
+              method: "PATCH",
+              headers: {
+                Authorization: `Bearer ${bob.token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                fields: { role: { stringValue: "admin" } },
+              }),
+            },
+          );
+          assert.equal(
+            forgedRole.response.status,
+            403,
+            "an owner cannot directly grant their account a role",
+          );
           const previous = (await db.doc(`profiles/${bob.uid}`).get()).get(
             "trust",
           );
@@ -519,21 +549,62 @@ test(
             (await db.doc(`posts/${post}`).get()).get("votes")[alice.uid],
             undefined,
           );
-          const alicePost = remember("posts", (await command(alice, {
-            type: "post.create", communityId: community, title: "Alice's original post",
-            body: "Original author text must not be copied into Bob's contribution export.", kind: "discussion",
-          })).id);
-          await command(alice, { type: "post.comment", postId: alicePost, body: "Alice's separate comment stays out of Bob's export." });
-          await command(bob, { type: "post.comment", postId: alicePost, body: "Bob's own contribution is exportable." });
-          await command(bob, { type: "post.vote", postId: alicePost, value: 1 });
-          assert.ok((await db.doc(`posts/${alicePost}`).get()).get("contributorIds").includes(bob.uid));
-          const contributionExport = await callable(bob, "exportAccount", { collection: "contributions" });
-          const exportedContribution = contributionExport.records.find((record: Record<string, unknown>) => record.postId === alicePost);
-          assert.ok(exportedContribution, "server-maintained contributor index finds Bob's activity");
+          const alicePost = remember(
+            "posts",
+            (
+              await command(alice, {
+                type: "post.create",
+                communityId: community,
+                title: "Alice's original post",
+                body: "Original author text must not be copied into Bob's contribution export.",
+                kind: "discussion",
+              })
+            ).id,
+          );
+          await command(alice, {
+            type: "post.comment",
+            postId: alicePost,
+            body: "Alice's separate comment stays out of Bob's export.",
+          });
+          await command(bob, {
+            type: "post.comment",
+            postId: alicePost,
+            body: "Bob's own contribution is exportable.",
+          });
+          await command(bob, {
+            type: "post.vote",
+            postId: alicePost,
+            value: 1,
+          });
+          assert.ok(
+            (await db.doc(`posts/${alicePost}`).get())
+              .get("contributorIds")
+              .includes(bob.uid),
+          );
+          const contributionExport = await callable(bob, "exportAccount", {
+            collection: "contributions",
+          });
+          const exportedContribution = contributionExport.records.find(
+            (record: Record<string, unknown>) => record.postId === alicePost,
+          );
+          assert.ok(
+            exportedContribution,
+            "server-maintained contributor index finds Bob's activity",
+          );
           assert.equal(exportedContribution.vote, 1);
-          assert.deepEqual(exportedContribution.comments.map((comment: Record<string, unknown>) => comment.body), ["Bob's own contribution is exportable."]);
-          assert.equal(exportedContribution.body, undefined); assert.equal(exportedContribution.title, undefined);
-          assert.ok(!JSON.stringify(exportedContribution).includes("Alice's separate comment"));
+          assert.deepEqual(
+            exportedContribution.comments.map(
+              (comment: Record<string, unknown>) => comment.body,
+            ),
+            ["Bob's own contribution is exportable."],
+          );
+          assert.equal(exportedContribution.body, undefined);
+          assert.equal(exportedContribution.title, undefined);
+          assert.ok(
+            !JSON.stringify(exportedContribution).includes(
+              "Alice's separate comment",
+            ),
+          );
           const report = remember(
             "reports",
             (
@@ -567,6 +638,355 @@ test(
           assert.equal(
             (await db.doc(`reports/${report}`).get()).get("status"),
             "reviewed",
+          );
+        },
+      );
+
+      await t.test(
+        "scoped onboarding replaces only displayed follows and leaves additive completion unchanged",
+        async () => {
+          const publicChannels: string[] = [];
+          for (const suffix of ["old", "new", "outside"])
+            publicChannels.push(
+              remember(
+                "channels",
+                (
+                  await command(alice, {
+                    type: "channel.create",
+                    channel: {
+                      conferenceId: conference,
+                      name: `qa-${runId}-${suffix}`,
+                      description: "Scoped onboarding fixture.",
+                      visibility: "public",
+                      topics: ["General"],
+                    },
+                  })
+                ).id,
+              ),
+            );
+          const [oldChannel, newChannel, outsideChannel] = publicChannels;
+          for (const targetId of [oldChannel, outsideChannel])
+            await command(bob, {
+              type: "subscription.set",
+              targetId,
+              value: "following",
+            });
+          await command(bob, {
+            type: "onboarding.complete",
+            interests: ["Technology"],
+            channelIds: [newChannel],
+            replaceChannels: true,
+            channelScopeIds: [oldChannel, newChannel],
+          });
+          const subscriptions = (await db.doc(`users/${bob.uid}`).get()).get(
+            "preferences.subscriptions",
+          );
+          assert.equal(subscriptions[oldChannel], "muted");
+          assert.equal(subscriptions[newChannel], "following");
+          assert.equal(subscriptions[outsideChannel], "following");
+          assert.deepEqual(
+            await Promise.all(
+              publicChannels.map(async (id) =>
+                (await db.doc(`channels/${id}`).get()).get("members"),
+              ),
+            ),
+            [1, 2, 2],
+          );
+          await command(bob, {
+            type: "onboarding.complete",
+            interests: ["Community"],
+            channelIds: [],
+          });
+          assert.deepEqual(
+            (await db.doc(`users/${bob.uid}`).get()).get(
+              "preferences.subscriptions",
+            ),
+            subscriptions,
+          );
+          const inaccessibleChannel = remember(
+            "channels",
+            (
+              await command(alice, {
+                type: "channel.create",
+                channel: {
+                  conferenceId: conference,
+                  name: `qa-${runId}-closed`,
+                  description: "Not authorized for Bob.",
+                  visibility: "private",
+                  topics: ["General"],
+                },
+              })
+            ).id,
+          );
+          await denied(
+            command(bob, {
+              type: "onboarding.complete",
+              interests: ["Forged"],
+              channelIds: [],
+              replaceChannels: true,
+              channelScopeIds: [oldChannel, inaccessibleChannel],
+            }),
+          );
+          assert.deepEqual(
+            (await db.doc(`users/${bob.uid}`).get()).get(
+              "preferences.subscriptions",
+            ),
+            subscriptions,
+            "a forbidden scope rolls the whole transaction back",
+          );
+        },
+      );
+
+      await t.test(
+        "post and reply authors retain control after leaving without allowing impersonation; orphan saves can be removed",
+        async () => {
+          // Reset only these ephemeral test actors' rate buckets between independent feature scenarios.
+          // Rate limiting itself is covered by the deterministic service tests.
+          for (const actor of [alice, bob])
+            await db.doc(`users/${actor.uid}/system/rate`).delete();
+          const community = remember(
+            "communities",
+            (
+              await command(alice, {
+                type: "community.create",
+                name: `Author QA ${runId}`,
+                description: "Ephemeral author controls.",
+              })
+            ).id,
+          );
+          await command(bob, {
+            type: "community.join",
+            communityId: community,
+          });
+          const post = remember(
+            "posts",
+            (
+              await command(bob, {
+                type: "post.create",
+                communityId: community,
+                title: "Original title",
+                body: "Original content",
+                kind: "discussion",
+                url: "https://example.com",
+              })
+            ).id,
+          );
+          const aliceComment = (
+            await command(alice, {
+              type: "post.comment",
+              postId: post,
+              body: "Alice's reply remains her own.",
+            })
+          ).id;
+          const bobComment = (
+            await command(bob, {
+              type: "post.comment",
+              postId: post,
+              body: "Bob's original reply.",
+            })
+          ).id;
+          await denied(
+            command(alice, {
+              type: "post.edit",
+              postId: post,
+              post: { body: "A global admin cannot impersonate Bob." },
+            }),
+          );
+          await denied(
+            command(bob, {
+              type: "post.edit",
+              postId: post,
+              post: { authorId: alice.uid },
+            }),
+            ["INVALID_ARGUMENT"],
+          );
+          await denied(
+            command(bob, {
+              type: "comment.delete",
+              postId: post,
+              commentId: aliceComment,
+            }),
+          );
+          await denied(
+            command(alice, {
+              type: "comment.edit",
+              postId: post,
+              commentId: bobComment,
+              body: "A moderator cannot rewrite another reply.",
+            }),
+          );
+          await command(alice, { type: "post.save", postId: post });
+          await command(bob, {
+            type: "community.join",
+            communityId: community,
+          });
+          await command(bob, {
+            type: "post.edit",
+            postId: post,
+            post: {
+              title: "Author corrected title",
+              body: "Author corrected content",
+              url: "",
+            },
+          });
+          await command(bob, {
+            type: "comment.edit",
+            postId: post,
+            commentId: bobComment,
+            body: "Bob corrected his own reply after leaving.",
+          });
+          let record = (await db.doc(`posts/${post}`).get()).data()!;
+          assert.equal(record.title, "Author corrected title");
+          assert.equal(record.url, undefined);
+          assert.ok(record.editedAt);
+          assert.equal(
+            record.comments.find(
+              (reply: Record<string, unknown>) => reply.id === bobComment,
+            ).body,
+            "Bob corrected his own reply after leaving.",
+          );
+          assert.equal(
+            record.comments.find(
+              (reply: Record<string, unknown>) => reply.id === aliceComment,
+            ).body,
+            "Alice's reply remains her own.",
+          );
+          const report = remember(
+            "reports",
+            (
+              await command(alice, {
+                type: "report.create",
+                targetType: "comment",
+                targetId: bobComment,
+                postId: post,
+                reason: "Verify exact reply moderation context.",
+              })
+            ).id,
+          );
+          assert.equal(
+            (await db.doc(`reports/${report}`).get()).get("snapshot.body"),
+            "Bob corrected his own reply after leaving.",
+          );
+          assert.equal(
+            (await db.doc(`reports/${report}`).get()).get("snapshot.authorId"),
+            bob.uid,
+          );
+          const moderationRequest = remember("moderationAudit", nextId());
+          await command(
+            alice,
+            {
+              type: "report.review",
+              reportId: report,
+              outcome: "remove",
+              note: "Remove only the reported reply.",
+            },
+            moderationRequest,
+          );
+          record = (await db.doc(`posts/${post}`).get()).data()!;
+          assert.deepEqual(
+            record.comments.map((reply: Record<string, unknown>) => reply.id),
+            [aliceComment],
+          );
+          assert.equal(record.body, "Author corrected content");
+          assert.equal(
+            (await db.doc(`moderationAudit/${moderationRequest}`).get()).get(
+              "targetType",
+            ),
+            "comment",
+          );
+          assert.ok(
+            (await db.doc(`reports/${report}`).get()).get("snapshot.body"),
+          );
+          const deleteRequest = remember("moderationAudit", nextId());
+          await command(
+            bob,
+            { type: "post.delete", postId: post },
+            deleteRequest,
+          );
+          assert.equal((await db.doc(`posts/${post}`).get()).exists, false);
+          await command(alice, { type: "post.save", postId: post });
+          assert.ok(
+            !(await db.doc(`users/${alice.uid}`).get())
+              .get("preferences.savedPostIds")
+              .includes(post),
+          );
+          await denied(command(alice, { type: "post.save", postId: post }), [
+            "NOT_FOUND",
+          ]);
+          const audit = (
+            await db.doc(`moderationAudit/${deleteRequest}`).get()
+          ).data()!;
+          assert.equal(audit.actorId, bob.uid);
+          assert.equal(audit.authorization, "author");
+          assert.equal(audit.body, undefined);
+        },
+      );
+
+      await t.test(
+        "private report snapshots require original access and grant moderators no broad DM reads",
+        async () => {
+          const outsider = await createActor("outsider");
+          const dm = remember(
+            "directMessages",
+            (
+              await command(alice, {
+                type: "dm.send",
+                userId: bob.uid,
+                body: "Private moderation context.",
+              })
+            ).id,
+          );
+          await denied(
+            command(outsider, {
+              type: "report.create",
+              targetType: "directMessage",
+              targetId: dm,
+              reason: "Cannot copy another pair's private content.",
+            }),
+          );
+          await denied(
+            command(outsider, {
+              type: "report.create",
+              targetType: "profile",
+              targetId: bob.uid,
+              reason: "Cannot snapshot a private profile.",
+            }),
+          );
+          const report = remember(
+            "reports",
+            (
+              await command(bob, {
+                type: "report.create",
+                targetType: "directMessage",
+                targetId: dm,
+                reason: "Review this exact private message.",
+              })
+            ).id,
+          );
+          assert.equal(
+            (await db.doc(`reports/${report}`).get()).get("snapshot.body"),
+            "Private moderation context.",
+          );
+          await db.doc(`users/${outsider.uid}`).update({ role: "moderator" });
+          assert.equal(
+            (await readDocument(outsider, `directMessages/${dm}`)).response
+              .status,
+            403,
+            "a moderator cannot directly read an unreported private conversation",
+          );
+          assert.equal(
+            (await readDocument(outsider, `reports/${report}`)).response.status,
+            200,
+          );
+          await command(outsider, {
+            type: "report.review",
+            reportId: report,
+            outcome: "remove",
+            note: "Only the exact reported private message is removed.",
+          });
+          assert.equal(
+            (await db.doc(`directMessages/${dm}`).get()).exists,
+            false,
           );
         },
       );
@@ -613,7 +1033,12 @@ test(
         for (const id of ids)
           await db.recursiveDelete(db.doc(`${collection}/${id}`));
       for (const actor of actors) {
-        for (const [collection, field, operator] of [["notifications", "userId", "=="], ["reports", "reporterId", "=="], ["follows", "participantIds", "array-contains"], ["connections", "participantIds", "array-contains"]] as const) {
+        for (const [collection, field, operator] of [
+          ["notifications", "userId", "=="],
+          ["reports", "reporterId", "=="],
+          ["follows", "participantIds", "array-contains"],
+          ["connections", "participantIds", "array-contains"],
+        ] as const) {
           const rows = await db
             .collection(collection)
             .where(field, operator, actor.uid)
