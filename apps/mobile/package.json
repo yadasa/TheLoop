@@ -1,10 +1,11 @@
 {
   "name": "@theloop/mobile",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
+    "start:stable": "node scripts/start-stable.cjs",
     "dev": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",

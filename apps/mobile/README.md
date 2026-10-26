@@ -21,6 +21,8 @@ For local Firebase emulator testing, set `EXPO_PUBLIC_EMULATOR_HOST` to your com
 
 ## Build an installable preview
 
+If Metro file watching times out on Windows, run `pnpm --filter @theloop/mobile start:stable` from the repository root. This optional preview mode uses two workers and disables file watching through Expo's CI mode. Restart it after source changes. It uses port 8097 and Expo Go; enter `exp://YOUR_COMPUTER_LAN_IP:8097` on your phone. The normal `pnpm mobile` command retains hot reload. Preview metadata is version **0.2.0**, Android version code **2**, and iOS build number **2**.
+
 ```sh
 cd apps/mobile
 npx eas-cli login
