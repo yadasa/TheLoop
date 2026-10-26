@@ -18,6 +18,18 @@ The production predeploy hook runs `node scripts/build-functions.mjs`, which inv
 
 Build Functions and start loopback Auth, Firestore and Functions emulators under `demo-theloop-integration`. The test is disabled unless `THELOOP_INTEGRATION=1`. Supply `THELOOP_INTEGRATION_FUNCTIONS_HOST`, `THELOOP_INTEGRATION_AUTH_HOST` and `THELOOP_INTEGRATION_FIRESTORE_HOST` explicitly, then run `pnpm --filter @theloop/functions exec tsx --test test/integration.test.ts`. Only the exact demo namespace and loopback addresses are accepted. Tests create temporary accounts and fixture IDs, then clean up those IDs.
 
+## React provider startup recovery
+
+On October 26, 2026, an independent browser harness mounted the actual `LoopProvider` and `useLoop` with existing React DOM/esbuild tooling, replacing only the dynamically loaded `firebaseRuntime` module with a deterministic in-memory SDK. All **11 provider-level scenarios passed** against the startup recovery implementation:
+
+- Bootstrap failure blocks readiness; explicit retry bootstraps again and hydrates. Optional collection failure preserves readiness with an ordinary error.
+- Signout during pending bootstrap and account switches reject late bootstrap, Auth and profile callbacks without restoring stale private data.
+- Cached owner/settings documents wait for metadata-only server confirmation. Critical snapshot errors clear private caches/listeners while retaining the Auth observer for recovery.
+- Missing/malformed owner profiles and malformed/empty preferences fail closed instead of authorizing defaults-only onboarding; signout and retry remain available.
+- The actual 45-second initial-Auth timeout remains terminal after a late authenticated callback, then recovers only after explicit retry.
+
+The harness also verified that transient account email follows the current Auth identity, clears on signout, remains available during a same-account startup error, and never enters serializable `LoopState`. Its first run exposed malformed owner profiles reaching readiness; the owner-profile validator fixed that observed failure before the complete passing run. The scratch harness is stored under ignored `work/provider-startup-harness`, with a report/screenshot in the task outputs. It created no production users, emails, network calls or backend writes, and did not touch the live preview on port 8109. This controlled-SDK React verification complements, rather than replaces, the real Firebase emulator suites and installed-device checks.
+
 ## Interaction checkpoint
 
 1. Refine onboarding choices, deselect a followed room, and check that it becomes muted. Existing explicit hidden/muted choices must survive. Interest-only changes must preserve channel follows.
