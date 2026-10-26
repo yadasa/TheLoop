@@ -18,6 +18,7 @@ export type Route =
   | {
       kind:
         | "communities"
+        | "inbox"
         | "create-community"
         | "create-event"
         | "notifications"

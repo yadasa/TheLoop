@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import * as Calendar from "expo-calendar/legacy";
 import { useLoop } from "@theloop/client";
-import { eventICS, safeURL, type LoopEvent } from "@theloop/core";
+import { eventICS, previewEventDraft, type LoopEvent } from "@theloop/core";
 import {
   Avatar,
   Button,
@@ -708,7 +708,15 @@ export function CreateEvent({ nav }: { nav: Nav }) {
   const [end, setEnd] = useState("");
   const [capacity, setCapacity] = useState("30");
   const [kind, setKind] = useState<LoopEvent["kind"]>("meetup");
+  const [timezone, setTimezone] = useState(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  );
+  const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const edit = (update: (value: string) => void) => (value: string) => {
+    update(value);
+    setErrors([]);
+  };
   return (
     <ScrollView
       keyboardShouldPersistTaps="handled"
@@ -721,27 +729,37 @@ export function CreateEvent({ nav }: { nav: Nav }) {
             key={c.id}
             title={c.shortName}
             selected={conferenceId === c.id}
-            onPress={() => setConference(c.id)}
+            onPress={() => {
+              if (!busy) {
+                setConference(c.id);
+                setErrors([]);
+              }
+            }}
           />
         ))}
       </Horizontal>
       <Field
         label="The occasion"
         value={title}
-        onChangeText={setTitle}
+        onChangeText={edit(setTitle)}
+        disabled={busy}
         placeholder="Coffee before the keynote"
         maxLength={160}
       />
       <Field
         label="What should people know?"
         value={description}
-        onChangeText={setDescription}
+        onChangeText={edit(setDescription)}
+        disabled={busy}
+        maxLength={3000}
         multiline
       />
       <Field
         label="Where are we meeting?"
         value={location}
-        onChangeText={setLocation}
+        onChangeText={edit(setLocation)}
+        disabled={busy}
+        maxLength={240}
         placeholder="Venue or meeting link"
       />
       <Horizontal>
@@ -750,49 +768,115 @@ export function CreateEvent({ nav }: { nav: Nav }) {
             key={k}
             title={k}
             selected={kind === k}
-            onPress={() => setKind(k)}
+            onPress={() => {
+              if (!busy) {
+                setKind(k);
+                setErrors([]);
+              }
+            }}
           />
         ))}
       </Horizontal>
       <Field
         label="Event website · optional"
         value={url}
-        onChangeText={setUrl}
+        onChangeText={edit(setUrl)}
+        disabled={busy}
+        maxLength={2048}
         keyboardType="url"
         placeholder="https://…"
       />
       <Field
         label="Tags · comma separated"
         value={tags}
-        onChangeText={setTags}
+        onChangeText={edit(setTags)}
+        disabled={busy}
         placeholder="Founders, Coffee, Networking"
       />
+      <Text style={s.small}>
+        Add up to 6 tags, each up to 30 characters. Event websites use HTTPS.
+      </Text>
       <Field
-        label="Starts · YYYY-MM-DD HH:MM"
+        label="Event timezone · IANA name"
+        value={timezone}
+        onChangeText={edit(setTimezone)}
+        disabled={busy}
+        autoCapitalize="none"
+        autoCorrect={false}
+        placeholder="America/Chicago"
+        maxLength={100}
+      />
+      <Horizontal>
+        {Array.from(
+          new Set([
+            Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+            "America/Chicago",
+            "America/New_York",
+            "America/Los_Angeles",
+            "UTC",
+          ]),
+        ).map((zone) => (
+          <Chip
+            key={zone}
+            title={zone.replace("America/", "").replace(/_/g, " ")}
+            selected={timezone === zone}
+            onPress={() => {
+              if (!busy) {
+                setTimezone(zone);
+                setErrors([]);
+              }
+            }}
+          />
+        ))}
+      </Horizontal>
+      <Field
+        label="Starts · YYYY-MM-DD HH:mm"
         value={start}
-        onChangeText={setStart}
+        onChangeText={edit(setStart)}
+        disabled={busy}
+        autoCapitalize="none"
+        autoCorrect={false}
         placeholder="2026-11-05 18:00"
-        maxLength={25}
+        maxLength={40}
       />
       <Field
-        label="Ends · YYYY-MM-DD HH:MM"
+        label="Ends · YYYY-MM-DD HH:mm"
         value={end}
-        onChangeText={setEnd}
+        onChangeText={edit(setEnd)}
+        disabled={busy}
+        autoCapitalize="none"
+        autoCorrect={false}
         placeholder="2026-11-05 20:00"
-        maxLength={25}
+        maxLength={40}
       />
       <Text style={s.small}>
-        Dates use your timezone:{" "}
-        {Intl.DateTimeFormat().resolvedOptions().timeZone}. A waitlist opens
-        automatically when the event fills up.
+        Enter local times in the event timezone. If a clock change repeats a
+        time, include its UTC offset, for example 2026-11-01T01:30-05:00. A Z
+        suffix means UTC. Impossible dates and skipped local times need
+        correcting.
       </Text>
       <Field
         label="Capacity · 0 for unlimited"
         value={capacity}
-        onChangeText={setCapacity}
+        onChangeText={edit(setCapacity)}
+        disabled={busy}
         keyboardType="numeric"
-        maxLength={5}
+        maxLength={4}
       />
+      <Text style={s.small}>
+        Capacity can be 0 to 1,000. A waitlist opens automatically when the
+        event fills up.
+      </Text>
+      {errors.length > 0 && (
+        <View style={s.card} accessibilityRole="alert">
+          <Text style={s.h3}>A few details need care</Text>
+          {errors.map((error, index) => (
+            <Text key={`${index}:${error}`} style={s.small}>
+              {error}
+            </Text>
+          ))}
+        </View>
+      )}
       <Button
         title={busy ? "Creating…" : "Make it happen ↗"}
         disabled={
@@ -802,58 +886,53 @@ export function CreateEvent({ nav }: { nav: Nav }) {
           !location.trim() ||
           !start ||
           !end ||
+          !timezone.trim() ||
           !conferenceId
         }
         onPress={() => {
-          const startDate = new Date(start.replace(" ", "T"));
-          const endDate = new Date(end.replace(" ", "T"));
-          if (
-            !Number.isFinite(startDate.getTime()) ||
-            !Number.isFinite(endDate.getTime()) ||
-            endDate <= startDate
-          ) {
-            nav.toast("Enter valid dates, with the end after the start.");
+          const result = previewEventDraft(
+            {
+              conferenceId,
+              title,
+              description,
+              location,
+              kind,
+              capacity,
+              startAt: start,
+              endAt: end,
+              timezone,
+              tags: tags
+                .split(",")
+                .map((value) => value.trim())
+                .filter(Boolean),
+              url,
+            },
+            {
+              conferences: state.conferences,
+              existingEvents: state.events,
+              now: new Date().toISOString(),
+            },
+          );
+          if (!result.event) {
+            setErrors(
+              result.errors.length
+                ? result.errors
+                : ["Check the event dates and details."],
+            );
             return;
           }
-          if (startDate < new Date()) {
-            nav.toast("Choose a date in the future.");
-            return;
-          }
-          const cap = Number(capacity);
-          if (url.trim() && !safeURL(url.trim())) {
-            nav.toast("Use a valid http or https event link.");
-            return;
-          }
-          if (!Number.isInteger(cap) || cap < 0) {
-            nav.toast("Capacity must be a whole number, 0 or higher.");
-            return;
-          }
+          setErrors([]);
           setBusy(true);
           void nav
             .run(
               {
                 type: "event.create",
-                event: {
-                  conferenceId,
-                  title,
-                  description,
-                  location,
-                  kind,
-                  capacity: cap,
-                  startAt: startDate.toISOString(),
-                  endAt: endDate.toISOString(),
-                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                  tags: tags
-                    .split(",")
-                    .map((v) => v.trim())
-                    .filter(Boolean),
-                  ...(url.trim() ? { url: url.trim() } : {}),
-                },
+                event: result.event,
               },
               "Your event is ready",
             )
             .then((ok) => {
-              if (ok) nav.close();
+              if (ok) nav.closeIfTop("create-event");
             })
             .finally(() => setBusy(false));
         }}

@@ -592,6 +592,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     watchDirectConversation,
     loadOlderDirectMessages,
     directHistory,
+    directCatalog,
   } = useLoop();
   const attachment = useImageAttachment(nav);
   const [body, setBody] = useState("");
@@ -602,6 +603,11 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
   const firstLayout = useRef(true);
   const loadingOlder = useRef(false);
   const [showJump, setShowJump] = useState(false);
+  const readInFlight = useRef(false);
+  const attemptedRead = useRef<string | null>(null);
+  const readMounted = useRef(true);
+  const [readRevision, setReadRevision] = useState(0);
+  const [readFailed, setReadFailed] = useState(false);
   const reducedMotion = useReducedMotion();
   const p = state.profiles.find((p) => p.id === id);
   const blocked = state.preferences.blockedIds.includes(id);
@@ -617,9 +623,30 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     state.currentUserId,
     id,
   );
-  const identity = displayIdentity(p, participant?.name, participant?.initials);
+  const catalogEntry = directCatalog.results.find(
+    (conversation) =>
+      conversation.participantIds.includes(id) &&
+      conversation.participantIds.includes(state.currentUserId),
+  );
+  const identity = displayIdentity(
+    p,
+    participant?.name || catalogEntry?.memberNames[id],
+    participant?.initials || catalogEntry?.memberInitials[id],
+  );
   const messages = blocked ? [] : conversation;
   const muted = state.preferences.dmMutedIds?.includes(id) || false;
+  const incomingUnread = messages.filter(
+    (message) => message.toId === state.currentUserId && !message.read,
+  );
+  const catalogUnread = catalogEntry?.unreadCounts[state.currentUserId] || 0;
+  const unreadKey = `${catalogEntry?.sequence || 0}:${catalogEntry?.readThrough[state.currentUserId] || 0}:${catalogUnread}:${incomingUnread.length}:${incomingUnread[0]?.id || ""}:${incomingUnread.at(-1)?.id || ""}`;
+  const latestMessageId = messages.at(-1)?.id;
+  useEffect(() => {
+    readMounted.current = true;
+    return () => {
+      readMounted.current = false;
+    };
+  }, []);
   useEffect(() => {
     if (blocked) {
       attachment.clear();
@@ -634,8 +661,36 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     return () => watchDirectConversation(null);
   }, [id, blocked, watchDirectConversation]);
   useEffect(() => {
-    if (!blocked && !showJump) void nav.run({ type: "dm.read", userId: id });
-  }, [id, messages.at(-1)?.id, blocked, showJump]);
+    if (
+      blocked ||
+      showJump ||
+      directHistory.loading ||
+      !latestMessageId ||
+      (!incomingUnread.length && !catalogUnread) ||
+      readInFlight.current
+    )
+      return;
+    const signature = `${id}:${latestMessageId}:${unreadKey}`;
+    if (attemptedRead.current === signature) return;
+    attemptedRead.current = signature;
+    readInFlight.current = true;
+    void nav.run({ type: "dm.read", userId: id }).then((ok) => {
+      readInFlight.current = false;
+      if (!readMounted.current) return;
+      setReadFailed(!ok);
+      // A newer unread key arriving while this request was pending gets its turn.
+      // The attempted signature prevents repeated writes while snapshots catch up.
+      if (ok) setReadRevision((value) => value + 1);
+    });
+  }, [
+    id,
+    latestMessageId,
+    unreadKey,
+    blocked,
+    showJump,
+    directHistory.loading,
+    readRevision,
+  ]);
   return (
     <KeyboardAvoidingView
       style={s.page}
@@ -680,6 +735,27 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
           />
         )}
       </View>
+      {readFailed && !blocked && (
+        <View
+          style={{ paddingHorizontal: 20, paddingVertical: 10, gap: 8 }}
+          accessibilityRole="alert"
+        >
+          <Text style={s.small}>Your read status could not be updated.</Text>
+          <Button
+            small
+            secondary
+            title="Jump to latest & retry"
+            onPress={() => {
+              attemptedRead.current = null;
+              loadingOlder.current = false;
+              stickToBottom.current = true;
+              setShowJump(false);
+              scroll.current?.scrollToEnd({ animated: !reducedMotion });
+              setReadRevision((value) => value + 1);
+            }}
+          />
+        </View>
+      )}
       <ScrollView
         ref={scroll}
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
@@ -959,20 +1035,23 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                       ),
                     )
                     .then((ok) => {
-                      if (ok) {
+                      if (ok && readMounted.current) {
                         setBody("");
                         setEditing(null);
                         attachment.clear();
                       }
                     })
-                    .catch((error) =>
-                      nav.toast(
-                        error instanceof Error
-                          ? error.message
-                          : "Could not send this image.",
-                      ),
-                    )
-                    .finally(() => setBusy(false));
+                    .catch((error) => {
+                      if (readMounted.current)
+                        nav.toast(
+                          error instanceof Error
+                            ? error.message
+                            : "Could not send this image.",
+                        );
+                    })
+                    .finally(() => {
+                      if (readMounted.current) setBusy(false);
+                    });
                 }}
               />
             </View>

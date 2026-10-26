@@ -8,7 +8,7 @@ import {
   View,
   type ScrollViewInstance,
 } from "react-native";
-import { directParticipantSnapshot, useLoop } from "@theloop/client";
+import { useLoop } from "@theloop/client";
 import type { Message, Subscription } from "@theloop/core";
 import { channelUnread } from "@theloop/core";
 import {
@@ -25,7 +25,6 @@ import {
   pickSubscription,
   RelativeTime,
   s,
-  Section,
   Touch,
   useReducedMotion,
 } from "./ui";
@@ -60,16 +59,6 @@ export function Chats({ nav }: { nav: Nav }) {
               state.preferences.subscriptions[c.conferenceId]) ===
               "following"))),
   );
-  const dmIds = Array.from(
-    new Set(
-      state.directMessages
-        .filter(
-          (m) =>
-            m.fromId === state.currentUserId || m.toId === state.currentUserId,
-        )
-        .map((m) => (m.fromId === state.currentUserId ? m.toId : m.fromId)),
-    ),
-  ).filter((id) => !state.preferences.blockedIds.includes(id));
   return (
     <ScrollView contentContainerStyle={s.content}>
       <View>
@@ -79,6 +68,11 @@ export function Chats({ nav }: { nav: Nav }) {
           Big conference energy. Only the conversations you want.
         </Text>
       </View>
+      <Button
+        secondary
+        title="Private conversations ↗"
+        onPress={() => nav.open({ kind: "inbox" })}
+      />
       <SquadSummary nav={nav} />
       <Field
         value={search}
@@ -219,51 +213,6 @@ export function Chats({ nav }: { nav: Nav }) {
           action="Discover rooms"
           onPress={() => setDiscover(true)}
         />
-      )}
-      {dmIds.length > 0 && (
-        <>
-          <Section
-            title="Just between us"
-            subtitle="Your direct conversations"
-          />
-          {dmIds.map((id) => {
-            const person = state.profiles.find((p) => p.id === id);
-            const last = state.directMessages
-              .filter(
-                (m) =>
-                  (m.fromId === id && m.toId === state.currentUserId) ||
-                  (m.toId === id && m.fromId === state.currentUserId),
-              )
-              .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-            const participant = directParticipantSnapshot(
-              state.directMessages,
-              state.currentUserId,
-              id,
-            );
-            const identity = displayIdentity(
-              person,
-              participant?.name,
-              participant?.initials,
-            );
-            return (
-              <Touch
-                key={id}
-                label={`Message ${identity.name}`}
-                onPress={() => nav.open({ kind: "dm", id })}
-                style={[s.row, { paddingVertical: 7 }]}
-              >
-                <Avatar profile={identity} size={45} />
-                <View style={s.grow}>
-                  <Text style={s.h3}>{identity.name}</Text>
-                  <Text numberOfLines={1} style={s.small}>
-                    {last?.body}
-                  </Text>
-                </View>
-                <Text style={s.small}>↗</Text>
-              </Touch>
-            );
-          })}
-        </>
       )}
       <View style={[s.card, { backgroundColor: color.soft }]}>
         <Text style={s.h3}>You don't have to keep up with everything.</Text>

@@ -36,6 +36,7 @@ import {
   CreateCommunity,
 } from "./src/Feed";
 import { Chats, ChannelDetail } from "./src/Chat";
+import { DirectInbox } from "./src/DirectInbox";
 import { Events, EventDetail, CreateEvent } from "./src/Events";
 import { People, ProfileDetail, DirectChat } from "./src/People";
 import { Search } from "./src/Search";
@@ -294,6 +295,7 @@ function LoopApp() {
       event: "The plan",
       profile: "In the loop",
       dm: "Just between us",
+      inbox: "Private conversations",
       compose: "Share with your people",
       communities: "Your communities",
       "create-community": "A new corner",
@@ -355,6 +357,8 @@ function LoopApp() {
         return (
           <DirectChat key={`${scope}:${route.id}`} id={route.id} nav={nav} />
         );
+      case "inbox":
+        return <DirectInbox key={scope} nav={nav} />;
       case "compose":
         return (
           <Compose

@@ -190,6 +190,11 @@ export function useImageAttachment(nav: Nav) {
         return;
       }
       if (chosen.current) await removeCreatedImage(chosen.current.uri);
+      // Removing the previous cache file may yield while this screen/account closes.
+      if (request !== generation.current) {
+        await removeCreatedImage(next.uri);
+        return;
+      }
       if (uploaded.current) discardImage(uploaded.current.image.id);
       chosen.current = next;
       uploaded.current = null;
