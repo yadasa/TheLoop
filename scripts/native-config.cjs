@@ -155,6 +155,7 @@ function cleanNativeEnvironment(input = process.env) {
     if (
       key.startsWith("EXPO_PUBLIC_") ||
       key.startsWith("THELOOP_NATIVE_") ||
+      key === "THELOOP_GOOGLE_SERVICES_FILE" ||
       EMULATOR_KEYS.includes(key) ||
       key === "EAS_BUILD_PROFILE"
     )

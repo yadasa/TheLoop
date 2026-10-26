@@ -6,6 +6,7 @@ Verified on 2026-10-26 using project-scoped Google administrative APIs. This des
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Dedicated project             | `theloop-community-2026`, active                                                                                    |
 | Firebase web app              | `TheLoop web`, registered                                                                                           |
+| Firebase Android app          | `TheLoop Android`, `co.theloop.community`, ACTIVE; public config fetched to ignored `.cache/google-services.android.json` |
 | Cloud Billing                 | User approved linking an existing account and delegated account choice; an eligible existing Firebase Payment account is linked and billingEnabled was verified true |
 | Firestore API                 | Enabled through the authorized free setup                                                                           |
 | Firestore database            | First `(default)` database created, Standard Native, `us-central1`, `freeTier: true`                                |
@@ -42,12 +43,26 @@ The first two commands cover build-time validation and the pure device-side runt
 
 ```powershell
 node scripts/start-native-live.mjs --public-firebase-config .cache/firebase.public-sdk.json --start
+# If the default port is occupied, select a free separate port explicitly:
+node scripts/start-native-live.mjs --public-firebase-config .cache/firebase.public-sdk.json --start --port 8109
 ```
 
-This starts Expo Go on LAN port `8098`, separate from the sample preview on `8097`. The launcher removes inherited `EXPO_PUBLIC_*`, mode/profile and Firebase emulator variables; only validated public Firebase identifiers are added, with dotenv loading disabled. Configure an HTTPS web-sharing origin separately if wanted; the isolated launcher uses installed-app links by default. A real member must create/sign into their own account. The guarded catalog initializer still requires the actual owner's bootstrapped UID and is never run by this launcher.
+This starts Expo Go on LAN port `8098` by default, separate from the sample preview on `8097`; `--port 8109` chooses another validated port. Before starting, the launcher checks availability on both IPv4 and IPv6 and rejects a port already used by another service. It never stops that service. The launcher removes inherited `EXPO_PUBLIC_*`, mode/profile and Firebase emulator variables; only validated public Firebase identifiers are added, with dotenv loading disabled. Configure an HTTPS web-sharing origin separately if wanted; the isolated launcher uses installed-app links by default. A real member must create/sign into their own account. The guarded catalog initializer still requires the actual owner's bootstrapped UID and is never run by this launcher.
 
 For EAS, configure the six public identifiers in the selected environment before using `eas build --profile livepreview --platform android`. The existing `preview` profile remains fictional sample data; do not describe its APK as a live community build. `production` also requires live configuration. Local emulator mode is explicit (`THELOOP_NATIVE_MODE=emulator`), accepts only a `demo-*` project with a loopback/private IP or a single-label/`.local` LAN hostname, and requires valid distinct Auth/Firestore/Functions ports. A production project combined with emulators is rejected.
 
 Read-only inspection on October 26, 2026 reconfirmed active dedicated infrastructure, linked billing, Email/Password enabled, one registered Firebase web app, and the same three authorized Auth domains (`localhost`, the Firebase app domain and Firebase hosting domain). These domains do not include the private ChatGPT-hosted website; basic Email/Password sign-in is distinct from OAuth redirect/email continue-URL authorization. No project settings or user records were changed by this inspection.
 
-Remote Android push is a separate setup gate: the current source has no `android.googleServicesFile` and the observed Firebase registrations contain only the web app. Registering the Android application and supplying its matching public `google-services.json`, together with FCM V1 delivery credentials in EAS, must precede an installed-device push claim. The notifications plugin, opt-in UI and deployed server delivery handler alone do not establish FCM readiness. [Expo's FCM setup](https://docs.expo.dev/push-notifications/fcm-credentials/) describes both the client configuration and EAS delivery credential requirements. No Android registration, private key, push message or credential upload was performed in this milestone.
+## Android public Firebase configuration
+
+After the native configuration checkpoint, the dedicated project's Android apps were listed and no `co.theloop.community` registration existed. The explicitly authorized registration was created and read back as ACTIVE: `1:36048778692:android:8b34aa011b64d04b5d6091`. Its public configuration was downloaded through Firebase's Android app configuration API and saved only at ignored `.cache/google-services.android.json`. Project ID/number, storage bucket, package and app ID were verified against the registration. No Auth account, service-account key, billing change, push, email or FCM credential upload was created by this operation.
+
+`THELOOP_GOOGLE_SERVICES_FILE` accepts a local path or an EAS **file** environment variable containing this public `google-services.json`. It is not an `EXPO_PUBLIC_*` variable and does not accept a service-account key. `app.config.js` validates file bytes, the dedicated project/bucket, the exact Android package and Android app-ID namespace before setting `android.googleServicesFile`. Sample and emulator configurations remove any inherited/static native file reference without reading it. EAS Android builds under `livepreview` or `production` require the file; local live Expo Go and iOS do not require Android configuration.
+
+For a local config/prebuild command, the path is relative to `apps/mobile` unless absolute:
+
+```powershell
+$env:THELOOP_GOOGLE_SERVICES_FILE = '../../.cache/google-services.android.json'
+```
+
+The isolated Expo Go launcher intentionally clears this inherited variable because Expo Go sign-in does not require native FCM configuration. For an EAS cloud build, create/select the matching **file** variable in its EAS environment; ignored `.cache` files are not automatically uploaded. Do not use a private FCM service-account key for this client file. The public configuration is necessary client setup; actual FCM V1 delivery credentials in EAS and installed-device delivery verification are still separate gates. The notifications plugin, opt-in UI, public config and deployed server handler alone do not prove delivery. [Expo's FCM setup](https://docs.expo.dev/push-notifications/fcm-credentials/) describes these separate requirements; [Firebase's getConfig API](https://firebase.google.com/docs/reference/firebase-management/rest/v1beta1/projects.androidApps/getConfig) documents the public artifact download.

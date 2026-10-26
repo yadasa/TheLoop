@@ -205,3 +205,189 @@ test("local live environment removes inherited public/emulator values and disabl
   assert.deepEqual(resolveNativeRuntime(result).firebaseConfig, config);
   assert.equal(inherited.THELOOP_NATIVE_MODE, "emulator");
 });
+
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const {
+  validateAndroidPublicConfig,
+  readAndroidPublicConfig,
+  configureAndroid,
+} = require("./native-android-config.cjs");
+const androidPublic = () => ({
+  project_info: {
+    project_id: "theloop-community-2026",
+    project_number: "36048778692",
+    storage_bucket: "theloop-community-2026.firebasestorage.app",
+  },
+  client: [
+    {
+      client_info: {
+        mobilesdk_app_id: "1:36048778692:android:example123",
+        android_client_info: { package_name: "co.theloop.community" },
+      },
+      api_key: [{ current_key: config.apiKey }],
+    },
+  ],
+  configuration_version: "1",
+});
+test("Android public configuration is bound to the exact project, package, bucket and app namespace", () => {
+  assert.deepEqual(validateAndroidPublicConfig(androidPublic()), {
+    projectId: "theloop-community-2026",
+    packageName: "co.theloop.community",
+    appId: "1:36048778692:android:example123",
+  });
+  for (const key of ["project_id", "project_number", "storage_bucket"]) {
+    const wrong = androidPublic();
+    wrong.project_info[key] = "wrong-project";
+    assert.throws(
+      () => validateAndroidPublicConfig(wrong),
+      /dedicated TheLoop project/,
+    );
+  }
+  const wrongPackage = androidPublic();
+  wrongPackage.client[0].client_info.android_client_info.package_name =
+    "co.other.app";
+  assert.throws(
+    () => validateAndroidPublicConfig(wrongPackage),
+    /co.theloop.community/,
+  );
+  const wrongApp = androidPublic();
+  wrongApp.client[0].client_info.mobilesdk_app_id =
+    "1:999999:android:example123";
+  assert.throws(
+    () => validateAndroidPublicConfig(wrongApp),
+    /dedicated project number/,
+  );
+  const noKey = androidPublic();
+  noKey.client[0].api_key = [];
+  assert.throws(
+    () => validateAndroidPublicConfig(noKey),
+    /missing its Firebase API key/,
+  );
+  const multiple = androidPublic();
+  multiple.client.push(structuredClone(multiple.client[0]));
+  assert.throws(
+    () => validateAndroidPublicConfig(multiple),
+    /must contain only/,
+  );
+});
+test("Android configuration rejects service-account credentials without echoing their content", () => {
+  assert.throws(
+    () =>
+      validateAndroidPublicConfig({
+        ...androidPublic(),
+        type: "service_account",
+        private_key: "PRIVATE-CANARY-NEVER-ECHO",
+      }),
+    (error) =>
+      /not accepted/.test(error.message) &&
+      !error.message.includes("PRIVATE-CANARY"),
+  );
+});
+test("sample/emulator never include a native Firebase file, even if inherited from static config or env", () => {
+  for (const mode of ["sample", "emulator"]) {
+    const android = configureAndroid(
+      {
+        package: "co.theloop.community",
+        versionCode: 3,
+        googleServicesFile: "/unrelated/private-file.json",
+      },
+      { mode },
+      { THELOOP_GOOGLE_SERVICES_FILE: "/another/private-file.json" },
+      process.cwd(),
+    );
+    assert.deepEqual(android, {
+      package: "co.theloop.community",
+      versionCode: 3,
+    });
+  }
+  assert.equal(
+    cleanNativeEnvironment({
+      THELOOP_GOOGLE_SERVICES_FILE: "/unrelated/file.json",
+    }).THELOOP_GOOGLE_SERVICES_FILE,
+    undefined,
+  );
+});
+test("live Android build requires its native file while local Expo Go and iOS do not", () => {
+  const base = { package: "co.theloop.community" };
+  for (const EAS_BUILD_PROFILE of ["livepreview", "production"])
+    assert.throws(
+      () =>
+        configureAndroid(
+          base,
+          { mode: "live" },
+          { EAS_BUILD_PROFILE, EAS_BUILD_PLATFORM: "android" },
+          process.cwd(),
+        ),
+      /require THELOOP_GOOGLE_SERVICES_FILE/,
+    );
+  assert.deepEqual(
+    configureAndroid(base, { mode: "live" }, {}, process.cwd()),
+    base,
+  );
+  assert.deepEqual(
+    configureAndroid(
+      base,
+      { mode: "live" },
+      { EAS_BUILD_PROFILE: "production", EAS_BUILD_PLATFORM: "ios" },
+      process.cwd(),
+    ),
+    base,
+  );
+});
+test("native file reader validates real bytes and fails without exposing JSON excerpts or supplied paths", () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "theloop-native-config-"),
+  );
+  const filename = path.join(directory, "google-services.json");
+  const invalid = path.join(directory, "invalid.json");
+  try {
+    fs.writeFileSync(filename, JSON.stringify(androidPublic()));
+    fs.writeFileSync(invalid, "{PRIVATE-CANARY-NEVER-ECHO");
+    const read = readAndroidPublicConfig("google-services.json", directory);
+    assert.equal(read.filename, filename);
+    assert.equal(read.packageName, "co.theloop.community");
+    const result = configureAndroid(
+      { package: "co.theloop.community" },
+      { mode: "live" },
+      {
+        THELOOP_GOOGLE_SERVICES_FILE: filename,
+        EAS_BUILD_PROFILE: "livepreview",
+        EAS_BUILD_PLATFORM: "android",
+      },
+      directory,
+    );
+    assert.equal(result.googleServicesFile, filename);
+    assert.throws(
+      () =>
+        configureAndroid(
+          { package: "co.other.app" },
+          { mode: "live" },
+          { THELOOP_GOOGLE_SERVICES_FILE: filename },
+          directory,
+        ),
+      /Expo Android package/,
+    );
+    for (const file of [
+      invalid,
+      path.join(directory, "missing.json"),
+      "{PRIVATE-CANARY-NEVER-ECHO",
+    ])
+      assert.throws(
+        () => readAndroidPublicConfig(file, directory),
+        (error) =>
+          !error.message.includes("PRIVATE-CANARY") &&
+          !error.message.includes(directory),
+      );
+    fs.writeFileSync(invalid, " ".repeat(65537));
+    assert.throws(
+      () => readAndroidPublicConfig(invalid, directory),
+      /could not be read/,
+    );
+  } finally {
+    fs.unlinkSync(filename);
+    fs.unlinkSync(invalid);
+    fs.rmdirSync(directory);
+  }
+});
