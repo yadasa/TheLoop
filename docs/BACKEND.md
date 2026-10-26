@@ -200,6 +200,8 @@ pnpm --filter @theloop/functions seed:live --project theloop-community-2026 --ow
 
 The owner must exist in Firebase Auth, have a verified email and remain active. Their matching `users/{uid}` and `profiles/{uid}` bootstrap records must already exist; disabled or deletion-pending private accounts are refused. The script does not create an Auth account or profile. It refuses emulator settings, non-TheLoop project names, missing/repeated identity arguments and unknown options. Dry runs perform reads only and never grant a role.
 
+With `FIREBASE_ADMIN_ACCESS_TOKEN`, Admin Auth uses the existing short-lived bearer and Firestore uses an OAuth2 client carrying that same in-memory token. This avoids Admin's certificate-only Firestore factory restriction without creating a service-account key, refresh token or credential file. Supply a fresh token if it expires. Without this variable, the normal Application Default Credentials path remains unchanged.
+
 After reviewing that output and confirming the actual owner UID, apply explicitly:
 
 ```sh

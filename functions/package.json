@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test test/policy.test.ts test/service.test.ts test/notifications.test.ts test/cleanup.test.ts test/contributions.test.ts test/authorControls.test.ts test/directory.test.ts test/squads.test.ts test/media.test.ts test/directMessages.test.ts test/eventLifecycle.test.ts test/eventChangeJobs.test.ts test/eventDates.test.ts test/liveCatalog.test.ts",
+    "test": "tsx --test test/policy.test.ts test/service.test.ts test/notifications.test.ts test/cleanup.test.ts test/contributions.test.ts test/authorControls.test.ts test/directory.test.ts test/squads.test.ts test/media.test.ts test/directMessages.test.ts test/eventLifecycle.test.ts test/eventChangeJobs.test.ts test/eventDates.test.ts test/liveCatalog.test.ts test/liveFirestore.test.ts",
     "test:rules": "tsx --test test/rules.test.ts",
     "test:integration": "tsx --test test/integration.test.ts",
     "test:media:integration": "tsx --test test/media.integration.test.ts",
@@ -19,6 +19,7 @@
   "dependencies": {
     "firebase-admin": "^13.5.0",
     "firebase-functions": "^6.6.0",
+    "google-auth-library": "^9.15.1",
     "sharp": "0.35.5"
   },
   "devDependencies": {
