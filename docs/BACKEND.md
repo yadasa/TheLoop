@@ -177,8 +177,39 @@ After billing is approved and Authentication is configured:
 4. Enable billing only through an authorized account flow if required by Cloud Functions. Verify region and quotas before deployment.
 5. Deploy rules/indexes and built functions with an explicitly named project: `firebase deploy --project <theloop-project-id> --only firestore,functions`. Enable Firestore TTL for `requests.expiresAt` (included in index configuration).
 6. Sign in with the real community owner's account; allow `bootstrap` to create the empty real profile.
-7. Run the explicit, create-only catalog initializer with Application Default Credentials (or an ephemeral `FIREBASE_ADMIN_ACCESS_TOKEN` environment value): `pnpm --filter @theloop/functions seed:live --project theloop-community-2026 --owner <real-owner-uid>`. It refuses non-TheLoop projects and does not overwrite existing catalog resources. It inserts zero invented profiles, messages, events or member counts, and grants the supplied real owner the private admin role.
+7. Review the first-AfroTech initializer below with Application Default Credentials (or an ephemeral `FIREBASE_ADMIN_ACCESS_TOKEN` environment value). It defaults to a dry run. Apply only after the real owner has signed in, verified their email and completed bootstrap. The explicit apply creates only the first hub/chat and grants that owner the private admin role in the same transaction.
 8. Enable App Check for released clients and set `THELOOP_ENFORCE_APP_CHECK=true` before production callable deployment. Emulator/development clients need registered debug providers. The web/mobile app must initialize App Check before this switch is enabled.
 9. Run emulator rules tests and a two-account live smoke test covering membership, private messages, blocked requests, vote uniqueness and capacity before inviting the community.
 
 Production does not claim that four years of historical GroupMe messages, member lists or event calendars have been imported. Migration requires the owner's authorized export, a consent/retention plan, a preview with duplicate detection, and a reviewed import job.
+
+### First live group chat: AfroTech 2026
+
+The live initializer prepares exactly these two records:
+
+- `conferences/afrotech`: **AfroTech 2026**, Houston, TX, **November 2–6, 2026**. The description identifies this as a community-run hub and names the George R. Brown Convention Center. No session hours are invented.
+- `channels/afrotech-general`: **AfroTech group chat**, with **General**, **Introductions**, **Jobs & referrals**, **Side events** and **Travel** topics. Its `public` visibility means any signed-in active TheLoop member can read it; no private membership is fabricated.
+
+The [official AFROTECH conference site](https://afrotechconference.com/) and [official FAQ](https://afrotechconference.com/faqs) confirm the date range, city and venue (checked October 26, 2026). TheLoop's hub is an independent community space, not an official AFROTECH/Blavity product or schedule. Use the [official schedule](https://afrotechconference.com/schedule) for conference programming. No schedule or historical community content is imported by initialization.
+
+First review the explicit project, owner UID, full two-record catalog and proposed owner admin grant:
+
+```sh
+pnpm --filter @theloop/functions seed:live --project theloop-community-2026 --owner <real-owner-uid> --dry-run
+```
+
+The owner must exist in Firebase Auth, have a verified email and remain active. Their matching `users/{uid}` and `profiles/{uid}` bootstrap records must already exist; disabled or deletion-pending private accounts are refused. The script does not create an Auth account or profile. It refuses emulator settings, non-TheLoop project names, missing/repeated identity arguments and unknown options. Dry runs perform reads only and never grant a role.
+
+After reviewing that output and confirming the actual owner UID, apply explicitly:
+
+```sh
+pnpm --filter @theloop/functions seed:live --project theloop-community-2026 --owner <real-owner-uid> --apply
+```
+
+Apply creates missing records with `transaction.create` and grants the supplied owner `users/{uid}.role = 'admin'` atomically. Existing owner preferences and profile data are preserved. Exact same-owner catalog reruns verify and skip those records, preserving their live member counts, creation timestamps and additional moderators. If the fixed IDs already contain conflicting metadata, ownership or community scope, the whole operation fails before any write; inspect and resolve that conflict separately. It never overwrites catalog records or deletes earlier resources. Both member counts start at zero and change only through actual member actions; no owner subscription, posts, messages, communities, RSVP history or other conference is fabricated.
+
+Run the initializer's isolated guard/idempotency tests without connecting to any Firebase project:
+
+```sh
+pnpm --filter @theloop/functions exec tsx --test test/liveCatalog.test.ts
+```
