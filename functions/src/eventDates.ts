@@ -1,5 +1,17 @@
 import { assert, text } from "./policy";
 
+/** A conference date is a calendar day, never a timestamp or a rolled-over date. */
+export function calendarDate(value: unknown, label: string): string {
+  const input = text(value, label, 10);
+  assert(
+    /^\d{4}-\d{2}-\d{2}$/.test(input),
+    "invalid-argument",
+    `${label} must use YYYY-MM-DD.`,
+  );
+  absoluteEventInstant(`${input}T00:00:00Z`, label);
+  return input;
+}
+
 /** Absolute ISO instant only: validate wall components before offset conversion to reject rollover. */
 export function absoluteEventInstant(value: unknown, label: string): string {
   const input = text(value, label, 40);

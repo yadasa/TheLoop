@@ -257,3 +257,6 @@ Group-chat reaction pickers and Squad reaction/action menus now use the shared r
 
 ## October 27 — usable tap targets on phones
 Shared native controls now reserve at least44px height/width while preserving larger requested targets. Calendar day cells retain responsive column widths with44px height, so seven columns fit narrow phones. Consecutive group messages align with the larger avatar target. Types pass;320px Expo-web QA verified calendar grid/selection, chat toolbar, reaction controls and composer navigation. DOM measurements found no undersized visible chat buttons. Full CI40482851224 passed for the preceding motion commitd989c8f.
+
+## October 27 — conference date validation
+The backend now applies strict calendar-day validation before creating a conference, matching the Expo form. Impossible dates such as February30 or a non-leap February29 are rejected instead of rolling into March; reversed ranges remain invalid. Leap dates and same-day ranges remain supported. Functions types and130 tests pass, including transactional rejection without storing records. Awaiting CI/deployment; existing live AfroTech dates are unchanged.

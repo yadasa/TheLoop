@@ -589,6 +589,42 @@ test("conference creation requires a server-owned administrator role", async () 
   assert.equal(db.get(`conferences/${created.id}`).members, 0);
   assert.deepEqual(db.get(`conferences/${created.id}`).organizerIds, ["alice"]);
 });
+test("conference creation validates real dates and ordered ranges before storing anything", async () => {
+  const db = await database();
+  db.get("users/alice").role = "admin";
+  const conference = {
+    name: "Builders Week",
+    shortName: "BW",
+    city: "Houston",
+    description: "Community events",
+    tagline: "",
+    startDate: "2028-02-29",
+    endDate: "2028-03-01",
+  };
+  for (const dates of [
+    { startDate: "2026-02-30", endDate: "2026-03-03" },
+    { startDate: "2026-02-20", endDate: "2026-02-29" },
+    { startDate: "2026-11-03", endDate: "2026-11-02" },
+  ]) {
+    const before = db.documents.size;
+    await assert.rejects(
+      () =>
+        db.command("alice", {
+          type: "conference.create",
+          conference: { ...conference, ...dates },
+        }),
+      (error) =>
+        error instanceof DomainError && error.code === "invalid-argument",
+    );
+    assert.equal(db.documents.size, before);
+  }
+  const created = await db.command("alice", {
+    type: "conference.create",
+    conference,
+  });
+  assert.equal(db.get(`conferences/${created.id}`).startDate, "2028-02-29");
+});
+
 test("private channel membership is moderator-owned and excludes unauthorized posters", async () => {
   const db = await database();
   const command = {

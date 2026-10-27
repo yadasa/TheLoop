@@ -1,7 +1,37 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { absoluteEventInstant } from "../src/eventDates";
+import { absoluteEventInstant, calendarDate } from "../src/eventDates";
 import { DomainError } from "../src/policy";
+
+test("conference days reject impossible dates without silently moving to another month", () => {
+  for (const value of [
+    "2024-02-29",
+    "2026-11-02",
+    "0099-12-31",
+    "2000-02-29",
+  ]) {
+    assert.equal(calendarDate(value, "Start"), value);
+  }
+  for (const value of [
+    "2026-02-30",
+    "2025-02-29",
+    "1900-02-29",
+    "2026-04-31",
+    "2026-00-01",
+    "2026-13-01",
+    "2026-01-00",
+    "2026-1-02",
+    "11/02/2026",
+    "2026-11-02T00:00Z",
+  ]) {
+    assert.throws(
+      () => calendarDate(value, "Start"),
+      (error) =>
+        error instanceof DomainError && error.code === "invalid-argument",
+      value,
+    );
+  }
+});
 
 test("absolute event dates normalize explicit offsets and valid leap dates without using the server timezone", () => {
   assert.equal(

@@ -21,7 +21,7 @@ import { directoryFields } from "./directory.js";
 import { linkImage } from "./media";
 import { authorSnapshot, participationIdentity } from "./identity";
 import { canSendDirectMessage } from "./directMessages";
-import { absoluteEventInstant } from "./eventDates";
+import { absoluteEventInstant, calendarDate } from "./eventDates";
 import {
   assertEventCheckinWindow,
   cancelEvent,
@@ -339,14 +339,10 @@ export async function execute(
         "invalid-argument",
         "Provide conference details.",
       );
-      const startDate = text(input.startDate, "Start date", 10);
-      const endDate = text(input.endDate, "End date", 10);
+      const startDate = calendarDate(input.startDate, "Start date");
+      const endDate = calendarDate(input.endDate, "End date");
       assert(
-        /^\d{4}-\d{2}-\d{2}$/.test(startDate) &&
-          /^\d{4}-\d{2}-\d{2}$/.test(endDate) &&
-          Number.isFinite(Date.parse(startDate)) &&
-          Number.isFinite(Date.parse(endDate)) &&
-          endDate >= startDate,
+        endDate >= startDate,
         "invalid-argument",
         "Choose a valid conference date range.",
       );
