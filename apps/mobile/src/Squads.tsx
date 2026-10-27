@@ -1,3 +1,4 @@
+import { useMediaViewerOpen, isMediaViewerOpen } from "./Media";
 import { PrivateConversationSearch } from "./PrivateConversationSearch";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -473,6 +474,7 @@ export function CreateSquad({ nav }: { nav: Nav }) {
 
 export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
   const appActive = useAppActive();
+  const mediaViewerOpen = useMediaViewerOpen();
   const [searchOpen, setSearchOpen] = useState(false);
   const { state, watchSquad, loadOlderSquadMessages, squadHistory } = useLoop();
   const attachment = useImageAttachment(nav, { kind: "squad", id });
@@ -522,6 +524,8 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
     if (
       appActive &&
       isAppActive() &&
+      !mediaViewerOpen &&
+      !isMediaViewerOpen() &&
       !nav.dialogOpen &&
       !searchOpen &&
       !showJump &&
@@ -535,6 +539,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
     messages.at(-1)?.id,
     !!squad,
     appActive,
+    mediaViewerOpen,
     showJump,
     squadHistory.loading,
     nav.dialogOpen,

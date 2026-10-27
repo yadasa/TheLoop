@@ -1,3 +1,4 @@
+import { useMediaViewerOpen, isMediaViewerOpen } from "./Media";
 import React, { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -323,6 +324,7 @@ export function ChannelDetail({
     isOpen: subscriptionOpen,
   } = useSubscriptionPicker();
   const appActive = useAppActive();
+  const mediaViewerOpen = useMediaViewerOpen();
   const channel = state.channels.find((c) => c.id === id);
   const draft = useConversationDraft({
     kind: "channel",
@@ -409,6 +411,8 @@ export function ChannelDetail({
     if (
       appActive &&
       isAppActive() &&
+      !mediaViewerOpen &&
+      !isMediaViewerOpen() &&
       !showJump &&
       !topicSheet &&
       !searchVisible &&
@@ -434,6 +438,7 @@ export function ChannelDetail({
     topic,
     newestMessageId,
     appActive,
+    mediaViewerOpen,
     showJump,
     history.loading,
     topicSheet,

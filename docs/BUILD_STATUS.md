@@ -10,7 +10,7 @@ A community platform growing from four years of AfroTech group chat: conference 
 - Research agent: open source evaluation and focused independent review.
 
 ## Operating rules
-Keep pushes small and coherent. Never commit credentials, build output or caches. Fictional demonstration data must be clearly labeled. Never claim historical membership or migrate chat history without user-provided data and authorization. Preserve explicit mutes. Trust is server-owned, explainable, and appealable. Use dedicated TheLoop infrastructure only. The October 27 instruction supersedes earlier limits: continue until 69% usage or a reset to 0%, whichever occurs first. Starting usage was 32%; latest check 60%, same reset timestamp 1793641476. Review between coherent batches and every 30 minutes; at the threshold/reset or if ordinary usage is disallowed, stop new work, save/push verified changes and pause the automation. Do not use reset credits or buy credits.
+Keep pushes small and coherent. Never commit credentials, build output or caches. Fictional demonstration data must be clearly labeled. Never claim historical membership or migrate chat history without user-provided data and authorization. Preserve explicit mutes. Trust is server-owned, explainable, and appealable. Use dedicated TheLoop infrastructure only. The October 27 instruction supersedes earlier limits: continue until 69% usage or a reset to 0%, whichever occurs first. Starting usage was 32%; latest check 61%, same reset timestamp 1793641476. Review between coherent batches and every 30 minutes; at the threshold/reset or if ordinary usage is disallowed, stop new work, save/push verified changes and pause the automation. Do not use reset credits or buy credits.
 
 ## Progress
 - Empty repository cloned; architecture and shared domain contracts established.
@@ -206,3 +206,7 @@ All units pass (core65/client93/web4/mobile33/functions119), workspace typecheck
 - Saves contain only message/channel IDs and timestamps. Current source listeners show edits and clear deleted messages, hidden topics, blocked authors and chats whose membership is revoked. Listener errors clear content and stale callbacks cannot restore it. No copied message bodies or public bookmark collections.
 - Whole-workspace types and units passed: core 69, client 98, web 4, mobile 39, functions 126. Real Auth/callable/Firestore/Storage integration passed 32/32, including private bookmark ownership and removal after membership loss. Sample Expo QA verified save, reload persistence, exact-topic navigation, remove and empty state at phone width.
 - Profile-photo commit 420394f passed full CI 40473437685. Photo and bookmark backend changes are awaiting the next verified deployment. Usage 60%, reset unchanged.
+
+### October 27 — photo viewer read-state fix
+- Full-screen shared photos and attachment previews now suspend automatic read markers in group chats, direct messages and Squads. Read tracking resumes when the final viewer closes; opening/closing overlapping viewers cannot resume it early. The immediate visibility check also protects arrival callbacks before React subscriptions rerender.
+- Expo typecheck and 40 mobile tests pass, including overlapping-viewer and repeated-cleanup coverage. Usage 61%, same reset window.

@@ -1,3 +1,4 @@
+import { useMediaViewerOpen, isMediaViewerOpen } from "./Media";
 import { PrivateConversationSearch } from "./PrivateConversationSearch";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -643,6 +644,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
 
 export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
   const appActive = useAppActive();
+  const mediaViewerOpen = useMediaViewerOpen();
   const [searchOpen, setSearchOpen] = useState(false);
   const {
     state,
@@ -730,6 +732,8 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
       nav.dialogOpen ||
       !appActive ||
       !isAppActive() ||
+      mediaViewerOpen ||
+      isMediaViewerOpen() ||
       blocked ||
       showJump ||
       directHistory.loading ||
@@ -761,6 +765,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     searchOpen,
     readRevision,
     appActive,
+    mediaViewerOpen,
   ]);
   return (
     <KeyboardAvoidingView
