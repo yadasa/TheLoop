@@ -1338,7 +1338,11 @@ export function ChannelDetail({
                     </Touch>
                   </View>
                   {reacting === m.id && (
-                    <View style={[s.wrap, { gap: 6 }]}>
+                    <MotionScene
+                      identity={`reacting-${m.id}`}
+                      distance={4}
+                      style={[s.wrap, { gap: 6 }]}
+                    >
                       {["🖤", "🔥", "🙌", "💯", "😂"].map((emoji) => (
                         <Touch
                           key={emoji}
@@ -1366,7 +1370,7 @@ export function ChannelDetail({
                           </Text>
                         </Touch>
                       ))}
-                    </View>
+                    </MotionScene>
                   )}
                 </View>
               </View>

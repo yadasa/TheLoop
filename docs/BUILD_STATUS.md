@@ -251,3 +251,6 @@ Conversation, photo and post draft mutations now notify mounted draft lists and 
 
 ## Android 0.4.0 / build6 preparation
 Version metadata advances to0.4.0/build6 for a new internal LIVE preview. It includes profile photos and profile QR cards, saved messages, topic read/unread handling, reply navigation, notification filters, sharing, session post/text/photo drafts, offline feedback and private chat date dividers. Both config suites pass. This is preparation only: APK5 remains the latest verified download until the exact-source CI, EAS build and archive checks finish.
+
+## October 27 — reaction and action motion
+Group-chat reaction pickers and Squad reaction/action menus now use the shared reduced-motion-aware entrance transition. Mobile typecheck passes. Expo-web QA at320px verified wrapped reaction/action controls remain reachable, the Squad date divider renders, and creating/discarding an unsent Squad draft immediately updates both its list and the background draft count. Release87be51b passed full CI40482168713; this motion follow-up will be included in the build6 source snapshot.

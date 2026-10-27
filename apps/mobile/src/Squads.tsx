@@ -23,6 +23,7 @@ import {
   Horizontal,
   Label,
   LinkifiedText,
+  MotionScene,
   RelativeTime,
   s,
   Section,
@@ -761,7 +762,11 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                     </Touch>
                   </View>
                   {reacting === message.id && (
-                    <View style={s.wrap}>
+                    <MotionScene
+                      identity={`reacting-${message.id}`}
+                      distance={4}
+                      style={s.wrap}
+                    >
                       {["🖤", "🔥", "🙌", "💯", "😂"].map((emoji) => (
                         <Chip
                           key={emoji}
@@ -776,10 +781,14 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                           }}
                         />
                       ))}
-                    </View>
+                    </MotionScene>
                   )}
                   {actions === message.id && (
-                    <View style={s.wrap}>
+                    <MotionScene
+                      identity={`actions-${message.id}`}
+                      distance={4}
+                      style={s.wrap}
+                    >
                       <CopyMessage
                         text={message.body}
                         nav={nav}
@@ -872,7 +881,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                           }
                         />
                       )}
-                    </View>
+                    </MotionScene>
                   )}
                 </View>
               </View>
