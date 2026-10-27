@@ -10,7 +10,7 @@ A community platform growing from four years of AfroTech group chat: conference 
 - Research agent: open source evaluation and focused independent review.
 
 ## Operating rules
-Keep pushes small and coherent. Never commit credentials, build output or caches. Fictional demonstration data must be clearly labeled. Never claim historical membership or migrate chat history without user-provided data and authorization. Preserve explicit mutes. Trust is server-owned, explainable, and appealable. Use dedicated TheLoop infrastructure only. The October 27 instruction supersedes earlier limits: continue until 69% usage or a reset to 0%, whichever occurs first. Starting usage was 32%; latest check 61%, same reset timestamp 1793641476. Review between coherent batches and every 30 minutes; at the threshold/reset or if ordinary usage is disallowed, stop new work, save/push verified changes and pause the automation. Do not use reset credits or buy credits.
+Keep pushes small and coherent. Never commit credentials, build output or caches. Fictional demonstration data must be clearly labeled. Never claim historical membership or migrate chat history without user-provided data and authorization. Preserve explicit mutes. Trust is server-owned, explainable, and appealable. Use dedicated TheLoop infrastructure only. The October 27 instruction supersedes earlier limits: continue until 69% usage or a reset to 0%, whichever occurs first. Starting usage was 32%; latest check 62%, same reset timestamp 1793641476. Review between coherent batches and every 30 minutes; at the threshold/reset or if ordinary usage is disallowed, stop new work, save/push verified changes and pause the automation. Do not use reset credits or buy credits.
 
 ## Progress
 - Empty repository cloned; architecture and shared domain contracts established.
@@ -216,3 +216,7 @@ All units pass (core65/client93/web4/mobile33/functions119), workspace typecheck
 - Rewrote fictional starter messages and posts with specific plans, questions and useful details using the existing copy guide. Removed repetitive motivational slogans and the sample claim about a real historical member's job offer. Existing saved sample content is preserved; new samples use the revised text.
 - Types and all units pass (69 core, 98 client, 4 web, 40 mobile, 126 functions). Phone-width sample QA verified Copy text feedback, the incoming/own message menus and draft restoration when cancelling an edit. Cross-app OS clipboard remains a physical-device check.
 - Saved-message commit 0b0ad67 passed full CI 40475404717. uploadMedia, getMedia, executeCommand, cleanupPrivateMedia and deleteAccount deployed successfully to the dedicated project, bringing live profile photos and saved references online.
+
+### October 27 — direct inbox filters
+- Direct messages now has All, Unread and Muted filters, accent-insensitive search, a useful empty-state reset and animated filter changes. Muting does not silently mark a conversation read. Counts and search explicitly cover loaded conversations, and pagination remains available under every filter.
+- Filtering rejects blocked peers, other-account records and malformed participant lists; photo-only previews say Photo. Mobile types and 41 tests pass, including filtering/privacy regression coverage. Usage 62%, same reset window.

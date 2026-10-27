@@ -1,3 +1,4 @@
+import { inboxRows, type InboxFilter } from "./directInboxPresentation";
 import { useSessionDrafts } from "./DraftProvider";
 import React, { useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
@@ -5,6 +6,9 @@ import { useLoop } from "@theloop/client";
 import {
   Avatar,
   Button,
+  Chip,
+  Horizontal,
+  MotionScene,
   color,
   displayIdentity,
   Empty,
@@ -26,28 +30,11 @@ export function DirectInbox({ nav }: { nav: Nav }) {
     syncDirectConversations,
   } = useLoop();
   const [search, setSearch] = useState("");
-  const query = search.trim().toLocaleLowerCase();
-  const conversations = directCatalog.results
-    .filter((conversation) =>
-      conversation.participantIds.includes(state.currentUserId),
-    )
-    .map((conversation) => ({
-      conversation,
-      peerId: conversation.participantIds.find(
-        (uid) => uid !== state.currentUserId,
-      ),
-    }))
-    .filter(
-      (entry) =>
-        entry.peerId && !state.preferences.blockedIds.includes(entry.peerId),
-    )
-    .filter(
-      ({ conversation, peerId }) =>
-        !query ||
-        `${conversation.memberNames[peerId!] || ""} ${conversation.lastMessage?.body || ""}`
-          .toLocaleLowerCase()
-          .includes(query),
-    );
+  const [filter, setFilter] = useState<InboxFilter>("all");
+  const query = search.trim();
+  const conversations = inboxRows(directCatalog.results, state, filter, query);
+  const unreadCount = inboxRows(directCatalog.results, state, "unread").length;
+  const loadMore = loadMoreDirectConversations;
   const backfill = mode === "live" && !directCatalog.progress?.complete;
   const sync = () => {
     void syncDirectConversations().catch((error: unknown) =>
@@ -83,6 +70,26 @@ export function DirectInbox({ nav }: { nav: Nav }) {
         placeholder="Search loaded conversations…"
         autoCorrect={false}
       />
+      <Horizontal>
+        <Chip
+          title="All"
+          selected={filter === "all"}
+          onPress={() => setFilter("all")}
+        />
+        <Chip
+          title={`Unread${unreadCount ? ` · ${unreadCount}` : ""}`}
+          selected={filter === "unread"}
+          onPress={() => setFilter("unread")}
+        />
+        <Chip
+          title="Muted"
+          selected={filter === "muted"}
+          onPress={() => setFilter("muted")}
+        />
+      </Horizontal>
+      <Text style={s.small}>
+        Filters and search cover loaded conversations.
+      </Text>
       {backfill && (
         <View style={s.card}>
           <Text style={s.h3}>Find older conversations</Text>
@@ -115,54 +122,53 @@ export function DirectInbox({ nav }: { nav: Nav }) {
             secondary
             title="Retry inbox"
             disabled={directCatalog.loading || directCatalog.syncing}
-            onPress={loadMoreDirectConversations}
+            onPress={loadMore}
           />
         </View>
       )}
-      {conversations.map(({ conversation, peerId }) => {
-        const id = peerId!;
-        const identity = displayIdentity(
-          state.profiles.find((person) => person.id === id),
-          conversation.memberNames[id],
-          conversation.memberInitials[id],
-        );
-        const unread = Math.max(
-          0,
-          conversation.unreadCounts[state.currentUserId] || 0,
-        );
-        const muted = state.preferences.dmMutedIds?.includes(id);
-        return (
-          <Touch
-            key={conversation.id}
-            label={`Message ${identity.name}${unread ? `, ${unread} unread` : ""}`}
-            onPress={() => nav.open({ kind: "dm", id })}
-            style={[
-              s.card,
-              { flexDirection: "row", alignItems: "center", gap: 13 },
-            ]}
-          >
-            <Avatar profile={identity} size={45} />
-            <View style={[s.grow, { gap: 5 }]}>
-              <Text style={[s.h3, unread > 0 && { fontWeight: "700" }]}>
-                {identity.name}
-              </Text>
-              <Text numberOfLines={2} style={s.small}>
-                {conversation.lastMessage?.body ||
-                  "Open your private conversation."}
-              </Text>
-              {muted && <Text style={s.small}>Notifications muted</Text>}
-            </View>
-            <View style={{ alignItems: "flex-end", gap: 9 }}>
-              <RelativeTime date={conversation.lastAt} />
-              {unread > 0 ? (
-                <Label dark>{unread > 99 ? "99+" : unread}</Label>
-              ) : (
-                <Text style={s.small}>↗</Text>
-              )}
-            </View>
-          </Touch>
-        );
-      })}
+      <MotionScene identity={filter} style={{ gap: 14 }}>
+        {conversations.map(({ conversation, peerId, unread, muted }) => {
+          const id = peerId!;
+          const identity = displayIdentity(
+            state.profiles.find((person) => person.id === id),
+            conversation.memberNames[id],
+            conversation.memberInitials[id],
+          );
+          return (
+            <Touch
+              key={conversation.id}
+              label={`Message ${identity.name}${unread ? `, ${unread} unread` : ""}`}
+              onPress={() => nav.open({ kind: "dm", id })}
+              style={[
+                s.card,
+                { flexDirection: "row", alignItems: "center", gap: 13 },
+              ]}
+            >
+              <Avatar profile={identity} size={45} />
+              <View style={[s.grow, { gap: 5 }]}>
+                <Text style={[s.h3, unread > 0 && { fontWeight: "700" }]}>
+                  {identity.name}
+                </Text>
+                <Text numberOfLines={2} style={s.small}>
+                  {conversation.lastMessage?.body ||
+                    (conversation.lastMessage?.hasImage
+                      ? "Photo"
+                      : "Open your private conversation.")}
+                </Text>
+                {muted && <Text style={s.small}>Notifications muted</Text>}
+              </View>
+              <View style={{ alignItems: "flex-end", gap: 9 }}>
+                <RelativeTime date={conversation.lastAt} />
+                {unread > 0 ? (
+                  <Label dark>{unread > 99 ? "99+" : unread}</Label>
+                ) : (
+                  <Text style={s.small}>↗</Text>
+                )}
+              </View>
+            </Touch>
+          );
+        })}
+      </MotionScene>
       {directCatalog.loading && (
         <View
           style={[s.row, { justifyContent: "center" }]}
@@ -177,17 +183,34 @@ export function DirectInbox({ nav }: { nav: Nav }) {
         !directCatalog.error && (
           <Empty
             title={
-              query ? "No matching conversations" : "No direct messages yet"
+              query
+                ? "No matching conversations"
+                : filter === "unread"
+                  ? "No unread conversations loaded"
+                  : filter === "muted"
+                    ? "No muted conversations loaded"
+                    : "No direct messages yet"
             }
             body={
               query
                 ? "Search matches the conversations loaded so far. Load more or try another name."
-                : backfill
-                  ? "Check for older conversations above, or find someone in People to message."
-                  : "Find someone in People and select Message. Their message settings determine who can contact them."
+                : filter !== "all"
+                  ? "Switch to All to see your inbox, or load more conversations below. Muted messages can still be unread."
+                  : backfill
+                    ? "Check for older conversations above, or find someone in People to message."
+                    : "Find someone in People and select Message. Their message settings determine who can contact them."
             }
-            action="Browse people"
-            onPress={() => nav.navigate("People")}
+            action={
+              filter !== "all" || query
+                ? "Show all conversations"
+                : "Browse people"
+            }
+            onPress={() => {
+              if (filter !== "all" || query) {
+                setFilter("all");
+                setSearch("");
+              } else nav.navigate("People");
+            }}
           />
         )}
       {directCatalog.hasMore && (
@@ -195,7 +218,7 @@ export function DirectInbox({ nav }: { nav: Nav }) {
           secondary
           title="Load more conversations ↓"
           disabled={directCatalog.loading}
-          onPress={loadMoreDirectConversations}
+          onPress={loadMore}
         />
       )}
       <Button
