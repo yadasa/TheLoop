@@ -1,12 +1,18 @@
-import React, { useEffect, useRef, useState } from "react";
+import { Sheet } from "./Sheet";
 import {
-  Linking,
-  Platform,
-  ScrollView,
-  Share,
-  Text,
-  View,
-} from "react-native";
+  agendaDay,
+  eventTimeRange,
+  firstEventMonth,
+  inCalendarMonth,
+  inEventPeriod,
+  inEventScope,
+  localDayKey,
+  onCalendarDay,
+  scheduleConflicts,
+  type EventPeriod,
+} from "./eventPresentation";
+import React, { useEffect, useRef, useState } from "react";
+import { Linking, Platform, ScrollView, Share, Text, View } from "react-native";
 import * as Calendar from "expo-calendar/legacy";
 import { useLoop } from "@theloop/client";
 import { eventICS, type LoopEvent } from "@theloop/core";
@@ -29,48 +35,60 @@ import { DetailState } from "./DetailState";
 import { shareTargetURL } from "./sharedLinks";
 import { shareCalendarFile } from "./shareCalendar";
 
-const dayKey = (d: string | Date) => new Date(d).toLocaleDateString("en-CA");
-export function Events({ nav, initialScope = "all" }: { nav: Nav; initialScope?: string }) {
+const dayKey = localDayKey;
+export function Events({
+  nav,
+  initialScope = "all",
+}: {
+  nav: Nav;
+  initialScope?: string;
+}) {
   const { state, hasMore, loadMore } = useLoop();
   const [scope, setScope] = useState(initialScope);
   const [kind, setKind] = useState("all");
   const [mode, setMode] = useState("agenda");
-  const [month, setMonth] = useState(() => {
-    const next = state.events
-      .filter((e) => new Date(e.endAt) > new Date())
-      .sort((a, b) => a.startAt.localeCompare(b.startAt))[0];
-    const d = next ? new Date(next.startAt) : new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
-  });
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [period, setPeriod] = useState<EventPeriod>("upcoming");
+  const now = new Date();
+  const [month, setMonth] = useState(() =>
+    firstEventMonth(state.events, initialScope, state.currentUserId, now),
+  );
   const [selected, setSelected] = useState("");
   const [search, setSearch] = useState("");
+  const chooseScope = (next: string) => {
+    setScope(next);
+    setSelected("");
+    setMonth(
+      firstEventMonth(state.events, next, state.currentUserId, new Date()),
+    );
+  };
   const events = state.events
     .filter(
-      (e) =>
-        (scope === "all" ||
-          (scope === "mine" &&
-            (e.attendeeIds.includes(state.currentUserId) ||
-              e.waitlistIds.includes(state.currentUserId))) ||
-          e.conferenceId === scope) &&
-        (kind === "all" || e.kind === kind) &&
-        `${e.title} ${e.location} ${e.tags.join(" ")}`
+      (event) =>
+        inEventScope(event, scope, state.currentUserId) &&
+        inEventPeriod(event, period, now) &&
+        (kind === "all" || event.kind === kind) &&
+        `${event.title} ${event.location} ${event.tags.join(" ")}`
           .toLowerCase()
-          .includes(search.toLowerCase()),
+          .includes(search.trim().toLowerCase()),
     )
-    .sort((a, b) => a.startAt.localeCompare(b.startAt));
+    .sort((a, b) =>
+      period === "past"
+        ? b.startAt.localeCompare(a.startAt)
+        : a.startAt.localeCompare(b.startAt),
+    );
   const shown =
     mode === "calendar"
-      ? events.filter((e) =>
+      ? events.filter((event) =>
           selected
-            ? dayKey(e.startAt) === selected
-            : new Date(e.startAt).getMonth() === month.getMonth() &&
-              new Date(e.startAt).getFullYear() === month.getFullYear(),
+            ? onCalendarDay(event, new Date(`${selected}T12:00:00`))
+            : inCalendarMonth(event, month),
         )
       : events;
   const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const offset = month.getDay();
   return (
-    <ScrollView contentContainerStyle={s.content}>
+    <ScrollView contentContainerStyle={[s.content, { gap: 16 }]}>
       <View style={s.between}>
         <View>
           <Text style={s.overline}>CONFERENCES & MEETUPS</Text>
@@ -91,37 +109,43 @@ export function Events({ nav, initialScope = "all" }: { nav: Nav; initialScope?:
           <Text style={{ fontSize: 25, color: color.onInk }}>＋</Text>
         </Touch>
       </View>
-      <Text style={s.body}>
-        Find events and keep your RSVPs in one place.
-      </Text>
+      <Text style={s.body}>Find events and keep your RSVPs in one place.</Text>
       <Touch
         label="Browse public AfroTech side events from AfroTech.guide"
         onPress={() => nav.open({ kind: "guide" })}
-        style={[s.card, s.between, { backgroundColor: color.soft, paddingVertical: 15 }]}
+        style={[
+          s.card,
+          s.between,
+          { backgroundColor: color.soft, paddingVertical: 15 },
+        ]}
       >
         <View style={{ flex: 1, gap: 5 }}>
-          <Text style={[s.overline, { fontSize: 9, letterSpacing: 1 }]}>PUBLIC · AFROTECH.GUIDE</Text>
+          <Text style={[s.overline, { fontSize: 9, letterSpacing: 1 }]}>
+            PUBLIC · AFROTECH.GUIDE
+          </Text>
           <Text style={s.h3}>AfroTech side events</Text>
         </View>
-        <Text style={[s.h2, { marginLeft: 10 }]} accessibilityElementsHidden>›</Text>
+        <Text style={[s.h2, { marginLeft: 10 }]} accessibilityElementsHidden>
+          ›
+        </Text>
       </Touch>
       <Horizontal>
         <Chip
           title="Global calendar"
           selected={scope === "all"}
-          onPress={() => setScope("all")}
+          onPress={() => chooseScope("all")}
         />
         <Chip
           title="My events"
           selected={scope === "mine"}
-          onPress={() => setScope("mine")}
+          onPress={() => chooseScope("mine")}
         />
         {state.conferences.map((c) => (
           <Chip
             key={c.id}
             title={c.name}
             selected={scope === c.id}
-            onPress={() => setScope(c.id)}
+            onPress={() => chooseScope(c.id)}
           />
         ))}
       </Horizontal>
@@ -131,19 +155,22 @@ export function Events({ nav, initialScope = "all" }: { nav: Nav; initialScope?:
         placeholder="Search events by name, location, or tag"
       />
       <View style={s.between}>
-        <Horizontal>
-          {["all", "conference", "meetup", "workshop", "social"].map((v) => (
-            <Chip
-              key={v}
-              title={v === "all" ? "Everything" : v.charAt(0).toUpperCase() + v.slice(1)}
-              selected={kind === v}
-              onPress={() => setKind(v)}
-            />
-          ))}
-        </Horizontal>
-      </View>
-      <View style={s.between}>
-        <Text style={s.h2}>{events.length} {events.length === 1 ? "event" : "events"}</Text>
+        <View style={{ gap: 3 }}>
+          <Text style={s.h3}>
+            {shown.length} {shown.length === 1 ? "event" : "events"}
+            {hasMore.events ? "+" : ""}
+          </Text>
+          <Text style={[s.small, { fontSize: 10 }]}>
+            {period.charAt(0).toUpperCase() + period.slice(1)}
+            {kind === "all" ? "" : ` · ${kind}`}
+          </Text>
+        </View>
+        <Button
+          small
+          secondary
+          title="Filters"
+          onPress={() => setFiltersOpen(true)}
+        />
         <View style={s.row}>
           {["agenda", "calendar"].map((v) => (
             <Touch
@@ -154,7 +181,7 @@ export function Events({ nav, initialScope = "all" }: { nav: Nav; initialScope?:
                 setMode(v);
                 setSelected("");
               }}
-              style={{ padding: 6 }}
+              style={{ padding: 10, minHeight: 44, justifyContent: "center" }}
             >
               <Text
                 style={[
@@ -168,145 +195,271 @@ export function Events({ nav, initialScope = "all" }: { nav: Nav; initialScope?:
           ))}
         </View>
       </View>
+      <Sheet
+        visible={filtersOpen}
+        title="Event filters"
+        onClose={() => setFiltersOpen(false)}
+      >
+        <Text style={s.h3}>When</Text>
+        <Horizontal>
+          {(["upcoming", "past", "cancelled"] as EventPeriod[]).map((value) => (
+            <Chip
+              key={value}
+              title={value.charAt(0).toUpperCase() + value.slice(1)}
+              selected={period === value}
+              onPress={() => {
+                setPeriod(value);
+                setSelected("");
+                const date = new Date();
+                if (value === "upcoming")
+                  setMonth(
+                    firstEventMonth(
+                      state.events,
+                      scope,
+                      state.currentUserId,
+                      date,
+                    ),
+                  );
+                else {
+                  const nearest = state.events
+                    .filter(
+                      (event) =>
+                        inEventScope(event, scope, state.currentUserId) &&
+                        inEventPeriod(event, value, date),
+                    )
+                    .sort((a, b) => b.startAt.localeCompare(a.startAt))[0];
+                  if (nearest) {
+                    const start = new Date(nearest.startAt);
+                    setMonth(
+                      new Date(start.getFullYear(), start.getMonth(), 1),
+                    );
+                  }
+                }
+              }}
+            />
+          ))}
+        </Horizontal>
+        <Text style={s.h3}>Event type</Text>
+        <Horizontal>
+          {["all", "conference", "meetup", "workshop", "social"].map((v) => (
+            <Chip
+              key={v}
+              title={
+                v === "all"
+                  ? "Everything"
+                  : v.charAt(0).toUpperCase() + v.slice(1)
+              }
+              selected={kind === v}
+              onPress={() => setKind(v)}
+            />
+          ))}
+        </Horizontal>
+        <Button title="Show events" onPress={() => setFiltersOpen(false)} />
+        <Button
+          secondary
+          title="Reset filters"
+          onPress={() => {
+            setKind("all");
+            setPeriod("upcoming");
+            setSelected("");
+            setMonth(
+              firstEventMonth(
+                state.events,
+                scope,
+                state.currentUserId,
+                new Date(),
+              ),
+            );
+          }}
+        />
+      </Sheet>
       <MotionScene
-        identity={`${scope}:${kind}:${mode}:${month.getTime()}:${selected}`}
+        identity={`${scope}:${kind}:${period}:${mode}:${month.getTime()}:${selected}`}
         style={{ gap: 20 }}
         distance={5}
       >
-      {mode === "calendar" && (
-        <View style={s.card}>
-          <View style={s.between}>
-            <Touch
-              label="Previous month"
-              onPress={() => {
-                setMonth(
-                  new Date(month.getFullYear(), month.getMonth() - 1, 1),
-                );
-                setSelected("");
-              }}
-              style={{ padding: 8 }}
-            >
-              <Text style={{ color: color.ink }}>←</Text>
-            </Touch>
-            <Text style={s.h3}>
-              {month.toLocaleDateString(undefined, {
-                month: "long",
-                year: "numeric",
-              })}
-            </Text>
-            <Touch
-              label="Next month"
-              onPress={() => {
-                setMonth(
-                  new Date(month.getFullYear(), month.getMonth() + 1, 1),
-                );
-                setSelected("");
-              }}
-              style={{ padding: 8 }}
-            >
-              <Text style={{ color: color.ink }}>→</Text>
-            </Touch>
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-            {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-              <View
-                key={`head-${i}`}
-                style={{
-                  width: "14.285%",
-                  height: 32,
-                  alignItems: "center",
-                  justifyContent: "center",
+        {mode === "calendar" && (
+          <View style={s.card}>
+            <View style={s.between}>
+              <Touch
+                label="Previous month"
+                onPress={() => {
+                  setMonth(
+                    new Date(month.getFullYear(), month.getMonth() - 1, 1),
+                  );
+                  setSelected("");
                 }}
+                style={{ padding: 12, minHeight: 44 }}
               >
-                <Text style={s.small}>{d}</Text>
-              </View>
-            ))}
-            {Array.from({ length: offset }).map((_, i) => (
-              <View
-                key={`blank-${i}`}
-                style={{ width: "14.285%", height: 42 }}
-              />
-            ))}
-            {Array.from({ length: days }).map((_, i) => {
-              const date = new Date(
-                month.getFullYear(),
-                month.getMonth(),
-                i + 1,
-              );
-              const key = dayKey(date);
-              const has = events.some((e) => dayKey(e.startAt) === key);
-              return (
-                <View key={i} style={{ width: "14.285%" }}>
-                  <Touch
-                    label={`${date.toLocaleDateString()}, ${has ? "has events" : "no events"}`}
-                    selected={selected === key}
-                    onPress={() => setSelected(selected === key ? "" : key)}
-                    style={{
-                      height: 42,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderRadius: 30,
-                      backgroundColor:
-                        selected === key ? color.ink : "transparent",
-                      gap: 2,
-                    }}
-                  >
-                    <Text
+                <Text style={{ color: color.ink }}>←</Text>
+              </Touch>
+              <Text style={s.h3}>
+                {month.toLocaleDateString(undefined, {
+                  month: "long",
+                  year: "numeric",
+                })}
+              </Text>
+              <Touch
+                label="Next month"
+                onPress={() => {
+                  setMonth(
+                    new Date(month.getFullYear(), month.getMonth() + 1, 1),
+                  );
+                  setSelected("");
+                }}
+                style={{ padding: 12, minHeight: 44 }}
+              >
+                <Text style={{ color: color.ink }}>→</Text>
+              </Touch>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+              {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                <View
+                  key={`head-${i}`}
+                  style={{
+                    width: "14.285%",
+                    height: 32,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={s.small}>{d}</Text>
+                </View>
+              ))}
+              {Array.from({ length: offset }).map((_, i) => (
+                <View
+                  key={`blank-${i}`}
+                  style={{ width: "14.285%", height: 42 }}
+                />
+              ))}
+              {Array.from({ length: days }).map((_, i) => {
+                const date = new Date(
+                  month.getFullYear(),
+                  month.getMonth(),
+                  i + 1,
+                );
+                const key = dayKey(date);
+                const count = events.filter((event) =>
+                  onCalendarDay(event, date),
+                ).length;
+                const has = count > 0;
+                return (
+                  <View key={i} style={{ width: "14.285%" }}>
+                    <Touch
+                      label={`${date.toLocaleDateString()}, ${count} ${count === 1 ? "event" : "events"}`}
+                      selected={selected === key}
+                      onPress={() => setSelected(selected === key ? "" : key)}
                       style={{
-                        fontSize: 13,
-                        color: selected === key ? color.onInk : color.ink,
+                        height: 44,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderRadius: 30,
+                        backgroundColor:
+                          selected === key ? color.ink : "transparent",
+                        gap: 2,
                       }}
                     >
-                      {i + 1}
-                    </Text>
-                    {has && (
-                      <View
+                      <Text
                         style={{
-                          width: 3,
-                          height: 3,
-                          borderRadius: 2,
-                          backgroundColor:
-                            selected === key ? color.onInk : color.ink,
+                          fontSize: 13,
+                          color: selected === key ? color.onInk : color.ink,
                         }}
-                      />
-                    )}
-                  </Touch>
-                </View>
-              );
-            })}
-          </View>
-          {selected && (
+                      >
+                        {i + 1}
+                      </Text>
+                      {has && (
+                        <View
+                          style={{
+                            width: 3,
+                            height: 3,
+                            borderRadius: 2,
+                            backgroundColor:
+                              selected === key ? color.onInk : color.ink,
+                          }}
+                        />
+                      )}
+                    </Touch>
+                  </View>
+                );
+              })}
+            </View>
             <Button
-              secondary
               small
-              title="Show full month"
-              onPress={() => setSelected("")}
+              secondary
+              title="This month"
+              onPress={() => {
+                const today = new Date();
+                setMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+                setSelected("");
+              }}
             />
-          )}
-        </View>
-      )}
-      {shown.map((e) => (
-        <EventCard key={e.id} event={e} nav={nav} />
-      ))}
-      {hasMore.events && (
-        <Button
-          secondary
-          title="Load more events"
-          onPress={() => loadMore("events")}
-        />
-      )}
-      {shown.length === 0 && (
-        <Empty
-          title="No events in this view"
-          body={
-            scope === "mine"
-              ? "Try another date or filter, or load more events. Events you RSVP to appear here."
-              : "Try another date or filter, or create an event."
-          }
-          action="Create event"
-          onPress={() => nav.open({ kind: "create-event" })}
-        />
-      )}
+            {selected && (
+              <Button
+                secondary
+                small
+                title="Show full month"
+                onPress={() => setSelected("")}
+              />
+            )}
+          </View>
+        )}
+        {shown.map((event, index) => {
+          const day =
+            mode === "calendar" && selected ? selected : agendaDay(event, now);
+          const heading =
+            index === 0 ||
+            (!(mode === "calendar" && selected) &&
+              agendaDay(shown[index - 1], now) !== day);
+          return (
+            <View key={event.id} style={{ gap: 12 }}>
+              {heading && (
+                <Text
+                  accessibilityRole="header"
+                  style={[s.overline, { marginTop: 4 }]}
+                >
+                  {day === dayKey(now)
+                    ? "Today"
+                    : new Date(`${day}T12:00:00`).toLocaleDateString(
+                        undefined,
+                        { weekday: "long", month: "short", day: "numeric" },
+                      )}
+                </Text>
+              )}
+              <EventCard event={event} nav={nav} />
+            </View>
+          );
+        })}
+        {hasMore.events && (
+          <Text style={s.small}>
+            Showing loaded listings. Load more to include earlier events and
+            additional matches.
+          </Text>
+        )}
+        {hasMore.events && (
+          <Button
+            secondary
+            title="Load more events"
+            onPress={() => loadMore("events")}
+          />
+        )}
+        {shown.length === 0 && (
+          <Empty
+            title={
+              period === "upcoming"
+                ? "No upcoming events in this view"
+                : period === "past"
+                  ? "No past events in this view"
+                  : "No cancelled events in this view"
+            }
+            body={
+              scope === "mine"
+                ? "Try another date or filter, or load more events. Events you RSVP to appear here."
+                : "Try another date or filter, or create an event."
+            }
+            action="Create event"
+            onPress={() => nav.open({ kind: "create-event" })}
+          />
+        )}
       </MotionScene>
       <Button
         small
@@ -328,6 +481,9 @@ export function EventCard({ event: e, nav }: { event: LoopEvent; nav: Nav }) {
   const going = e.attendeeIds.includes(state.currentUserId);
   const wait = e.waitlistIds.includes(state.currentUserId);
   const cancelled = e.status === "cancelled";
+  const conflicts = going
+    ? scheduleConflicts(e, state.events, state.currentUserId, new Date())
+    : [];
   return (
     <Touch
       label={`View ${e.title}`}
@@ -375,12 +531,13 @@ export function EventCard({ event: e, nav }: { event: LoopEvent; nav: Nav }) {
             )}
           </View>
           <Text style={s.h3}>{e.title}</Text>
+          {conflicts.length > 0 && (
+            <Text style={[s.small, { fontWeight: "600", color: color.ink }]}>
+              Overlaps with {conflicts.length} of your RSVPs
+            </Text>
+          )}
           <Text style={s.small}>
-            {date.toLocaleTimeString(undefined, {
-              hour: "numeric",
-              minute: "2-digit",
-            })}{" "}
-            · {e.location}
+            {eventTimeRange(e)} · {e.location}
           </Text>
         </View>
       </View>
@@ -439,6 +596,12 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
   const expired = new Date(event.endAt) < new Date();
   const cancelled = event.status === "cancelled";
   const canManage = role === "admin" || event.hostId === state.currentUserId;
+  const conflicts = scheduleConflicts(
+    event,
+    state.events,
+    state.currentUserId,
+    new Date(),
+  );
   const conference = state.conferences.find(
     (c) => c.id === event.conferenceId,
   ) as { organizerIds?: string[] } | undefined;
@@ -545,17 +708,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
             day: "numeric",
           })}
         </Text>
-        <Text style={s.body}>
-          {new Date(event.startAt).toLocaleTimeString(undefined, {
-            hour: "numeric",
-            minute: "2-digit",
-          })}{" "}
-          –{" "}
-          {new Date(event.endAt).toLocaleTimeString(undefined, {
-            hour: "numeric",
-            minute: "2-digit",
-          })}
-        </Text>
+        <Text style={s.body}>{eventTimeRange(event)}</Text>
         <Text style={s.small}>
           Host time:{" "}
           {new Date(event.startAt).toLocaleString(undefined, {
@@ -586,6 +739,24 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
           <Label key={t}>#{t}</Label>
         ))}
       </View>
+      {conflicts.length > 0 && (
+        <View style={s.card}>
+          <Text style={s.h3}>This overlaps with your plans</Text>
+          <Text style={s.small}>
+            You have an RSVP during this time. You can still join if you plan to
+            split your time. This checks events loaded in TheLoop.
+          </Text>
+          {conflicts.map((other) => (
+            <Button
+              key={other.id}
+              small
+              secondary
+              title={other.title}
+              onPress={() => nav.open({ kind: "event", id: other.id })}
+            />
+          ))}
+        </View>
+      )}
       <Button
         title={
           going
@@ -602,7 +773,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
                     ? "Join the waitlist"
                     : "RSVP"
         }
-        disabled={(expired || cancelled) && !going && !waiting}
+        disabled={pending > 0 || ((expired || cancelled) && !going && !waiting)}
         onPress={() => {
           if (going || waiting) {
             nav.alert(
@@ -613,7 +784,10 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
                   ? "Your RSVP will be removed. If there’s a waitlist, the next person will get your spot."
                   : "You will leave this event waitlist.",
               [
-                { text: waiting ? "Stay on waitlist" : "Keep RSVP", style: "cancel" },
+                {
+                  text: waiting ? "Stay on waitlist" : "Keep RSVP",
+                  style: "cancel",
+                },
                 {
                   text: waiting ? "Leave waitlist" : "Withdraw RSVP",
                   onPress: () =>
@@ -709,9 +883,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
         />
       )}
       <Section
-        title={
-          cancelled ? "RSVPs before cancellation" : "Attendees"
-        }
+        title={cancelled ? "RSVPs before cancellation" : "Attendees"}
         subtitle={`${event.attendeeIds.length} ${cancelled ? "planned to come" : "going"}${event.waitlistIds.length ? ` · ${event.waitlistIds.length} ${cancelled ? "were waitlisted" : "on the waitlist"}` : ""}`}
       />
       {event.hostId === state.currentUserId && !canCheckin && (
