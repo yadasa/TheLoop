@@ -10,6 +10,7 @@ test("shared web and native links resolve the same records", () => {
     "channel",
     "community",
     "squad",
+    "conference",
   ] as const) {
     const target = { kind, id: "older-record_123" };
     assert.deepEqual(

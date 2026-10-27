@@ -1,5 +1,12 @@
 export type SharedTarget = {
-  kind: "post" | "event" | "profile" | "channel" | "community" | "squad";
+  kind:
+    | "post"
+    | "event"
+    | "profile"
+    | "channel"
+    | "community"
+    | "squad"
+    | "conference";
   id: string;
   topic?: string;
 };
@@ -23,6 +30,8 @@ const routeKinds: Record<string, SharedTarget["kind"]> = {
   community: "community",
   squads: "squad",
   squad: "squad",
+  conference: "conference",
+  conferences: "conference",
 };
 
 export function parseSharedTarget(value: string): SharedTarget | null {
@@ -46,6 +55,7 @@ export function parseSharedTarget(value: string): SharedTarget | null {
       "channel",
       "community",
       "squad",
+      "conference",
     ] as const) {
       const id = url.searchParams.get(kind);
       if (validLinkId(id))
@@ -79,6 +89,7 @@ export function sharedTargetPath(target: SharedTarget): string {
     channel: "conversations",
     community: "communities",
     squad: "squads",
+    conference: "conferences",
   }[target.kind];
   return `#/${route}/${encodeURIComponent(target.id)}${target.kind === "channel" && target.topic && target.topic.length <= 100 && !/[\u0000-\u001f]/.test(target.topic) ? `?topic=${encodeURIComponent(target.topic)}` : ""}`;
 }

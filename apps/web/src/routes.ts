@@ -21,6 +21,7 @@ export type WebRoute = {
   profileId: string;
   dmId: string;
   squadId: string;
+  conferenceId: string;
   postDetail: string | null;
   eventDetail: string | null;
 };
@@ -32,6 +33,7 @@ export const initialRoute: WebRoute = {
   profileId: "",
   dmId: "",
   squadId: "",
+  conferenceId: "all",
   postDetail: null,
   eventDetail: null,
 };
@@ -77,6 +79,10 @@ export function readRoute(href: string): WebRoute {
         route.page = "squads";
         route.squadId = target.id;
       }
+      if (target.kind === "conference") {
+        route.page = "calendar";
+        route.conferenceId = target.id;
+      }
     }
     const inbox = /^\/inbox\/([^/]+)$/.exec(path);
     if (inbox) {
@@ -106,6 +112,12 @@ export function routeHash(route: WebRoute): string {
     return sharedTargetPath({ kind: "post", id: route.postDetail });
   if (route.eventDetail && validLinkId(route.eventDetail))
     return sharedTargetPath({ kind: "event", id: route.eventDetail });
+  if (
+    route.page === "calendar" &&
+    !["all", "mine"].includes(route.conferenceId) &&
+    validLinkId(route.conferenceId)
+  )
+    return sharedTargetPath({ kind: "conference", id: route.conferenceId });
   if (route.page === "chat")
     return `${validLinkId(route.channelId) ? sharedTargetPath({ kind: "channel", id: route.channelId }) : "#/conversations"}${route.topic !== "All topics" ? `?topic=${encodeURIComponent(route.topic)}` : ""}`;
   if (route.page === "profile" && validLinkId(route.profileId))

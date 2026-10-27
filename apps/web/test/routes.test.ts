@@ -16,6 +16,7 @@ test("shared destinations survive refresh with their selected record", () => {
     { ...initialRoute, page: "squads" as const, squadId: "coffee" },
     { ...initialRoute, page: "calendar" as const, eventDetail: "meetup" },
     { ...initialRoute, postDetail: "older-post" },
+    { ...initialRoute, page: "calendar" as const, conferenceId: "afrotech" },
   ];
   for (const route of routes)
     assert.deepEqual(readRoute(origin + routeHash(route)), route);

@@ -40,6 +40,7 @@ import { useConversationDraft, useSessionDrafts } from "./DraftProvider";
 import { PinnedMessages } from "./PinnedMessages";
 import { ConversationSearch } from "./ConversationSearch";
 import { MessageReplies } from "./MessageReplies";
+import { ShareSheet } from "./ShareSheet";
 import { useSubscriptionPicker } from "./SubscriptionPicker";
 import {
   dayKey,
@@ -337,6 +338,7 @@ export function ChannelDetail({
   const [topicSheet, setTopicSheet] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [pinsVisible, setPinsVisible] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [replyThreadId, setReplyThreadId] = useState<string | null>(null);
   const [topicSearch, setTopicSearch] = useState("");
   const [body, setBody] = useState(draft.initial?.body || "");
@@ -401,6 +403,7 @@ export function ChannelDetail({
       !topicSheet &&
       !searchVisible &&
       !pinsVisible &&
+      !sharing &&
       !replyThreadId &&
       !actionMessage &&
       !subscriptionOpen &&
@@ -426,6 +429,7 @@ export function ChannelDetail({
     topicSheet,
     searchVisible,
     pinsVisible,
+    sharing,
     replyThreadId,
     actionMessage,
     subscriptionOpen,
@@ -577,6 +581,19 @@ export function ChannelDetail({
           requestAnimationFrame(() => composerInput.current?.focus());
         }}
       />
+      <ShareSheet
+        target={
+          sharing
+            ? { kind: "channel", id, ...(topic !== null ? { topic } : {}) }
+            : null
+        }
+        title={topic !== null ? `${topic} · ${channel.name}` : channel.name}
+        description={
+          state.conferences.find((c) => c.id === channel.conferenceId)?.name
+        }
+        privateSpace={channel.visibility === "private"}
+        onClose={() => setSharing(false)}
+      />
       <PinnedMessages
         channelId={id}
         visible={pinsVisible}
@@ -716,6 +733,14 @@ export function ChannelDetail({
                 ? ` · ${pinnedIds(channel).length}`
                 : ""}
             </Text>
+          </Touch>
+          <Touch
+            label={topic !== null ? "Share this topic" : "Share group chat"}
+            disabled={locked}
+            onPress={() => setSharing(true)}
+            style={{ padding: 9, minHeight: 44, justifyContent: "center" }}
+          >
+            <Text style={s.small}>Share</Text>
           </Touch>
           <Touch
             label="Search group chat history"

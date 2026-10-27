@@ -9,6 +9,7 @@ import {
   conferenceTiming,
 } from "./conferencePresentation";
 import { useSubscriptionPicker } from "./SubscriptionPicker";
+import { ShareSheet } from "./ShareSheet";
 
 export function ConferenceHub({
   id,
@@ -22,6 +23,7 @@ export function ConferenceHub({
   const { state, hasMore, loadMore } = useLoop();
   const [discover, setDiscover] = useState(initialDiscover);
   const [loading, setLoading] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const { pickSubscription, subscriptionSheet } = useSubscriptionPicker();
   const conference = state.conferences.find((item) => item.id === id);
   if (!conference)
@@ -53,6 +55,12 @@ export function ConferenceHub({
   return (
     <ScrollView contentContainerStyle={s.content}>
       {subscriptionSheet}
+      <ShareSheet
+        target={sharing ? { kind: "conference", id } : null}
+        title={conference.name}
+        description={`${conference.city} · ${conferenceDateRange(conference)}`}
+        onClose={() => setSharing(false)}
+      />
       <View
         style={[
           s.card,
@@ -77,6 +85,11 @@ export function ConferenceHub({
         </Text>
       </View>
       <Text style={s.body}>{conference.description}</Text>
+      <Button
+        secondary
+        title="Share conference"
+        onPress={() => setSharing(true)}
+      />
       <Button
         secondary
         title={`Conference updates: ${subscription}`}

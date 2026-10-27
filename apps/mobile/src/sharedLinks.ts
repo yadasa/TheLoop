@@ -4,9 +4,15 @@ declare const process: { env: Record<string, string | undefined> };
 
 /** A configured web deployment lets recipients open links without the app. */
 export function shareTargetURL(target: SharedTarget): string {
+  return resolveShareTarget(target, process.env.EXPO_PUBLIC_WEB_URL).url;
+}
+
+export function resolveShareTarget(
+  target: SharedTarget,
+  configured?: string,
+): { url: string; requiresApp: boolean } {
   const path = sharedTargetPath(target);
   try {
-    const configured = process.env.EXPO_PUBLIC_WEB_URL;
     if (configured) {
       const url = new URL(configured);
       if (
@@ -16,12 +22,15 @@ export function shareTargetURL(target: SharedTarget): string {
       ) {
         url.search = "";
         url.hash = path.slice(1);
-        return url.toString();
+        return { url: url.toString(), requiresApp: false };
       }
     }
   } catch {
     // A missing/invalid deployment setting still produces an installed-app link.
   }
   const query = path.includes("?") ? path.slice(path.indexOf("?")) : "";
-  return `theloop://${target.kind}/${encodeURIComponent(target.id)}${query}`;
+  return {
+    url: `theloop://${target.kind}/${encodeURIComponent(target.id)}${query}`,
+    requiresApp: true,
+  };
 }

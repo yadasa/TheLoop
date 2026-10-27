@@ -171,8 +171,10 @@ export default function App() {
     squadId,
     postDetail,
     eventDetail,
+    conferenceId: calendarScope,
   } = route;
   const setPage = (value: Page) => setRoute("page", value);
+  const setCalendarScope = (value: string) => setRoute("conferenceId", value);
   const setChannelId = (value: string) => {
     setRoute("channelId", value);
     setRoute("topic", "All topics");
@@ -201,7 +203,6 @@ export default function App() {
     }),
     [replyTo, setReplyTo] = useState<string | null>(null),
     [month, setMonth] = useState(new Date(2026, 10, 1)),
-    [calendarScope, setCalendarScope] = useState("all"),
     [authRegister, setAuthRegister] = useState(false),
     [intro, setIntro] = useState(false),
     [tourOpen, setTourOpen] = useState(false),

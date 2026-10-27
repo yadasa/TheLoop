@@ -21,6 +21,7 @@ export function useWebRoute() {
       "channel",
       "community",
       "squad",
+      "conference",
     ])
       url.searchParams.delete(key);
     const previous = window.history.state;
