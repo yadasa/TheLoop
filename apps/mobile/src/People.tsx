@@ -10,7 +10,11 @@ import {
   View,
   type ScrollViewInstance,
 } from "react-native";
-import { directParticipantSnapshot, useLoop } from "@theloop/client";
+import {
+  directParticipantSnapshot,
+  matchesDirectory,
+  useLoop,
+} from "@theloop/client";
 import {
   connected,
   suggestedConnections,
@@ -29,6 +33,7 @@ import {
   Field,
   Horizontal,
   Label,
+  MotionScene,
   LinkifiedText,
   RelativeTime,
   s,
@@ -45,7 +50,8 @@ import { shareTargetURL } from "./sharedLinks";
 import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
 
 export function People({ nav }: { nav: Nav }) {
-  const { state, directory, setDirectoryQuery, loadMoreDirectory } = useLoop();
+  const { state, directory, setDirectoryQuery, loadMoreDirectory, pending } =
+    useLoop();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("For you");
   useEffect(() => {
@@ -80,9 +86,7 @@ export function People({ nav }: { nav: Nav }) {
     (p) =>
       p.id !== state.currentUserId &&
       !state.preferences.blockedIds.includes(p.id) &&
-      `${p.name} ${p.headline} ${p.company} ${p.location} ${p.skills.join(" ")}`
-        .toLowerCase()
-        .includes(search.trim().toLowerCase()),
+      matchesDirectory(p, search),
   );
   return (
     <ScrollView contentContainerStyle={s.content}>
@@ -94,6 +98,8 @@ export function People({ nav }: { nav: Nav }) {
         value={search}
         onChangeText={setSearch}
         placeholder="Search by name, role, or skill"
+        autoCapitalize="none"
+        maxLength={100}
       />
       {requests.length > 0 && (
         <>
@@ -115,6 +121,7 @@ export function People({ nav }: { nav: Nav }) {
                 <View style={s.row}>
                   <Button
                     title="Accept"
+                    disabled={pending > 0}
                     onPress={() =>
                       void nav.run(
                         {
@@ -129,6 +136,7 @@ export function People({ nav }: { nav: Nav }) {
                   <Button
                     secondary
                     title="Not now"
+                    disabled={pending > 0}
                     onPress={() =>
                       void nav.run({
                         type: "connection.respond",
@@ -181,44 +189,75 @@ export function People({ nav }: { nav: Nav }) {
           />
         </View>
       )}
-      <Section
-        title={filter === "For you" ? "Suggested connections" : filter}
-        subtitle={
-          filter === "For you"
-            ? "Suggestions based on your shared interests"
-            : `${people.length} ${people.length === 1 ? "person" : "people"}`
-        }
-      />
-      {people.map((p) => (
-        <PersonCard key={p.id} profile={p} nav={nav} />
-      ))}
-      {filter === "For you" && directory.loading && (
-        <Text style={s.small}>Loading people…</Text>
-      )}
-      {filter === "For you" && directory.hasMore && (
-        <Button
-          secondary
-          title={directory.loading ? "Loading people…" : "Load more people"}
-          disabled={directory.loading}
-          onPress={loadMoreDirectory}
-        />
-      )}
-      {people.length === 0 && !(filter === "For you" && directory.loading) && (
-        <Empty
-          title={
-            search
-              ? "No matching people"
-              : filter === "For you"
-                ? "No suggested connections yet"
-                : `No ${filter.toLowerCase()} yet`
-          }
-          body={
-            search
-              ? "Try another name, role, or skill."
-              : "Browse suggested connections to find people to connect with or follow."
+      <MotionScene identity={filter} style={{ gap: 18 }}>
+        <Section
+          title={filter === "For you" ? "Suggested connections" : filter}
+          subtitle={
+            filter === "For you"
+              ? "Shared interests appear first in the loaded directory"
+              : `${people.length} ${people.length === 1 ? "person" : "people"}`
           }
         />
-      )}
+        {people.map((p) => (
+          <PersonCard key={p.id} profile={p} nav={nav} />
+        ))}
+        {filter === "For you" && directory.loading && (
+          <Text style={s.small}>Loading people…</Text>
+        )}
+        {filter === "For you" && directory.hasMore && (
+          <Button
+            secondary
+            title={directory.loading ? "Loading people…" : "Load more people"}
+            disabled={directory.loading}
+            onPress={loadMoreDirectory}
+          />
+        )}
+        {people.length === 0 &&
+          !(filter === "For you" && directory.loading) && (
+            <Empty
+              title={
+                search
+                  ? "No matching people"
+                  : filter === "For you"
+                    ? "No suggested connections yet"
+                    : `No ${filter.toLowerCase()} yet`
+              }
+              body={
+                search
+                  ? "Try another name, role, or skill."
+                  : filter === "For you"
+                    ? "More people will appear as members join. In the meantime, add a little about yourself or start in a group chat."
+                    : filter === "Followers"
+                      ? "People who follow your public activity will appear here."
+                      : "Find someone in the directory, then connect or follow to keep in touch."
+              }
+              action={
+                search
+                  ? "Clear search"
+                  : filter === "For you"
+                    ? "Browse group chats"
+                    : "Explore people"
+              }
+              onPress={() =>
+                search
+                  ? setSearch("")
+                  : filter === "For you"
+                    ? nav.navigate("Chat")
+                    : setFilter("For you")
+              }
+            />
+          )}
+        {!people.length &&
+          !search &&
+          filter === "For you" &&
+          !directory.loading && (
+            <Button
+              secondary
+              title="Edit your profile"
+              onPress={() => nav.open({ kind: "edit-profile" })}
+            />
+          )}
+      </MotionScene>
     </ScrollView>
   );
 }
@@ -230,7 +269,7 @@ export function PersonCard({
   profile: Profile;
   nav: Nav;
 }) {
-  const { state } = useLoop();
+  const { state, pending } = useLoop();
   const connection = state.connections.find(
     (c) =>
       [c.fromId, c.toId].includes(state.currentUserId) &&
@@ -256,7 +295,7 @@ export function PersonCard({
           <Text style={s.small}>{p.location}</Text>
         </View>
         <Text style={{ fontSize: 12, fontWeight: "700", color: color.ink }}>
-          {p.trust.score}
+          {p.trust.score} trust
         </Text>
       </Touch>
       {shared.length > 0 && (
@@ -280,7 +319,7 @@ export function PersonCard({
                 : "Connect ＋"
           }
           secondary={!!connection}
-          disabled={connection?.status === "pending"}
+          disabled={pending > 0 || connection?.status === "pending"}
           onPress={() =>
             connection?.status === "accepted"
               ? nav.open({ kind: "dm", id: p.id })
@@ -297,6 +336,7 @@ export function PersonCard({
               : `Follow ${p.name}`
           }
           onPress={() => void nav.run({ type: "profile.follow", userId: p.id })}
+          disabled={pending > 0}
           style={{ padding: 10 }}
         >
           <Text style={[s.small, { fontWeight: "600", color: color.ink }]}>
@@ -543,17 +583,17 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
           />
         )}
       </View>
+      <Button
+        secondary
+        title={mine ? "Share your profile" : "Share profile"}
+        onPress={() =>
+          void Share.share({
+            message: `Meet ${p.name} on TheLoop\n${shareTargetURL({ kind: "profile", id })}`,
+          }).catch(() => nav.toast("Could not open sharing. Please try again."))
+        }
+      />
       {!mine && (
         <>
-          <Button
-            secondary
-            title="Share profile"
-            onPress={() =>
-              void Share.share({
-                message: `Meet ${p.name} on TheLoop\n${shareTargetURL({ kind: "profile", id })}`,
-              })
-            }
-          />
           <Touch
             label="Member safety actions"
             onPress={() =>

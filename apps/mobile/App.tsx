@@ -285,7 +285,7 @@ function LoopApp() {
   }, []);
   const canNavigate = useCallback(() => {
     if (!navigationLocks.current.size) return true;
-    showToast("Please wait for your message or photo to finish.");
+    showToast("Please wait for this action to finish.");
     return false;
   }, [showToast]);
   const open = useCallback(

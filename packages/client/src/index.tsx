@@ -34,6 +34,7 @@ import {
   type DirectCatalogProgress,
 } from "@theloop/core";
 import { documentIdBatches, matchesDirectory, mergeMessages, mergeSquadInvites, normalizeDirectoryQuery, previewChannelIds, revokePrivateProfiles, visibleSquadMessages } from "./data";
+export { matchesDirectory } from "./data";
 import { MessagePages } from "./messagePages";
 import { ReplyThread, type ReplyThreadHandle, type ReplyThreadState } from "./replyThread";
 export { emptyReplyThread, type ReplyThreadHandle, type ReplyThreadState } from "./replyThread";

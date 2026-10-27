@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Platform, ScrollView, Switch, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
-import { interests, safeURL, subscriptionFor } from "@theloop/core";
+import { interests, subscriptionFor } from "@theloop/core";
+import { ProfileLinks, ProfileTags } from "./ProfileFields";
+import { profileLinks, profileTags } from "./profileForm";
+import { useNavigationBusy } from "./useNavigationBusy";
 import {
   Avatar,
   Button,
@@ -55,7 +58,10 @@ export function You({ nav }: { nav: Nav }) {
     (c) => c.status === "accepted" && [c.fromId, c.toId].includes(me.id),
   ).length;
   const upcoming = state.events.filter(
-    (e) => e.attendeeIds.includes(me.id) && new Date(e.endAt) > new Date(),
+    (e) =>
+      e.status !== "cancelled" &&
+      e.attendeeIds.includes(me.id) &&
+      new Date(e.endAt) > new Date(),
   ).length;
   return (
     <ScrollView contentContainerStyle={s.content}>
@@ -131,6 +137,31 @@ export function You({ nav }: { nav: Nav }) {
           </View>
         ))}
       </View>
+      {(!me.headline.trim() || !me.bio.trim() || !me.skills.length) && (
+        <View style={s.card}>
+          <Text style={s.h3}>Make introductions easier</Text>
+          <Text style={s.body}>
+            Give people a little context before the first hello.
+          </Text>
+          <View style={s.wrap}>
+            {[
+              [!!me.headline.trim(), "Headline"],
+              [!!me.bio.trim(), "Bio"],
+              [!!me.skills.length, "Skills"],
+            ].map(([done, label]) => (
+              <Label key={String(label)}>
+                {done ? "✓" : "+"} {label}
+              </Label>
+            ))}
+          </View>
+          <Button
+            secondary
+            title="Add to your profile"
+            onPress={() => nav.open({ kind: "edit-profile" })}
+          />
+          <Text style={s.small}>You choose who can see these details.</Text>
+        </View>
+      )}
       <Section
         title="Your interests"
         action="Edit"
@@ -346,13 +377,15 @@ export function EditProfile({ nav }: { nav: Nav }) {
   const [company, setCompany] = useState(me?.company || "");
   const [location, setLocation] = useState(me?.location || "");
   const [bio, setBio] = useState(me?.bio || "");
-  const [skills, setSkills] = useState(me?.skills.join(", ") || "");
-  const [openTo, setOpen] = useState(me?.openTo.join(", ") || "");
-  const [links, setLinks] = useState(
-    me?.links.map((l) => `${l.label} | ${l.url}`).join("\n") || "",
-  );
+  const [skills, setSkills] = useState(me?.skills || []);
+  const [skillInput, setSkillInput] = useState("");
+  const [openTo, setOpen] = useState(me?.openTo || []);
+  const [openInput, setOpenInput] = useState("");
+  const [links, setLinks] = useState(me?.links || []);
+  const [formError, setFormError] = useState("");
   const [visibility, setVisibility] = useState(me?.visibility || "public");
   const [busy, setBusy] = useState(false);
+  useNavigationBusy(nav, "edit-profile", busy);
   return (
     <ScrollView
       keyboardShouldPersistTaps="handled"
@@ -367,6 +400,7 @@ export function EditProfile({ nav }: { nav: Nav }) {
         value={name}
         onChangeText={setName}
         maxLength={80}
+        disabled={busy}
       />
       <Field
         label="Your headline"
@@ -374,19 +408,22 @@ export function EditProfile({ nav }: { nav: Nav }) {
         onChangeText={setHeadline}
         placeholder="Product designer at your company"
         maxLength={160}
+        disabled={busy}
       />
       <Field
         label="Company or project"
         value={company}
         onChangeText={setCompany}
-        maxLength={160}
+        maxLength={100}
+        disabled={busy}
       />
       <Field
         label="Location"
         value={location}
         onChangeText={setLocation}
         placeholder="Houston, TX"
-        maxLength={160}
+        maxLength={120}
+        disabled={busy}
       />
       <Field
         label="Bio"
@@ -394,35 +431,44 @@ export function EditProfile({ nav }: { nav: Nav }) {
         onChangeText={setBio}
         multiline
         maxLength={1500}
+        disabled={busy}
       />
-      <Field
-        label="Skills · comma separated"
-        value={skills}
-        onChangeText={setSkills}
-        placeholder="Product design, Engineering, Community"
+      <ProfileTags
+        title="Skills"
+        values={skills}
+        onChange={setSkills}
+        pending={skillInput}
+        onPending={setSkillInput}
+        disabled={busy}
       />
-      <Field
-        label="Open to · comma separated"
-        value={openTo}
-        onChangeText={setOpen}
-        placeholder="Mentoring, New opportunities, Collaborating"
+      <ProfileTags
+        title="Open to"
+        values={openTo}
+        onChange={setOpen}
+        pending={openInput}
+        onPending={setOpenInput}
+        suggestions={[
+          "Meeting peers",
+          "Mentoring",
+          "Finding a mentor",
+          "Collaborating",
+          "New opportunities",
+          "Hiring",
+        ]}
+        disabled={busy}
       />
-      <Field
-        label="Social links · one per line as Label | https://…"
-        value={links}
-        onChangeText={setLinks}
-        multiline
-        placeholder="LinkedIn | https://www.linkedin.com/in/yourname"
-      />
+      <ProfileLinks rows={links} onChange={setLinks} disabled={busy} />
       <Text style={s.label}>Who can see your full profile?</Text>
       <View style={s.row}>
         <Chip
           title="Everyone"
+          disabled={busy}
           selected={visibility === "public"}
           onPress={() => setVisibility("public")}
         />
         <Chip
           title="Connections"
+          disabled={busy}
           selected={visibility === "connections"}
           onPress={() => setVisibility("connections")}
         />
@@ -436,20 +482,16 @@ export function EditProfile({ nav }: { nav: Nav }) {
         title={busy ? "Saving…" : "Save profile"}
         disabled={busy || !name.trim()}
         onPress={() => {
-          const parsed = links
-            .split("\n")
-            .filter((l) => l.trim())
-            .map((line) => {
-              const split = line.indexOf("|");
-              return {
-                label: split > -1 ? line.slice(0, split).trim() : "Website",
-                url: (split > -1 ? line.slice(split + 1) : line).trim(),
-              };
-            });
-          if (parsed.some((l) => !safeURL(l.url))) {
-            nav.toast("Use a valid http or https address for every link.");
+          let parsed, parsedSkills, parsedOpen;
+          try {
+            parsed = profileLinks(links);
+            parsedSkills = profileTags(skills, skillInput);
+            parsedOpen = profileTags(openTo, openInput);
+          } catch (error) {
+            setFormError((error as Error).message);
             return;
           }
+          setFormError("");
           setBusy(true);
           void nav
             .run(
@@ -461,14 +503,8 @@ export function EditProfile({ nav }: { nav: Nav }) {
                   company,
                   location,
                   bio,
-                  skills: skills
-                    .split(",")
-                    .map((v) => v.trim())
-                    .filter(Boolean),
-                  openTo: openTo
-                    .split(",")
-                    .map((v) => v.trim())
-                    .filter(Boolean),
+                  skills: parsedSkills,
+                  openTo: parsedOpen,
                   links: parsed,
                   visibility,
                 },
@@ -476,11 +512,16 @@ export function EditProfile({ nav }: { nav: Nav }) {
               "Profile updated",
             )
             .then((ok) => {
-              if (ok) nav.close();
+              if (ok) nav.closeIfTop("edit-profile");
             })
             .finally(() => setBusy(false));
         }}
       />
+      {!!formError && (
+        <Text accessibilityRole="alert" style={s.body}>
+          {formError}
+        </Text>
+      )}
     </ScrollView>
   );
 }
