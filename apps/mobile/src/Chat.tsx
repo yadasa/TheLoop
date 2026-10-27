@@ -1205,7 +1205,7 @@ export function ChannelDetail({
                     <Avatar profile={author} size={33} />
                   </Touch>
                 ) : (
-                  <View style={{ width: 33 }} />
+                  <View style={{ width: 44 }} />
                 )}
                 <View style={{ flex: 1, gap: 6 }}>
                   <View

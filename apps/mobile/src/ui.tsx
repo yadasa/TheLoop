@@ -500,6 +500,7 @@ export function Touch({
   label,
   disabled = false,
   selected,
+  minimumWidth = 44,
 }: {
   children: React.ReactNode;
   onPress?: () => void;
@@ -507,9 +508,21 @@ export function Touch({
   label: string;
   disabled?: boolean;
   selected?: boolean;
+  minimumWidth?: number;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   const enabled = useMotionEnabled();
+  const requestedStyle = StyleSheet.flatten(style);
+  const targetSize = {
+    minWidth:
+      typeof requestedStyle?.minWidth === "number"
+        ? Math.max(minimumWidth, requestedStyle.minWidth)
+        : (requestedStyle?.minWidth ?? minimumWidth),
+    minHeight:
+      typeof requestedStyle?.minHeight === "number"
+        ? Math.max(44, requestedStyle.minHeight)
+        : (requestedStyle?.minHeight ?? 44),
+  };
   useEffect(() => {
     if (!enabled || disabled) {
       scale.stopAnimation();
@@ -543,7 +556,12 @@ export function Touch({
             speed: 25,
           }).start()
         }
-        style={[style, disabled && { opacity: 0.4 }]}
+        style={[
+          { justifyContent: "center" },
+          style,
+          targetSize,
+          disabled && { opacity: 0.4 },
+        ]}
       >
         {children}
       </Pressable>

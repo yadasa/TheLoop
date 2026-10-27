@@ -348,6 +348,7 @@ export function Events({
                     <Touch
                       label={`${date.toLocaleDateString()}, ${count} ${count === 1 ? "event" : "events"}`}
                       selected={selected === key}
+                      minimumWidth={24}
                       onPress={() => setSelected(selected === key ? "" : key)}
                       style={{
                         height: 44,

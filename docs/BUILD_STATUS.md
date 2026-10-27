@@ -254,3 +254,6 @@ Version metadata advances to0.4.0/build6 for a new internal LIVE preview. It inc
 
 ## October 27 — reaction and action motion
 Group-chat reaction pickers and Squad reaction/action menus now use the shared reduced-motion-aware entrance transition. Mobile typecheck passes. Expo-web QA at320px verified wrapped reaction/action controls remain reachable, the Squad date divider renders, and creating/discarding an unsent Squad draft immediately updates both its list and the background draft count. Release87be51b passed full CI40482168713; this motion follow-up will be included in the build6 source snapshot.
+
+## October 27 — usable tap targets on phones
+Shared native controls now reserve at least44px height/width while preserving larger requested targets. Calendar day cells retain responsive column widths with44px height, so seven columns fit narrow phones. Consecutive group messages align with the larger avatar target. Types pass;320px Expo-web QA verified calendar grid/selection, chat toolbar, reaction controls and composer navigation. DOM measurements found no undersized visible chat buttons. Full CI40482851224 passed for the preceding motion commitd989c8f.
