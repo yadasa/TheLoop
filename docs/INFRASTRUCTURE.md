@@ -85,3 +85,6 @@ Verified backend through 0b0ad67 (CI40475404717). Successfully deployed uploadMe
 
 ## October 27 — reply alert access and mute enforcement
 Verified commit4dab3f2 passed full GitHub CI40480130121 and all33 real callable/media integration cases. executeCommand and deliverPushNotification were successfully updated in theloop-community-2026. New group replies require current membership and following the topic, store a generic body plus source message ID, and recheck source access/read state before push. No production test messages or device pushes were sent.
+
+## October 27 — conference dates and read status budgets
+Full CI40485207672 passed for4a9d792 (131 functions units and34 real callable/media cases locally). executeCommand was successfully updated in the dedicated project with strict conference day validation and separate bounded read status allowances. No new rules or indexes were required. A read-only Firebase index listing confirmed26 deployed composite indexes and TTL enabled on requests.expiresAt. No production test records were created.

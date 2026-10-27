@@ -1,5 +1,15 @@
 # TheLoop build status
 
+## Current checkpoint — October 27
+
+- **Expo first:** source0.4.0/build6 is `ecbeae8052c519e99c745a42c325f2d77cf5748c`; full CI40483633353 passed. EAS Android build `f88aaf30-da97-4c76-9b41-e52d6f48623b` finished successfully; [APK6](https://expo.dev/artifacts/eas/PZn7BdUgOYWQLBVs4XtVDJFc8mzWdjlfy61j4oQbvQc.apk) passed archive/configuration checks. Download, install QR and testing instructions are in task outputs.
+- **Current features:** dark-default appearance, gradients/reduced-motion transitions, tutorial, AfroTech hub/topics, mute/hide/follow, personal saved messages, moderator pins, progressive history and reply views, DM filters, private Squads, professional profiles/photos/QR cards, connections/follows/trust, calendars and public Guide discovery. Session chat/photo/post drafts now update their list and badges immediately. Tap targets and narrow-screen calendar layout are checked.
+- **Live:** the real verified owner and AfroTech hub remain intact. Profile photos, saved messages, and reply-alert privacy/mute checks are deployed. Strict conference-date validation and isolated read-receipt budgets passed full CI40485207672 and are deployed in executeCommand.
+- **Verification:** latest local suites total352 tests (70 core,98 client,4 web,49 mobile,131 functions). Real callable/media integration34/34 passed. Current Expo release passed all CI rules/pagination/integration/native export checks. Production reports26 composite indexes and enabled TTL on `requests.expiresAt`.
+- **Remaining device gates:** physical Android/iOS keyboard and picker behavior, OS calendar/share/clipboard, profile QR/deep-link handoff, airplane-mode recovery, actual push delivery credentials/device registration and App Check. Broader release also needs two-account live testing and representative load tests. No historical chat import, live test posts or invented members were added.
+
+The sections below record earlier milestones. Their old versions, counts and blockers are historical; this checkpoint and the latest entries take precedence.
+
 ## Product brief
 A community platform growing from four years of AfroTech group chat: conference hubs and topic chat, intentional subscriptions, Reddit-style communities and social feed, professional profiles, explainable trust, connection requests and follows, direct messages, event and global calendars, RSVP/waitlists, social links, polls, wins, and useful serendipity. Monochrome, calm, and distinctly community-first. Native Expo app shares the same domain and Firebase backend with the web app.
 
@@ -10,9 +20,9 @@ A community platform growing from four years of AfroTech group chat: conference 
 - Research agent: open source evaluation and focused independent review.
 
 ## Operating rules
-Keep pushes small and coherent. Never commit credentials, build output or caches. Fictional demonstration data must be clearly labeled. Never claim historical membership or migrate chat history without user-provided data and authorization. Preserve explicit mutes. Trust is server-owned, explainable, and appealable. Use dedicated TheLoop infrastructure only. The October 27 instruction supersedes earlier limits: continue until 69% usage or a reset to 0%, whichever occurs first. Starting usage was 32%; latest check 64%, same reset timestamp 1793641476. Review between coherent batches and every 30 minutes; at the threshold/reset or if ordinary usage is disallowed, stop new work, save/push verified changes and pause the automation. Do not use reset credits or buy credits.
+Keep pushes small and coherent. Never commit credentials, build output or caches. Fictional demonstration data must be clearly labeled. Never claim historical membership or migrate chat history without user-provided data and authorization. Preserve explicit mutes. Trust is server-owned, explainable, and appealable. Use dedicated TheLoop infrastructure only. The October 27 instruction supersedes earlier limits: continue until 69% usage or a reset to 0%, whichever occurs first. Starting usage was 32%; latest check 67%, same reset timestamp 1793641476. Review between coherent batches and every 30 minutes; at the threshold/reset or if ordinary usage is disallowed, stop new work, save/push verified changes and pause the automation. Do not use reset credits or buy credits.
 
-## Progress
+## Early progress (historical)
 - Empty repository cloned; architecture and shared domain contracts established.
 - 30-minute review heartbeat created: review-and-advance-theloop.
 - Open source evaluation: Zulip, Rocket.Chat and Discourse; original implementation to fit Firebase/Expo, with reusable permissively licensed utilities.
@@ -31,7 +41,7 @@ Keep pushes small and coherent. Never commit credentials, build output or caches
 - Image milestone verified: authenticated callable uploads, strict JPEG/PNG/WebP decode and metadata-free WebP re-encode, owner/target-bound single-use linking, scoped private retrieval, report-specific review, retention and deletion cleanup. Direct Storage reads/writes remain denied and output objects have no Firebase download tokens. Web and native compose/view images in rooms, Squads, DMs and posts. Sample mode stores at most2MiB of canonical photo bytes locally; it does not upload to cloud. Browser QA passed normalization (including Chrome ICC metadata), sending, viewing, reload persistence and nested dialog cleanup. Native picker/caption/send/view passed in Expo-web. Physical-device OS tests remain outstanding.
 - Current checks: workspace typecheck and production build PASS, core45 units PASS, client media/header/cache checks PASS, backend71 units PASS, rules11/11, SDK history/privacy8/8, real callables13/13 and image/Storage6/6. The portable CI runner passed both callable suites19/19 with zero skipped. Expo native exports pass on Android/iOS, dependency alignment passes and Doctor20/20 passes after picker/manipulator additions.
 
-## Verification and remaining work
+## Earlier verification snapshots (historical)
 The media milestone is published on web and Android. Newer main-source checkpoints add exact-peer DM cursor history/read markers, author editing/deletion, per-peer mute, directional reply consent and trusted minimal name/initial snapshots across participation. Professional profile visibility remains separate from minimal participation identity. GitHub CI forf4d09da and57123a1 passed all checks, including both real callable suites.
 
 Shared links now hydrate exact old posts/events outside feed windows, with server-confirmed missing states, permission errors distinct from missing records, bounded timeout/retry, account fences and deletion-safe saved-post caches. Web hash routes preserve selected records through refresh/back/forward; events have precise share links and detail views. Native supports the same links, Expo Go paths and deferred sign-in/onboarding destinations, plus a targeted community view. Browser QA passed post back/forward/close, event refresh, missing links, hidden-channel links, native topic selection and author editor hydration. Current targeted-client units49 and real SDK cases14 pass; native Android/iOS exports pass (812modules, ~4MB bundles).
@@ -263,3 +273,12 @@ The backend now applies strict calendar-day validation before creating a confere
 
 ## October 27 — read receipts preserve posting capacity
 Automatic channel/DM/Squad read updates now share a separate server-owned rate allowance (120/minute,10,000/UTC day). Member actions retain45/minute and2,000/day; retries consume one allowance. A busy chat can no longer spend the member's posting budget on read markers. Functions types and131 units pass; both real Auth/Firestore/Functions/Storage suites pass34/34, including independent limits and retry behavior. Integration actors are now referenced by their named role instead of creation order. Awaiting full CI before executeCommand deployment.
+
+## Android 0.4 / build6 verified artifact
+The latest verified Android download is [LIVE 0.4.0, build 6](https://expo.dev/artifacts/eas/PZn7BdUgOYWQLBVs4XtVDJFc8mzWdjlfy61j4oQbvQc.apk), built from `ecbeae8052c519e99c745a42c325f2d77cf5748c`. It connects to the real TheLoop project. This release includes the current Expo visuals/tutorial, profile photos and QR cards, personal saved messages, moderator pins, topic read state, reply views, notification filters, sharing, DM/Squad search and date dividers, session message/photo/post drafts, offline feedback and larger tap targets. The APK passed ZIP integrity, package/version, non-debuggable configuration, Hermes and four-ABI checks; its embedded public Firebase fields match the dedicated live project. SHA256: `D15B610C8BDBFAEC06E68FE1BE10D0B1306A11D93F87250F7D77ABCDD3925D5D`. Actual phone behavior is still a device verification gate.
+
+For fictional sample data on this computer, run `pnpm --filter @theloop/mobile start:stable` and open http://localhost:8097/. For the signed-in live Expo preview, use http://127.0.0.1:8109/. Sample actions stay on the device; actions in LIVE community mode are real. Older APKs and the private published web sample are historical snapshots, not this Expo release.
+
+
+## October 27 — backend deployment and updated product map
+executeCommand deployed successfully from verified4a9d792, including strict conference calendar days and independent automatic read limits. The existing26 composite indexes and requests.expiresAt TTL were confirmed by the deployed project listing. Updated the feature/cost map with shipped Expo features plus source-linked remaining gaps for mentions, scheduled messages/durable drafts and rich formatting; cost assumptions were preserved. Android0.4 build6 and the current live preview include all native changes through ecbeae8; later changes are backend fixes and documentation.
