@@ -1130,7 +1130,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
             <Text style={s.body} numberOfLines={5}>
               {actionMessage.body || "Shared image"}
             </Text>
-            <CopyMessage text={actionMessage.body} nav={nav} disabled={busy} />
+            <CopyMessage text={actionMessage.body} disabled={busy} />
             {actionMessage.fromId === state.currentUserId ? (
               <>
                 <Button

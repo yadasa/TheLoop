@@ -789,11 +789,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                       distance={4}
                       style={s.wrap}
                     >
-                      <CopyMessage
-                        text={message.body}
-                        nav={nav}
-                        disabled={busy}
-                      />
+                      <CopyMessage text={message.body} disabled={busy} />
                       <Button
                         small
                         secondary

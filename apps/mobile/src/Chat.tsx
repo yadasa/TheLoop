@@ -917,11 +917,7 @@ export function ChannelDetail({
             </View>
             {messageAction === "menu" ? (
               <>
-                <CopyMessage
-                  text={actionMessage.body}
-                  nav={nav}
-                  disabled={locked}
-                />
+                <CopyMessage text={actionMessage.body} disabled={locked} />
                 <Button
                   secondary
                   title="View replies"

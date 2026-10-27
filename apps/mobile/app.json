@@ -2,14 +2,14 @@
   "expo": {
     "name": "TheLoop",
     "slug": "theloop-community",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "scheme": "theloop",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#101010",
     "ios": {
-      "buildNumber": "6",
+      "buildNumber": "7",
       "supportsTablet": true,
       "bundleIdentifier": "co.theloop.community",
       "infoPlist": {
@@ -19,7 +19,7 @@
       }
     },
     "android": {
-      "versionCode": 6,
+      "versionCode": 7,
       "package": "co.theloop.community",
       "adaptiveIcon": {
         "backgroundColor": "#171717",
