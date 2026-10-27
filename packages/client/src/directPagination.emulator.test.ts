@@ -1,10 +1,13 @@
+import { initialState, type DirectMessage } from "@theloop/core";
+import { HistorySearch, emptyHistorySearch } from "./historySearch";
+import { privateHistoryHits, type PrivateHistoryRequest, type PrivateSearchHit } from "./privateHistorySearch";
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
-import { collection, connectFirestoreEmulator, documentId, getDocs, getFirestore, limit, onSnapshot, orderBy, query, where, type Firestore } from "firebase/firestore";
+import { collection, connectFirestoreEmulator, documentId, getDocs, getDocsFromServer, getFirestore, limit, onSnapshot, orderBy, query, where, type Firestore } from "firebase/firestore";
 import { messageCursor } from "./data";
 import { directConversationId, type DirectSnapshot } from "./directData";
 import { directMessagePageQuery } from "./directQueries";
@@ -104,4 +107,24 @@ test("live direct history pages reflect edits and deletes while keeping equal-ti
     assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
   } finally { pages.stop(); }
   assert.deepEqual(rows, []);
+});
+
+
+test("private search reaches old DM history without reading another conversation", async () => {
+  const account = initialState(); account.currentUserId = uid;
+  let result = emptyHistorySearch<PrivateSearchHit>();
+  const search = new HistorySearch<PrivateHistoryRequest, PrivateSearchHit>({
+    readPage: async request => {
+      const page = await getDocsFromServer(directMessagePageQuery(db, uid, request.id, request.cursor));
+      const rows = page.docs.map(record => ({ ...record.data(), id: record.id }) as DirectMessage);
+      return { matches: privateHistoryHits(rows, request, account), scanned: rows.length, cursor: messageCursor(rows), hasMore: rows.length === 100 };
+    }, publish: next => { result = next; }, errorText: String,
+  });
+  await search.start({ kind: "dm", id: peer, query: "Old 0" });
+  if (result.hasMore) await search.more();
+  assert.equal(result.error, null);
+  assert.ok(result.matches.some(row => row.id === `${uid}-old-0000`));
+  assert.ok(result.matches.every(row => row.authorId === peer));
+  assert.ok(result.scanned >= 300);
+  await assert.rejects(getDocsFromServer(directMessagePageQuery(outsiderDb, uid, peer)), error => (error as { code?: string }).code === "permission-denied");
 });

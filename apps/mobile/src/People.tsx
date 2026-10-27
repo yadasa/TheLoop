@@ -1,3 +1,4 @@
+import { PrivateConversationSearch } from "./PrivateConversationSearch";
 import React, { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -87,9 +88,7 @@ export function People({ nav }: { nav: Nav }) {
     <ScrollView contentContainerStyle={s.content}>
       <View>
         <Text style={s.overline}>COMMUNITY DIRECTORY</Text>
-        <Text style={[s.title, { marginTop: 5 }]}>
-          People
-        </Text>
+        <Text style={[s.title, { marginTop: 5 }]}>People</Text>
       </View>
       <Field
         value={search}
@@ -206,7 +205,13 @@ export function People({ nav }: { nav: Nav }) {
       )}
       {people.length === 0 && !(filter === "For you" && directory.loading) && (
         <Empty
-          title={search ? "No matching people" : filter === "For you" ? "No suggested connections yet" : `No ${filter.toLowerCase()} yet`}
+          title={
+            search
+              ? "No matching people"
+              : filter === "For you"
+                ? "No suggested connections yet"
+                : `No ${filter.toLowerCase()} yet`
+          }
           body={
             search
               ? "Try another name, role, or skill."
@@ -447,9 +452,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
       {canSee ? (
         <>
           <Section title="About" />
-          <Text style={s.body}>
-            {p.bio || "No bio added yet."}
-          </Text>
+          <Text style={s.body}>{p.bio || "No bio added yet."}</Text>
           {p.company && (
             <View style={s.card}>
               <Text style={s.overline}>COMPANY</Text>
@@ -594,6 +597,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
 
 export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
   const appActive = useAppActive();
+  const [searchOpen, setSearchOpen] = useState(false);
   const {
     state,
     watchDirectConversation,
@@ -676,6 +680,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
   }, [id, blocked, watchDirectConversation]);
   useEffect(() => {
     if (
+      searchOpen ||
       nav.dialogOpen ||
       !appActive ||
       !isAppActive() ||
@@ -707,6 +712,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     showJump,
     directHistory.loading,
     nav.dialogOpen,
+    searchOpen,
     readRevision,
     appActive,
   ]);
@@ -732,9 +738,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
             <View style={s.grow}>
               <Text style={s.h3}>{identity.name}</Text>
               <Text style={s.small}>
-                {connected(state, id)
-                  ? "Connected"
-                  : "Not connected"}
+                {connected(state, id) ? "Connected" : "Not connected"}
               </Text>
             </View>
           </Touch>
@@ -754,6 +758,23 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
           />
         )}
       </View>
+      {!blocked && (
+        <View
+          style={{
+            paddingHorizontal: 20,
+            paddingVertical: 8,
+            alignItems: "flex-end",
+          }}
+        >
+          <Button
+            small
+            secondary
+            title="Search messages"
+            disabled={busy || attachment.busy}
+            onPress={() => setSearchOpen(true)}
+          />
+        </View>
+      )}
       {readFailed && !blocked && (
         <View
           style={{ paddingHorizontal: 20, paddingVertical: 10, gap: 8 }}
@@ -1087,6 +1108,13 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
           </>
         )}
       </View>
+      <PrivateConversationSearch
+        kind="dm"
+        id={id}
+        name={identity.name}
+        visible={searchOpen}
+        onClose={() => setSearchOpen(false)}
+      />
     </KeyboardAvoidingView>
   );
 }

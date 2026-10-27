@@ -7,21 +7,25 @@ export type HistorySearchRequest = {
   topic?: string;
   cursor?: MessageCursor;
 };
-export type HistorySearchPage = {
-  matches: Message[];
+export type SearchRecord = { id: string; body: string; createdAt: string };
+export type SearchRequest = { query: string; cursor?: MessageCursor };
+export type HistorySearchPage<Row extends SearchRecord = Message> = {
+  matches: Row[];
   scanned: number;
   cursor?: MessageCursor;
   hasMore: boolean;
 };
-export type HistorySearchState = {
-  matches: Message[];
+export type HistorySearchState<Row extends SearchRecord = Message> = {
+  matches: Row[];
   scanned: number;
   hasMore: boolean;
   loading: boolean;
   started: boolean;
   error: string | null;
 };
-export const emptyHistorySearch = (): HistorySearchState => ({
+export const emptyHistorySearch = <
+  Row extends SearchRecord = Message,
+>(): HistorySearchState<Row> => ({
   matches: [],
   scanned: 0,
   hasMore: false,
@@ -42,7 +46,10 @@ export function validMessageSearch(value: string): boolean {
   const length = Array.from(normalizeMessageSearch(value)).length;
   return length >= 2 && length <= 100;
 }
-export function matchesMessageSearch(message: Message, query: string): boolean {
+export function matchesMessageSearch(
+  message: Pick<SearchRecord, "body">,
+  query: string,
+): boolean {
   const needle = normalizeMessageSearch(query);
   return (
     validMessageSearch(needle) &&
@@ -79,19 +86,22 @@ export function filterHistoryResults(
 }
 
 /** Search progressively without attaching live listeners or reading an unbounded archive. */
-export class HistorySearch {
+export class HistorySearch<
+  Request extends SearchRequest = HistorySearchRequest,
+  Row extends SearchRecord = Message,
+> {
   private generation = 0;
-  private request: HistorySearchRequest | null = null;
+  private request: Request | null = null;
   private cursor: MessageCursor | undefined;
-  private value = emptyHistorySearch();
+  private value = emptyHistorySearch<Row>();
   constructor(
     private options: {
-      readPage(request: HistorySearchRequest): Promise<HistorySearchPage>;
-      publish(state: HistorySearchState): void;
+      readPage(request: Request): Promise<HistorySearchPage<Row>>;
+      publish(state: HistorySearchState<Row>): void;
       errorText(error: unknown): string;
     },
   ) {}
-  private publish(patch: Partial<HistorySearchState>) {
+  private publish(patch: Partial<HistorySearchState<Row>>) {
     this.value = { ...this.value, ...patch };
     this.options.publish({ ...this.value, matches: [...this.value.matches] });
   }
@@ -99,13 +109,13 @@ export class HistorySearch {
     this.generation++;
     this.request = null;
     this.cursor = undefined;
-    this.publish(emptyHistorySearch());
+    this.publish(emptyHistorySearch<Row>());
   }
   pause() {
     this.generation++;
     this.publish({ loading: false });
   }
-  async start(request: Omit<HistorySearchRequest, "cursor">) {
+  async start(request: Request) {
     this.reset();
     if (!validMessageSearch(request.query)) {
       this.publish({ error: "Enter between 2 and 100 characters to search." });

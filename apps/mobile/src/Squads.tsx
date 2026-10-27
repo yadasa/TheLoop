@@ -1,3 +1,4 @@
+import { PrivateConversationSearch } from "./PrivateConversationSearch";
 import React, { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -472,6 +473,7 @@ export function CreateSquad({ nav }: { nav: Nav }) {
 
 export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
   const appActive = useAppActive();
+  const [searchOpen, setSearchOpen] = useState(false);
   const { state, watchSquad, loadOlderSquadMessages, squadHistory } = useLoop();
   const attachment = useImageAttachment(nav);
   const squad = (state.squads ?? []).find(
@@ -489,7 +491,9 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
     if (!editing) draft.remember({ body });
   }, [body, editing, draft.remember]);
   const [reply, setReply] = useState<string | null>(null);
-  const draftBeforeEdit = useRef<{ body: string; reply: string | null } | null>(null);
+  const draftBeforeEdit = useRef<{ body: string; reply: string | null } | null>(
+    null,
+  );
   const [actions, setActions] = useState<string | null>(null);
   const [reacting, setReacting] = useState<string | null>(null);
   const [showJump, setShowJump] = useState(false);
@@ -519,6 +523,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
       appActive &&
       isAppActive() &&
       !nav.dialogOpen &&
+      !searchOpen &&
       !showJump &&
       !squadHistory.loading &&
       messages.length &&
@@ -533,6 +538,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
     showJump,
     squadHistory.loading,
     nav.dialogOpen,
+    searchOpen,
   ]);
   if (!squad)
     return (
@@ -578,7 +584,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
         <Text style={s.small}>
           Shared only with the members present when each message is sent.
         </Text>
-        <View style={{ alignSelf: "flex-start" }}>
+        <View style={[s.row, { flexWrap: "wrap" }]}>
           <Button
             small
             secondary
@@ -591,6 +597,13 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                   : "Squad message alerts muted",
               )
             }
+          />
+          <Button
+            small
+            secondary
+            title="Search"
+            disabled={busy || attachment.busy}
+            onPress={() => setSearchOpen(true)}
           />
         </View>
       </View>
@@ -761,7 +774,8 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                       secondary
                       title="Reply"
                       onPress={() => {
-                        if (editing) setBody(draftBeforeEdit.current?.body || "");
+                        if (editing)
+                          setBody(draftBeforeEdit.current?.body || "");
                         draftBeforeEdit.current = null;
                         setReply(message.id);
                         setEditing(null);
@@ -775,7 +789,8 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                           secondary
                           title="Edit"
                           onPress={() => {
-                            if (!editing) draftBeforeEdit.current = { body, reply };
+                            if (!editing)
+                              draftBeforeEdit.current = { body, reply };
                             setEditing(message.id);
                             setBody(message.body);
                             setReply(null);
@@ -958,6 +973,13 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
           />
         </View>
       </View>
+      <PrivateConversationSearch
+        kind="squad"
+        id={id}
+        name={squad.name}
+        visible={searchOpen}
+        onClose={() => setSearchOpen(false)}
+      />
     </KeyboardAvoidingView>
   );
 }

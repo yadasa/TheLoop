@@ -1,3 +1,5 @@
+import type { DirectMessage } from "@theloop/core";
+import { canSearchPrivate, privateHistoryHits, type PrivateHistoryRequest, type PrivateSearchHit } from "./privateHistorySearch";
 import React, {
   createContext,
   useCallback,
@@ -97,6 +99,7 @@ type LoopContextValue = {
   loadOlderMessages(): Promise<void>;
   readChannelSearchPage(request: HistorySearchRequest): Promise<HistorySearchPage>;
   readPinnedMessages(channelId: string): Promise<Message[]>;
+  readPrivateSearchPage(request: PrivateHistoryRequest): Promise<HistorySearchPage<PrivateSearchHit>>;
   history: { loading: boolean; hasMore: boolean };
   directory: { results: Profile[]; loading: boolean; hasMore: boolean };
   setDirectoryQuery(query: string): void;
@@ -296,6 +299,32 @@ export function LoopProvider({
     if (last && (typeof last.createdAt !== "string" || !Number.isFinite(Date.parse(last.createdAt)))) throw new Error("Could not read this part of the message history.");
     return { matches: filterHistoryResults(rows, request, stateRef.current), scanned: rows.length,
       hasMore: rows.length === 100, ...(last ? { cursor: { id: last.id, createdAt: last.createdAt } } : {}) };
+  };
+  const readPrivateSearchPage = async (request: PrivateHistoryRequest): Promise<HistorySearchPage<PrivateSearchHit>> => {
+    if (!validMessageSearch(request.query)) throw new Error("Enter between 2 and 100 characters to search.");
+    const userId = stateRef.current.currentUserId, generation = transportGeneration.current, requestMode = modeRef.current;
+    const current = () => generation === transportGeneration.current && requestMode === modeRef.current && stateRef.current.currentUserId === userId && canSearchPrivate(stateRef.current, request);
+    if (!current()) throw new Error("This conversation is no longer available to you.");
+    let rows: (DirectMessage | SquadMessage)[];
+    if (requestMode === "demo") {
+      const source = request.kind === "dm" ? stateRef.current.directMessages.filter(message =>
+        (message.fromId === userId && message.toId === request.id) || (message.toId === userId && message.fromId === request.id)) :
+        stateRef.current.squadMessages.filter(message => message.squadId === request.id && message.audienceIds.includes(userId));
+      rows = source.filter(message => !request.cursor || message.createdAt < request.cursor.createdAt || (message.createdAt === request.cursor.createdAt && message.id < request.cursor.id))
+        .sort((a, b) => a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0).slice(0, 100);
+    } else {
+      const { sdk, c } = await liveCloud();
+      if (!current() || !readyRef.current || c.auth.currentUser?.uid !== userId) throw new MediaScopeChanged();
+      const query = request.kind === "dm" ? sdk.directMessagePageQuery(c.db, userId, request.id, request.cursor) : sdk.squadMessagePageQuery(c.db, request.id, userId, request.cursor);
+      const page = await sdk.getDocsFromServer(query);
+      if (!current() || !readyRef.current || c.auth.currentUser?.uid !== userId) throw new MediaScopeChanged();
+      rows = page.docs.map(record => ({ ...record.data(), id: record.id }) as DirectMessage | SquadMessage);
+    }
+    if (!current()) throw new MediaScopeChanged();
+    const last = rows.at(-1);
+    if (last && (typeof last.createdAt !== "string" || !Number.isFinite(Date.parse(last.createdAt)))) throw new Error("Could not read this part of the message history.");
+    return { matches: privateHistoryHits(rows, request, stateRef.current), scanned: rows.length, hasMore: rows.length === 100,
+      ...(last ? { cursor: { id: last.id, createdAt: last.createdAt } } : {}) };
   };
   const readPinnedMessages = async (channelId: string): Promise<Message[]> => {
     const userId = stateRef.current.currentUserId, generation = transportGeneration.current, requestMode = modeRef.current;
@@ -1954,6 +1983,7 @@ export function LoopProvider({
         loadOlderMessages,
         readChannelSearchPage,
         readPinnedMessages,
+        readPrivateSearchPage,
         history,
         directory,
         setDirectoryQuery,
@@ -2067,3 +2097,5 @@ export function useLoop() {
   if (!value) throw new Error("useLoop must be used within LoopProvider");
   return value;
 }
+
+export * from "./privateHistorySearch";

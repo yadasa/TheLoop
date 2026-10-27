@@ -1,3 +1,5 @@
+import { initialState, type SquadMessage } from "@theloop/core";
+import { privateHistoryHits, type PrivateHistoryRequest, type PrivateSearchHit } from "./privateHistorySearch";
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -92,6 +94,25 @@ test("actual active/topic query reaches old records beyond preview rooms and las
   assert.equal(ids.length, 301);
   assert.equal(new Set(ids).size, 301);
   assert.ok(ids.every(id => id.includes("-archive-")));
+});
+
+test("Squad history search excludes pre-join messages and other squads", async () => {
+  const account = initialState(); account.currentUserId = uid;
+  account.squads = [{ id: squadId, name: "Crew", description: "", ownerId: uid, memberIds: [uid, friendId], memberProfiles: {}, pendingInviteeIds: [], createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z", archived: false }];
+  let result = emptyHistorySearch<PrivateSearchHit>();
+  const search = new HistorySearch<PrivateHistoryRequest, PrivateSearchHit>({
+    readPage: async request => {
+      const page = await getDocsFromServer(squadMessagePageQuery(db, request.id, uid, request.cursor));
+      const rows = page.docs.map(record => ({ ...record.data(), id: record.id }) as SquadMessage);
+      return { matches: privateHistoryHits(rows, request, account), scanned: rows.length, cursor: messageCursor(rows), hasMore: rows.length === 100 };
+    }, publish: next => { result = next; }, errorText: String,
+  });
+  await search.start({ kind: "squad", id: squadId, query: "Visible 0" });
+  if (result.hasMore) await search.more();
+  assert.equal(result.error, null);
+  assert.equal(result.scanned, 301);
+  assert.deepEqual(result.matches.map(row => row.id), [`${uid}-visible-0000`]);
+  await assert.rejects(getDocsFromServer(squadMessagePageQuery(recipientDb, squadId, uid)), error => (error as { code?: string }).code === "permission-denied");
 });
 
 test("progressive search finds an archive match beyond the newest 300 and preserves private-room rules", async () => {

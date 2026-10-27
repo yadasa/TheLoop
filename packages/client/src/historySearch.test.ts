@@ -72,7 +72,7 @@ test("query changes discard in-flight results and never start their next page", 
   const search = new HistorySearch({
     readPage: async () => {
       calls++;
-      return new Promise((r) => (resolve = r));
+      return new Promise<HistorySearchPage>((r) => (resolve = r));
     },
     publish: (next) => (state = next),
     errorText: String,
@@ -168,7 +168,7 @@ test("pausing keeps completed results but ignores a late page", async () => {
     readPage: async () =>
       ++calls === 1
         ? page("first", [message("keep")])
-        : new Promise((r) => (resolve = r)),
+        : new Promise<HistorySearchPage>((r) => (resolve = r)),
     publish: (next) => (state = next),
     errorText: String,
   });

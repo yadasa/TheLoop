@@ -39,7 +39,7 @@ export function ConversationSearch({
   const { state, readChannelSearchPage } = useLoop();
   const [query, setQuery] = useState("");
   const [topic, setTopic] = useState<string | null>(initialTopic || null);
-  const [result, setResult] = useState(emptyHistorySearch);
+  const [result, setResult] = useState(emptyHistorySearch<Message>);
   const [resultScope, setResultScope] = useState("");
   const readPage = useRef(readChannelSearchPage);
   readPage.current = readChannelSearchPage;
