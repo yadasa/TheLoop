@@ -172,3 +172,40 @@ test("digests honor topic override, hidden channels, blocks, reads, and private 
     0,
   );
 });
+
+test("digests keep unread topics separate and honor newer legacy channel reads", () => {
+  const channels = [
+    { id: "lobby", conferenceId: "afrotech", visibility: "public" },
+  ];
+  const messages = ["Introductions", "Travel"].map((topic) => ({
+    channelId: "lobby",
+    topic,
+    authorId: "friend",
+    createdAt: "2026-10-26T12:00:00Z",
+  }));
+  const prefs = {
+    ...defaultPreferences(),
+    subscriptions: { lobby: "following" },
+    readChannels: {
+      lobby: "2026-10-26T10:00:00Z",
+      "lobby:Introductions": "2026-10-26T13:00:00Z",
+    },
+  };
+  const count = (preferences: typeof prefs) =>
+    digestContent(
+      "me",
+      preferences,
+      channels,
+      messages,
+      [],
+      new Date("2026-10-26T14:00:00Z"),
+    ).messageCount;
+  assert.equal(count(prefs), 1);
+  assert.equal(
+    count({
+      ...prefs,
+      readChannels: { ...prefs.readChannels, lobby: "2026-10-26T13:30:00Z" },
+    }),
+    0,
+  );
+});

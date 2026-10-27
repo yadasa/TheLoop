@@ -110,13 +110,17 @@ export function digestContent(
   );
   const messageCount = messages.filter((message) => {
     const channel = channelsById.get(message.channelId);
+    const channelRead = preferences.readChannels?.[message.channelId] || "";
+    const topicRead =
+      preferences.readChannels?.[`${message.channelId}:${message.topic}`] || "";
+    const readThrough = channelRead > topicRead ? channelRead : topicRead;
     return (
       channel &&
       (channel.visibility === "public" || channel.memberIds?.includes(uid)) &&
       message.authorId !== uid &&
       !blocked.includes(message.authorId) &&
       Date.parse(message.createdAt) >= cutoff &&
-      message.createdAt > (preferences.readChannels?.[channel.id] || "") &&
+      message.createdAt > readThrough &&
       subscription(preferences, channel, message.topic) === "following"
     );
   }).length;

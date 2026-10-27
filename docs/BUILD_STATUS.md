@@ -172,3 +172,9 @@ People search uses the same accent normalization as the directory, request/follo
 Reading a single Expo topic now advances only that topic's read marker. All topics catches up only visible topics, leaving explicitly muted/hidden topics untouched. Unread counts consider both legacy channel markers and per-topic markers; older installed clients retain their existing channel-wide behavior. Topic chips and the topic browser display the remaining unread count. Read effects follow the selected topic's newest visible message, and the web caller also sends its actual scope. Invalid topics, conflicting scopes and inaccessible private channels are rejected; timestamps never regress.
 
 All units pass (core65/client93/web4/mobile33/functions119), workspace typecheck passes, and the real Auth/callable/Firestore/Storage integration passes29/29 including new topic-read isolation and old-client compatibility. Fresh-origin sample Expo QA opened Introductions through its deep link after onboarding, preserved Making plans at1 unread, then cleared only that topic when opened. Screenshot TheLoop-topic-unread.png. No live content/preferences changed. Prior reply-view indexes and executeCommand deployment completed successfully; this newer read-scope change still requires deployment after CI. Usage54%, no reset. Profile commitf20367e passed full CI40467845571.
+
+### October 27 — topic-aware digests
+- CI 40469015769 passed for b588f3f; deploying the verified topic-specific read command.
+- Digests now honor both per-topic and legacy whole-chat read markers, so reading Introductions does not suppress unread Travel messages or resurface read introductions.
+- Functions tests: 120 passed, including mixed topic and legacy watermark regression coverage. Usage: 55%, same reset window; continuing toward 69% or reset.
+
