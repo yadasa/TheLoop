@@ -1,3 +1,5 @@
+import { ImageDrafts } from "./imageDrafts";
+import { removeCreatedImage } from "./mediaFiles";
 import React, {
   createContext,
   useCallback,
@@ -16,6 +18,7 @@ import {
 
 const DraftContext = createContext<{
   book: ConversationDrafts;
+  images: ImageDrafts;
   state: () => LoopState;
 } | null>(null);
 export function DraftProvider({ children }: { children: React.ReactNode }) {
@@ -26,12 +29,28 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
     () => new ConversationDrafts(state.currentUserId),
     [state.currentUserId],
   );
-  const context = useMemo(
-    () => ({ book, state: () => current.current }),
-    [book],
+  const images = useMemo(
+    () =>
+      new ImageDrafts(state.currentUserId, (choice) => {
+        void removeCreatedImage(choice.uri);
+      }),
+    [state.currentUserId],
   );
-  useEffect(() => book.prune(state), [book, state]);
-  useEffect(() => () => book.clear(), [book]);
+  const context = useMemo(
+    () => ({ book, images, state: () => current.current }),
+    [book, images],
+  );
+  useEffect(() => {
+    book.prune(state);
+    images.prune(state);
+  }, [book, images, state]);
+  useEffect(
+    () => () => {
+      book.clear();
+      images.clear();
+    },
+    [book, images],
+  );
   return (
     <DraftContext.Provider value={context}>
       <React.Fragment key={state.currentUserId}>{children}</React.Fragment>
@@ -43,11 +62,14 @@ export function useConversationDraft(target: DraftTarget) {
   const context = useContext(DraftContext);
   if (!context)
     throw new Error("Conversation drafts require the signed-in workspace.");
-  const { book, state } = context;
-  const initial = useMemo(
-    () => book.read(target, state()),
-    [book, target.kind, target.id, target.topic, state],
-  );
+  const { book, images, state } = context;
+  const initial = useMemo(() => {
+    const text = book.read(target, state());
+    if (text || target.kind !== "channel" || target.topic !== undefined)
+      return text;
+    const topic = images.latestTopic(target.id, state());
+    return topic === undefined ? undefined : { body: "", topic };
+  }, [book, images, target.kind, target.id, target.topic, state]);
   const remember = useCallback(
     (value: ConversationDraft) => book.remember(target, value, state()),
     [book, target.kind, target.id, target.topic, state],
@@ -57,4 +79,11 @@ export function useConversationDraft(target: DraftTarget) {
     [book, target.kind, target.id, state],
   );
   return { initial, remember, readTopic };
+}
+
+export function useImageDrafts() {
+  const context = useContext(DraftContext);
+  if (!context)
+    throw new Error("Image drafts require the signed-in workspace.");
+  return { book: context.images, state: context.state };
 }

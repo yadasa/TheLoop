@@ -300,7 +300,6 @@ export function ChannelDetail({
     isOpen: subscriptionOpen,
   } = useSubscriptionPicker();
   const appActive = useAppActive();
-  const attachment = useImageAttachment(nav);
   const channel = state.channels.find((c) => c.id === id);
   const draft = useConversationDraft({
     kind: "channel",
@@ -316,6 +315,10 @@ export function ChannelDetail({
       ))
       ? restoredTopic
       : null,
+  );
+  const attachment = useImageAttachment(
+    nav,
+    topic === null ? null : { kind: "channel", id, topic },
   );
   const [newTopic, setNewTopic] = useState("");
   const [addingTopic, setAddingTopic] = useState(false);
@@ -634,7 +637,12 @@ export function ChannelDetail({
           {topic !== null ? (
             <Touch
               label={`Manage ${topic} notifications`}
-              style={{ flex: 1, minWidth: 0, minHeight: 44, justifyContent: "center" }}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                minHeight: 44,
+                justifyContent: "center",
+              }}
               disabled={locked}
               onPress={() => subscription(`${id}:${topic}`, topic)}
             >
@@ -646,7 +654,9 @@ export function ChannelDetail({
               </Text>
             </Touch>
           ) : (
-            <Text style={[s.small, { flex: 1 }]}>Across your visible topics</Text>
+            <Text style={[s.small, { flex: 1 }]}>
+              Across your visible topics
+            </Text>
           )}
           <Touch
             label="Open pinned messages"

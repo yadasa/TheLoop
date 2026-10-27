@@ -475,7 +475,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
   const appActive = useAppActive();
   const [searchOpen, setSearchOpen] = useState(false);
   const { state, watchSquad, loadOlderSquadMessages, squadHistory } = useLoop();
-  const attachment = useImageAttachment(nav);
+  const attachment = useImageAttachment(nav, { kind: "squad", id });
   const squad = (state.squads ?? []).find(
     (value) =>
       value.id === id &&

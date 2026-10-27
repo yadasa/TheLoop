@@ -605,7 +605,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     directHistory,
     directCatalog,
   } = useLoop();
-  const attachment = useImageAttachment(nav);
+  const attachment = useImageAttachment(nav, { kind: "dm", id });
   const draft = useConversationDraft({ kind: "dm", id });
   const [body, setBody] = useState(draft.initial?.body || "");
   const [busy, setBusy] = useState(false);

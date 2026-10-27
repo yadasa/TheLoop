@@ -1,4 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useImageDrafts } from "./DraftProvider";
+import type { DraftTarget } from "./conversationDrafts";
+import type { ImageChoice } from "./imageDrafts";
+import { removeCreatedImage } from "./mediaFiles";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Image, Modal, Platform, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -6,32 +10,18 @@ import * as ImagePicker from "expo-image-picker";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { stripWebPMetadata, useLoop } from "@theloop/client";
 import type { Command, ImageAttachment, MediaTarget } from "@theloop/core";
-import { Button, color, s, Touch } from "./ui";
+import { Button, color, MotionScene, s, Touch, useReducedMotion } from "./ui";
 import type { Nav } from "./navigation";
 
 const sourceLimit = 5 * 1024 * 1024;
 const imageLimit = 1024 * 1024;
-type Choice = { uri: string; width: number; height: number; bytes: Uint8Array };
+type Choice = ImageChoice;
 
 async function bytesAt(uri: string): Promise<Uint8Array> {
   if (Platform.OS === "web")
     return new Uint8Array(await (await fetch(uri)).arrayBuffer());
   const { File } = await import("expo-file-system");
   return new File(uri).bytes();
-}
-
-async function removeCreatedImage(uri: string): Promise<void> {
-  try {
-    if (Platform.OS === "web") {
-      if (uri.startsWith("blob:")) URL.revokeObjectURL(uri);
-      return;
-    }
-    const { File } = await import("expo-file-system");
-    const file = new File(uri);
-    if (file.exists) file.delete();
-  } catch {
-    /* Cache eviction can already have removed an app-created image. */
-  }
 }
 
 function imageFormat(bytes: Uint8Array): "jpeg" | "png" | "webp" | null {
@@ -138,33 +128,54 @@ async function normalizeImage(
   }
 }
 
-export function useImageAttachment(nav: Nav) {
+export function useImageAttachment(nav: Nav, target?: DraftTarget | null) {
   const { state, uploadImage, discardImage } = useLoop();
-  const [choice, setChoice] = useState<Choice | null>(null);
+  const drafts = useImageDrafts();
+  const scope = JSON.stringify([
+    state.currentUserId,
+    target?.kind,
+    target?.id,
+    target?.topic,
+  ]);
+  const [localChoice, setChoice] = useState<Choice | null>(() =>
+    target ? drafts.book.read(target, state) : null,
+  );
+  const choice = target
+    ? drafts.book.read(target, state)
+    : target === null
+      ? null
+      : localChoice;
   const [busy, setBusy] = useState(false);
-  const chosen = useRef<Choice | null>(null);
+  const chosen = useRef<Choice | null>(choice);
   const generation = useRef(0);
   const uploaded = useRef<{ key: string; image: ImageAttachment } | null>(null);
   const clear = () => {
     generation.current++;
-    if (chosen.current) void removeCreatedImage(chosen.current.uri);
+    if (target) drafts.book.remove(target);
+    else if (chosen.current) void removeCreatedImage(chosen.current.uri);
     if (uploaded.current) discardImage(uploaded.current.image.id);
     chosen.current = null;
     uploaded.current = null;
     setChoice(null);
     setBusy(false);
   };
-  useEffect(() => {
-    clear();
+  useLayoutEffect(() => {
+    generation.current++;
+    chosen.current = target ? drafts.book.read(target, drafts.state()) : null;
+    setChoice(chosen.current);
+    setBusy(false);
     return () => {
       generation.current++;
-      if (chosen.current) void removeCreatedImage(chosen.current.uri);
+      // Conversation photos belong to the account-scoped draft book, not this screen.
+      if (!target && chosen.current)
+        void removeCreatedImage(chosen.current.uri);
       if (uploaded.current) discardImage(uploaded.current.image.id);
       chosen.current = null;
       uploaded.current = null;
     };
-  }, [state.currentUserId, discardImage]);
+  }, [scope, drafts.book, discardImage]);
   const pick = async () => {
+    if (target === null) return;
     const request = ++generation.current;
     setBusy(true);
     try {
@@ -189,10 +200,17 @@ export function useImageAttachment(nav: Nav) {
         await removeCreatedImage(next.uri);
         return;
       }
-      if (chosen.current) await removeCreatedImage(chosen.current.uri);
+      if (target) {
+        try {
+          drafts.book.remember(target, next, drafts.state());
+        } catch (error) {
+          await removeCreatedImage(next.uri);
+          throw error;
+        }
+      } else if (chosen.current) await removeCreatedImage(chosen.current.uri);
       // Removing the previous cache file may yield while this screen/account closes.
       if (request !== generation.current) {
-        await removeCreatedImage(next.uri);
+        if (!target) await removeCreatedImage(next.uri);
         return;
       }
       if (uploaded.current) discardImage(uploaded.current.image.id);
@@ -211,12 +229,14 @@ export function useImageAttachment(nav: Nav) {
     }
   };
   const resolve = async (
-    target: MediaTarget,
+    uploadTarget: MediaTarget,
   ): Promise<ImageAttachment | null> => {
-    const current = chosen.current;
+    const current = target
+      ? drafts.book.read(target, drafts.state())
+      : chosen.current;
     if (!current) return null;
     const request = generation.current,
-      key = `${target.kind}:${target.id}`;
+      key = `${uploadTarget.kind}:${uploadTarget.id}`;
     if (uploaded.current?.key === key) return uploaded.current.image;
     if (uploaded.current) {
       discardImage(uploaded.current.image.id);
@@ -224,7 +244,7 @@ export function useImageAttachment(nav: Nav) {
     }
     setBusy(true);
     try {
-      const image = await uploadImage(target, {
+      const image = await uploadImage(uploadTarget, {
         data: current.bytes,
         contentType: "image/webp",
         width: current.width,
@@ -240,7 +260,7 @@ export function useImageAttachment(nav: Nav) {
       if (request === generation.current) setBusy(false);
     }
   };
-  return { choice, busy, pick, clear, resolve };
+  return { choice, busy, pick, clear, resolve, retained: !!target };
 }
 
 export function ImageAttachmentPicker({
@@ -250,33 +270,60 @@ export function ImageAttachmentPicker({
   attachment: ReturnType<typeof useImageAttachment>;
   disabled?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => setExpanded(false), [attachment.choice?.uri]);
   return (
     <View style={{ gap: 9 }}>
       {attachment.choice && (
-        <View style={[s.card, { padding: 10, gap: 10 }]}>
-          <Image
-            source={{ uri: attachment.choice.uri }}
-            accessibilityLabel="Image selected for your next message"
-            style={{
-              width: "100%",
-              height: 160,
-              borderRadius: 10,
-              backgroundColor: color.soft,
-            }}
-            resizeMode="contain"
-          />
-          <Text style={s.small}>
-            A caption gives your photo context. It stays on this device until
-            you send.
-          </Text>
-          <Button
-            small
-            secondary
-            title="Remove selected image"
+        <MotionScene
+          identity={attachment.choice.uri}
+          style={[s.card, s.row, { padding: 10, gap: 12 }]}
+        >
+          <Touch
+            label="Preview selected image"
+            onPress={() => setExpanded(true)}
+          >
+            <Image
+              source={{ uri: attachment.choice.uri }}
+              accessibilityLabel="Image selected for your next message"
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 8,
+                backgroundColor: color.soft,
+              }}
+              resizeMode="cover"
+            />
+          </Touch>
+          <View style={[s.grow, { gap: 4 }]}>
+            <Text style={s.h3}>Photo ready</Text>
+            <Text style={s.small}>
+              {Math.max(
+                1,
+                Math.ceil(attachment.choice.bytes.byteLength / 1024),
+              )}{" "}
+              KB · Not sent
+            </Text>
+            <Text style={[s.small, { fontSize: 11 }]}>
+              {attachment.retained
+                ? "Saved in this chat for this session"
+                : "Stays on this device until sent"}
+            </Text>
+          </View>
+          <Touch
+            label="Remove selected image"
             disabled={disabled || attachment.busy}
             onPress={attachment.clear}
-          />
-        </View>
+            style={{
+              minWidth: 44,
+              minHeight: 44,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={[s.body, { fontSize: 24 }]}>×</Text>
+          </Touch>
+        </MotionScene>
       )}
       <View style={{ alignSelf: "flex-start" }}>
         <Button
@@ -286,14 +333,65 @@ export function ImageAttachmentPicker({
             attachment.busy
               ? "Preparing image…"
               : attachment.choice
-                ? "Choose another image"
+                ? "Replace image"
                 : "＋ Image"
           }
           disabled={disabled || attachment.busy}
           onPress={() => void attachment.pick()}
         />
       </View>
+      <ImageViewer
+        uri={expanded ? attachment.choice?.uri : undefined}
+        caption="Selected photo · not sent"
+        onClose={() => setExpanded(false)}
+      />
     </View>
+  );
+}
+
+function ImageViewer({
+  uri,
+  caption,
+  onClose,
+}: {
+  uri?: string;
+  caption: string;
+  onClose: () => void;
+}) {
+  const reducedMotion = useReducedMotion();
+  return (
+    <Modal
+      visible={!!uri}
+      animationType={reducedMotion ? "none" : "fade"}
+      onRequestClose={onClose}
+      presentationStyle="fullScreen"
+    >
+      <SafeAreaView style={{ flex: 1, backgroundColor: color.viewer }}>
+        <StatusBar style="light" />
+        <Touch
+          label="Close image"
+          onPress={onClose}
+          style={{ padding: 22, alignSelf: "flex-end", minHeight: 44 }}
+        >
+          <Text style={{ color: color.viewerText, fontSize: 17 }}>Close ×</Text>
+        </Touch>
+        {uri && (
+          <Image
+            source={{ uri }}
+            accessibilityLabel={caption || "Shared image"}
+            style={{ flex: 1, width: "100%" }}
+            resizeMode="contain"
+            resizeMethod="resize"
+          />
+        )}
+        <Text
+          style={{ color: color.viewerText, padding: 22, lineHeight: 22 }}
+          numberOfLines={4}
+        >
+          {caption}
+        </Text>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -405,40 +503,11 @@ function PrivateImage({
           onPress={() => void load()}
         />
       )}
-      <Modal
-        visible={expanded && !!uri}
-        animationType="fade"
-        onRequestClose={() => setExpanded(false)}
-        presentationStyle="fullScreen"
-      >
-        <SafeAreaView style={{ flex: 1, backgroundColor: color.viewer }}>
-          <StatusBar style="light" />
-          <Touch
-            label="Close image"
-            onPress={() => setExpanded(false)}
-            style={{ padding: 22, alignSelf: "flex-end" }}
-          >
-            <Text style={{ color: color.viewerText, fontSize: 17 }}>
-              Close ×
-            </Text>
-          </Touch>
-          {uri && (
-            <Image
-              source={{ uri }}
-              accessibilityLabel={caption || "Shared image"}
-              style={{ flex: 1, width: "100%" }}
-              resizeMode="contain"
-              resizeMethod="resize"
-            />
-          )}
-          <Text
-            style={{ color: color.viewerText, padding: 22, lineHeight: 22 }}
-            numberOfLines={4}
-          >
-            {caption}
-          </Text>
-        </SafeAreaView>
-      </Modal>
+      <ImageViewer
+        uri={expanded ? uri || undefined : undefined}
+        caption={caption}
+        onClose={() => setExpanded(false)}
+      />
     </View>
   );
 }
