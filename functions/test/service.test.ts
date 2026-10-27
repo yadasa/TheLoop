@@ -1198,3 +1198,54 @@ test("reported snapshots are bounded and available only after the reporter can r
   });
   assert.equal(db.documents.has("directMessages/private-dm"), false);
 });
+
+
+test("message pins require moderator authority and private channel membership", async () => {
+  const db = await database();
+  db.documents.set("messages/pin-message", { id: "pin-message", channelId: "lobby", authorId: "alice", body: "Meetup details", topic: "General" });
+  const command = { type: "message.pin", channelId: "lobby", messageId: "pin-message", pinned: true };
+  await assert.rejects(db.command("alice", command), /moderator/);
+  db.get("channels/lobby").moderatorIds = ["alice"];
+  await db.command("alice", command, "pin-receipt");
+  assert.deepEqual(db.get("channels/lobby").pinnedMessageIds, ["pin-message"]);
+  assert.equal(db.get("moderationAudit/pin-receipt").action, "message.pin");
+  assert.equal((await db.command("alice", command, "pin-receipt")).duplicate, true);
+  db.get("users/bob").role = "admin";
+  await assert.rejects(db.command("bob", { ...command, channelId: "private" }), /private channel/);
+  await assert.rejects(db.command("alice", { ...command, pinned: "true" }), /pin or unpin/);
+  await assert.rejects(db.command("alice", { ...command, role: "admin" }), /field/);
+  await assert.rejects(db.command("alice", { ...command, messageId: "missing" }), /no longer available/);
+  db.documents.set("messages/other-room", { id: "other-room", channelId: "private", authorId: "alice", body: "Private" });
+  await assert.rejects(db.command("alice", { ...command, messageId: "other-room" }), /no longer available/);
+});
+
+test("pins enforce capacity, repair stale records, support unpin and disappear on message deletion", async () => {
+  const db = await database();
+  db.get("users/alice").role = "moderator";
+  const ids = Array.from({ length: 21 }, (_, i) => `pinned-${i}`);
+  for (const id of ids) db.documents.set(`messages/${id}`, { id, channelId: "lobby", authorId: "bob", body: "Details", topic: "General", reactions: {} });
+  db.get("channels/lobby").pinnedMessageIds = ids.slice(0, 20);
+  await assert.rejects(db.command("alice", { type: "message.pin", channelId: "lobby", messageId: ids[20], pinned: true }), /20 pinned messages/);
+  await db.command("alice", { type: "message.pin", channelId: "lobby", messageId: ids[0], pinned: true });
+  assert.equal(db.get("channels/lobby").pinnedMessageIds.length, 20);
+  db.documents.delete(`messages/${ids[1]}`);
+  await db.command("alice", { type: "message.pin", channelId: "lobby", messageId: ids[20], pinned: true });
+  assert.equal(db.get("channels/lobby").pinnedMessageIds.length, 20);
+  assert.equal(db.get("channels/lobby").pinnedMessageIds.includes(ids[1]), false);
+  await db.command("bob", { type: "message.delete", messageId: ids[20] });
+  assert.equal(db.get("channels/lobby").pinnedMessageIds.includes(ids[20]), false);
+  await db.command("alice", { type: "message.pin", channelId: "lobby", messageId: ids[0], pinned: false });
+  assert.equal(db.get("channels/lobby").pinnedMessageIds.includes(ids[0]), false);
+});
+
+test("community moderators can manage their channel pins and report removal clears the pin", async () => {
+  const db = await database();
+  db.get("channels/lobby").communityId = "builders";
+  db.documents.set("messages/community-pin", { id: "community-pin", channelId: "lobby", authorId: "bob", body: "Details", topic: "General" });
+  await db.command("eve", { type: "message.pin", channelId: "lobby", messageId: "community-pin", pinned: true });
+  db.get("users/alice").role = "moderator";
+  db.documents.set("reports/pinned-report", { id: "pinned-report", targetType: "message", targetId: "community-pin", targetAuthorId: "bob", status: "open" });
+  await db.command("alice", { type: "report.review", reportId: "pinned-report", outcome: "remove" });
+  assert.equal(db.documents.has("messages/community-pin"), false);
+  assert.deepEqual(db.get("channels/lobby").pinnedMessageIds, []);
+});

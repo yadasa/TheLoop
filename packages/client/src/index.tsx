@@ -11,6 +11,8 @@ import type { Auth, Persistence } from "firebase/auth";
 import type { Query } from "firebase/firestore";
 import {
   applyCommand,
+  pinnedIds,
+  visiblePinnedMessages,
   initialState,
   emptyState,
   defaultPreferences,
@@ -94,6 +96,7 @@ type LoopContextValue = {
   watchConversation(channelId: string | null, topic?: string): void;
   loadOlderMessages(): Promise<void>;
   readChannelSearchPage(request: HistorySearchRequest): Promise<HistorySearchPage>;
+  readPinnedMessages(channelId: string): Promise<Message[]>;
   history: { loading: boolean; hasMore: boolean };
   directory: { results: Profile[]; loading: boolean; hasMore: boolean };
   setDirectoryQuery(query: string): void;
@@ -293,6 +296,26 @@ export function LoopProvider({
     if (last && (typeof last.createdAt !== "string" || !Number.isFinite(Date.parse(last.createdAt)))) throw new Error("Could not read this part of the message history.");
     return { matches: filterHistoryResults(rows, request, stateRef.current), scanned: rows.length,
       hasMore: rows.length === 100, ...(last ? { cursor: { id: last.id, createdAt: last.createdAt } } : {}) };
+  };
+  const readPinnedMessages = async (channelId: string): Promise<Message[]> => {
+    const userId = stateRef.current.currentUserId, generation = transportGeneration.current, requestMode = modeRef.current;
+    const current = () => generation === transportGeneration.current && requestMode === modeRef.current && stateRef.current.currentUserId === userId && canSearchChannel(stateRef.current, channelId);
+    if (!current()) throw new Error("This group chat is no longer available to you.");
+    const channel = stateRef.current.channels.find(value => value.id === channelId)!;
+    const ids = pinnedIds(channel);
+    if (!ids.length) return [];
+    let rows: Message[];
+    if (requestMode === "demo") rows = stateRef.current.messages.filter(message => message.channelId === channelId && ids.includes(message.id));
+    else {
+      const { sdk, c } = await liveCloud();
+      if (!current() || !readyRef.current || c.auth.currentUser?.uid !== userId) throw new MediaScopeChanged();
+      const query = sdk.pinnedMessageQuery(c.db, channelId, ids);
+      const page = await sdk.getDocsFromServer(query);
+      if (!current() || !readyRef.current || c.auth.currentUser?.uid !== userId) throw new MediaScopeChanged();
+      rows = page.docs.map(record => ({ ...record.data(), id: record.id }) as Message);
+    }
+    if (!current()) throw new MediaScopeChanged();
+    return visiblePinnedMessages(stateRef.current, stateRef.current.channels.find(value => value.id === channelId)!, rows);
   };
   const watchSquad = useCallback((squadId: string | null) => {
     if (squadRef.current === squadId) return;
@@ -1930,6 +1953,7 @@ export function LoopProvider({
         watchConversation,
         loadOlderMessages,
         readChannelSearchPage,
+        readPinnedMessages,
         history,
         directory,
         setDirectoryQuery,

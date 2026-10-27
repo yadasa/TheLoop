@@ -8,7 +8,7 @@ import type { Message } from "@theloop/core";
 import { directoryFields } from "../../../functions/src/directory";
 import { messageCursor } from "./data";
 import { HistorySearch, emptyHistorySearch, matchesMessageSearch } from "./historySearch";
-import { directoryPageQuery, messagePageQuery, squadIncomingInvitesQuery, squadMembershipQuery, squadMessagePageQuery, squadOwnerInvitesQuery, squadParticipantInvitesQuery, type DirectoryCursor } from "./queries";
+import { pinnedMessageQuery, directoryPageQuery, messagePageQuery, squadIncomingInvitesQuery, squadMembershipQuery, squadMessagePageQuery, squadOwnerInvitesQuery, squadParticipantInvitesQuery, type DirectoryCursor } from "./queries";
 
 // Explicit opt-in emulator suite; it never points at the deployed TheLoop project.
 const requireBackend = createRequire(new URL("../../../functions/package.json", import.meta.url));
@@ -147,10 +147,18 @@ test("live directory removes visibility-revoked public profile", async () => {
   });
 });
 
+test("pinned lookup reads older selected records and enforces room boundaries", async () => {
+  const page = await getDocsFromServer(pinnedMessageQuery(db, room, [`${uid}-archive-0000`, `${uid}-private`]));
+  assert.deepEqual(page.docs.map(record => record.id), [`${uid}-archive-0000`]);
+  assert.equal((await getDocsFromServer(pinnedMessageQuery(db, privateRoom, [`${uid}-private`]))).size, 1);
+  await assert.rejects(getDocsFromServer(pinnedMessageQuery(recipientDb, privateRoom, [`${uid}-private`])), error => (error as { code?: string }).code === "permission-denied");
+});
+
 test("private room pagination is denied after membership revocation", async () => {
   assert.equal((await getDocs(messagePageQuery(db, privateRoom, "private"))).size, 1);
   await env.withSecurityRulesDisabled(async context => { await adminSdk.updateDoc(adminSdk.doc(context.firestore(), "channels", privateRoom), { memberIds: [] }); });
   await assert.rejects(getDocs(messagePageQuery(db, privateRoom, "private")), error => (error as { code?: string }).code === "permission-denied");
+  await assert.rejects(getDocsFromServer(pinnedMessageQuery(db, privateRoom, [`${uid}-private`])), error => (error as { code?: string }).code === "permission-denied");
   assert.equal((await getDocs(query(collection(db, "channels"), where("visibility", "==", "public")))).docs.filter(record => record.id.startsWith(uid)).length, 35);
 });
 

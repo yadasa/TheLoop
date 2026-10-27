@@ -290,6 +290,17 @@ test(
         },
       );
 
+      await t.test("moderator pins persist through the real callable and reject ordinary members", async () => {
+        await denied(command(bob, { type: "message.pin", channelId: channel, messageId: firstMessage, pinned: true }));
+        const pinRequest = remember("moderationAudit", nextId());
+        await command(alice, { type: "message.pin", channelId: channel, messageId: firstMessage, pinned: true }, pinRequest);
+        assert.deepEqual((await db.doc(`channels/${channel}`).get()).data()?.pinnedMessageIds, [firstMessage]);
+        assert.equal((await db.doc(`moderationAudit/${pinRequest}`).get()).data()?.action, "message.pin");
+        await command(alice, { type: "message.pin", channelId: channel, messageId: firstMessage, pinned: false }, remember("moderationAudit", nextId()));
+        assert.deepEqual((await db.doc(`channels/${channel}`).get()).data()?.pinnedMessageIds, []);
+        for (const actor of [alice, bob]) await db.doc(`users/${actor.uid}/system/rate`).delete();
+      });
+
       await t.test(
         "sending and replying never erase an explicit topic mute; retries are idempotent",
         async () => {

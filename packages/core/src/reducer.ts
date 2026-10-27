@@ -1,4 +1,5 @@
 import type { Command, CommandContext, LoopState } from "./types";
+import { canManagePins, pinnedIds } from "./pins";
 import { connected, safeURL } from "./selectors";
 import { applySquadCommand } from "./squads";
 import { applyEventCommand } from "./events";
@@ -137,6 +138,16 @@ export function applyCommand(
       });
       break;
     }
+    case "message.pin": {
+      const channel = s.channels.find(value => value.id === cmd.channelId);
+      if (!channel || !canManagePins(s, channel)) throw new Error("Only a group chat moderator can manage pinned messages.");
+      const message = s.messages.find(value => value.id === cmd.messageId && value.channelId === cmd.channelId);
+      if (cmd.pinned && !message) throw new Error("This message is no longer available.");
+      const existing = pinnedIds(channel).filter(messageId => s.messages.some(value => value.id === messageId && value.channelId === channel.id));
+      if (cmd.pinned && !existing.includes(cmd.messageId) && existing.length >= 20) throw new Error("This group chat already has 20 pinned messages. Unpin one first.");
+      channel.pinnedMessageIds = cmd.pinned ? [cmd.messageId, ...existing.filter(value => value !== cmd.messageId)] : existing.filter(value => value !== cmd.messageId);
+      break;
+    }
     case "message.edit": {
       const m = s.messages.find((x) => x.id === cmd.messageId);
       if (!m || m.authorId !== uid)
@@ -150,6 +161,8 @@ export function applyCommand(
       if (!m || m.authorId !== uid)
         throw new Error("Only the author can delete a message.");
       s.messages = s.messages.filter((x) => x.id !== cmd.messageId);
+      const channel = s.channels.find(value => value.id === m.channelId);
+      if (channel) channel.pinnedMessageIds = pinnedIds(channel).filter(value => value !== cmd.messageId);
       break;
     }
     case "message.react": {

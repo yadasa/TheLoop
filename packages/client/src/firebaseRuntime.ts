@@ -6,7 +6,7 @@ import { getFunctions, connectFunctionsEmulator, type Functions } from "firebase
 export { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut as firebaseSignOut, sendPasswordResetEmail, sendEmailVerification, reload } from "firebase/auth";
 export { collection, doc, onSnapshot, query, where, limit, orderBy, documentId, getDocs, getDocsFromServer } from "firebase/firestore";
 export { httpsCallable } from "firebase/functions";
-export { directoryPageQuery, messagePageQuery, squadMessagePageQuery, squadMembershipQuery, squadParticipantInvitesQuery, squadIncomingInvitesQuery, squadOwnerInvitesQuery } from "./queries";
+export { pinnedMessageQuery, directoryPageQuery, messagePageQuery, squadMessagePageQuery, squadMembershipQuery, squadParticipantInvitesQuery, squadIncomingInvitesQuery, squadOwnerInvitesQuery } from "./queries";
 export { directMessagePageQuery, directCatalogPageQuery } from "./directQueries";
 
 type EmulatorConfig = { host?: string; authPort?: number; firestorePort?: number; functionsPort?: number };

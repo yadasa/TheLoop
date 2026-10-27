@@ -4,7 +4,7 @@ export type ImageAttachment = { id: string; mimeType: 'image/webp'; width: numbe
 export type PreviewImage = { image: ImageAttachment; dataUrl: string; target: MediaTarget; ownerId: string; createdAt: string; linkedTo?: { kind: 'message' | 'squadMessage' | 'directMessage' | 'post'; id: string } };
 export type Profile = { id: string; name: string; handle: string; headline: string; company: string; location: string; bio: string; initials: string; skills: string[]; interests: string[]; links: { label: string; url: string }[]; joinedAt: string; verified: boolean; foundingYear?: number; trust: { score: number; reasons: string[] }; visibility: 'public' | 'connections'; openTo: string[]; followerCount?: number; followingCount?: number; nameKey?: string; searchKeys?: string[] };
 export type Conference = { id: string; name: string; shortName: string; city: string; startDate: string; endDate: string; description: string; members: number; tagline: string; organizerIds?: string[] };
-export type Channel = { id: string; conferenceId: string; name: string; description: string; icon: string; members: number; topics: string[]; visibility: 'public' | 'private'; memberIds?: string[]; communityId?: string; moderatorIds?: string[]; creatorId?: string };
+export type Channel = { id: string; conferenceId: string; name: string; description: string; icon: string; members: number; topics: string[]; visibility: 'public' | 'private'; memberIds?: string[]; communityId?: string; moderatorIds?: string[]; creatorId?: string; pinnedMessageIds?: string[] };
 export type Message = { id: string; channelId: string; topic: string; authorId: string; authorName?: string; authorInitials?: string; body: string; createdAt: string; replyTo?: string; reactions: Record<string, string[]>; editedAt?: string; image?: ImageAttachment; attachment?: { name: string; url: string; type: string; size: number } };
 export type Community = { id: string; slug: string; name: string; description: string; members: number; icon: string; rules: string[]; moderatorIds: string[] };
 export type Poll = { options: { id: string; label: string; voterIds: string[] }[]; closesAt: string };
@@ -27,7 +27,7 @@ export type DirectCatalogProgress = { complete: boolean; processed: number; curs
 export type LoopState = { version: number; currentUserId: string; profiles: Profile[]; conferences: Conference[]; channels: Channel[]; messages: Message[]; communities: Community[]; posts: Post[]; events: LoopEvent[]; connections: Connection[]; follows: Follow[]; squads: Squad[]; squadInvites: SquadInvite[]; squadMessages: SquadMessage[]; previewImages?: Record<string, PreviewImage>; notifications: Notification[]; directMessages: DirectMessage[]; directConversations?: DirectConversation[]; reports: Report[]; preferences: Preferences };
 export type Command =
   | { type: 'conference.create'; conference: Omit<Conference, 'id' | 'members'> }
-  | { type: 'channel.create'; channel: Omit<Channel, 'id' | 'members' | 'moderatorIds' | 'creatorId'> }
+  | { type: 'channel.create'; channel: Omit<Channel, 'id' | 'members' | 'moderatorIds' | 'creatorId' | 'pinnedMessageIds'> }
   | { type: 'topic.create'; channelId: string; name: string }
   | { type: 'channel.member'; channelId: string; userId: string; add: boolean }
   | { type: 'subscription.set'; targetId: string; value: Subscription }
@@ -48,6 +48,7 @@ export type Command =
   | { type: 'squad.read'; squadId: string }
   | { type: 'squad.mute'; squadId: string; muted: boolean }
   | { type: 'message.send'; channelId: string; topic: string; body: string; replyTo?: string; imageId?: string }
+  | { type: 'message.pin'; channelId: string; messageId: string; pinned: boolean }
   | { type: 'message.edit'; messageId: string; body: string }
   | { type: 'message.delete'; messageId: string }
   | { type: 'message.react'; messageId: string; emoji: string }

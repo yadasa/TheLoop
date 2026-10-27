@@ -175,6 +175,7 @@ export function initialState(): LoopState {
   s.channels = [
     {
       id: "the-lobby",
+      moderatorIds: ["me"],
       conferenceId: "afrotech",
       name: "the-lobby",
       description: "Your people. Your first hello. Pull up a chair.",

@@ -13,6 +13,7 @@ import {
   validatePreferences,
   validateProfile,
 } from "./policy";
+import { updatePins, removeMessagePin } from "./pins";
 import { withContributors } from "./contributions";
 import { commandFields, editablePost } from "./authorControls";
 import { directoryFields } from "./directory.js";
@@ -754,6 +755,16 @@ export async function execute(
       // Sending a message deliberately does not subscribe a muted/hidden channel or topic.
       break;
     }
+    case "message.pin": {
+      commandFields(command, ["type", "channelId", "messageId", "pinned"]);
+      assert(typeof command.pinned === "boolean", "invalid-argument", "Choose whether to pin or unpin this message.");
+      const channel = await channelAccess(command.channelId);
+      assert(await canManageChannel(channel), "permission-denied", "Only a group chat moderator can manage pinned messages.");
+      const messageId = id(command.messageId);
+      await updatePins(store, channel, messageId, command.pinned);
+      store.set(`moderationAudit/${requestId}`, { id: requestId, actorId: actor.uid, action: command.pinned ? "message.pin" : "message.unpin", targetType: "message", targetId: messageId, channelId: channel.id, createdAt: now });
+      break;
+    }
     case "message.edit":
     case "message.delete":
     case "message.react": {
@@ -778,6 +789,7 @@ export async function execute(
           "permission-denied",
           "Only the author or a moderator can remove this message.",
         );
+        await removeMessagePin(store, message);
         store.remove(`messages/${message.id}`);
       } else {
         const emoji = text(command.emoji, "Reaction", 16);
@@ -1801,6 +1813,10 @@ export async function execute(
             message?.fromId || report.targetAuthorId || "unavailable",
             report.targetId,
           );
+        }
+        if (report.targetType === "message") {
+          const message = await store.get(`messages/${id(report.targetId)}`);
+          if (message) await removeMessagePin(store, message);
         }
         if (report.targetType === "post") {
           const post = await store.get(`posts/${id(report.targetId)}`);

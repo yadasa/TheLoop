@@ -8,3 +8,4 @@ export * from './previewImages';
 export * from './links';
 export * from './eventForm';
 export * from './directConversations';
+export * from './pins';

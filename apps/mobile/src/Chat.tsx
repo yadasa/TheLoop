@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useLoop } from "@theloop/client";
 import type { Message, Subscription } from "@theloop/core";
-import { channelUnread } from "@theloop/core";
+import { channelUnread, canManagePins, pinnedIds } from "@theloop/core";
 import {
   Avatar,
   AmbientGradient,
@@ -37,6 +37,7 @@ import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
 import { Sheet } from "./Sheet";
 import { useNavigationBusy } from "./useNavigationBusy";
 import { useConversationDraft } from "./DraftProvider";
+import { PinnedMessages } from "./PinnedMessages";
 import { ConversationSearch } from "./ConversationSearch";
 import { useSubscriptionPicker } from "./SubscriptionPicker";
 import {
@@ -291,7 +292,8 @@ export function ChannelDetail({
   initialTopic?: string;
   nav: Nav;
 }) {
-  const { state, watchConversation, loadOlderMessages, history } = useLoop();
+  const { state, role, watchConversation, loadOlderMessages, history } =
+    useLoop();
   const {
     pickSubscription,
     subscriptionSheet,
@@ -319,6 +321,7 @@ export function ChannelDetail({
   const [addingTopic, setAddingTopic] = useState(false);
   const [topicSheet, setTopicSheet] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
+  const [pinsVisible, setPinsVisible] = useState(false);
   const [topicSearch, setTopicSearch] = useState("");
   const [body, setBody] = useState(draft.initial?.body || "");
   const [reply, setReply] = useState<Message | null>(
@@ -372,6 +375,7 @@ export function ChannelDetail({
       !showJump &&
       !topicSheet &&
       !searchVisible &&
+      !pinsVisible &&
       !actionMessage &&
       !subscriptionOpen &&
       !nav.dialogOpen &&
@@ -390,6 +394,7 @@ export function ChannelDetail({
     history.loading,
     topicSheet,
     searchVisible,
+    pinsVisible,
     actionMessage,
     subscriptionOpen,
     nav.dialogOpen,
@@ -524,6 +529,21 @@ export function ChannelDetail({
       keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
     >
       {subscriptionSheet}
+      <PinnedMessages
+        channelId={id}
+        visible={pinsVisible}
+        onClose={() => setPinsVisible(false)}
+        nav={nav}
+        onReply={(message) => {
+          if (editing || topic !== message.topic)
+            setBody(draft.readTopic(message.topic)?.body || "");
+          draftBeforeEdit.current = null;
+          setEditing(null);
+          setReply(message);
+          setTopic(message.topic);
+          requestAnimationFrame(() => composerInput.current?.focus());
+        }}
+      />
       <ConversationSearch
         channelId={id}
         initialTopic={topic === null ? undefined : topic}
@@ -614,6 +634,7 @@ export function ChannelDetail({
           {topic !== null ? (
             <Touch
               label={`Manage ${topic} notifications`}
+              style={{ flex: 1, minWidth: 0, minHeight: 44, justifyContent: "center" }}
               disabled={locked}
               onPress={() => subscription(`${id}:${topic}`, topic)}
             >
@@ -625,8 +646,21 @@ export function ChannelDetail({
               </Text>
             </Touch>
           ) : (
-            <Text style={s.small}>Across your visible topics</Text>
+            <Text style={[s.small, { flex: 1 }]}>Across your visible topics</Text>
           )}
+          <Touch
+            label="Open pinned messages"
+            onPress={() => setPinsVisible(true)}
+            disabled={locked}
+            style={{ padding: 9, minHeight: 44, justifyContent: "center" }}
+          >
+            <Text style={s.small}>
+              Pins
+              {pinnedIds(channel).length
+                ? ` · ${pinnedIds(channel).length}`
+                : ""}
+            </Text>
+          </Touch>
           <Touch
             label="Search group chat history"
             disabled={locked}
@@ -799,6 +833,39 @@ export function ChannelDetail({
                     requestAnimationFrame(() => composerInput.current?.focus());
                   }}
                 />
+                {canManagePins(state, channel, role) && (
+                  <Button
+                    secondary
+                    disabled={locked}
+                    title={
+                      pinnedIds(channel).includes(actionMessage.id)
+                        ? "Unpin message"
+                        : "Pin message"
+                    }
+                    onPress={async () => {
+                      setBusy(true);
+                      const pinned = !pinnedIds(channel).includes(
+                        actionMessage.id,
+                      );
+                      try {
+                        if (
+                          await nav.run(
+                            {
+                              type: "message.pin",
+                              channelId: id,
+                              messageId: actionMessage.id,
+                              pinned,
+                            },
+                            pinned ? "Message pinned" : "Message unpinned",
+                          )
+                        )
+                          setActionMessage(null);
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  />
+                )}
                 {actionMessage.authorId === state.currentUserId ? (
                   <>
                     <Button

@@ -28,3 +28,8 @@ export function squadIncomingInvitesQuery(db: Firestore, userId: string) {
 export function squadOwnerInvitesQuery(db: Firestore, squadId: string) {
   return query(collection(db, "squadInvites"), where("squadId", "==", squadId), where("status", "==", "pending"), orderBy("createdAt", "desc"), limit(12));
 }
+
+export function pinnedMessageQuery(db: Firestore, channelId: string, ids: string[]) {
+  if (!ids.length || ids.length > 20) throw new Error("Choose between 1 and 20 pinned messages.");
+  return query(collection(db, "messages"), where("channelId", "==", channelId), where(documentId(), "in", ids));
+}
