@@ -722,9 +722,9 @@ export async function execute(
       if (command.replyTo) {
         const parent = await requireDoc("messages", command.replyTo);
         assert(
-          parent.channelId === channel.id,
+          parent.channelId === channel.id && parent.topic === topic,
           "invalid-argument",
-          "Replies must stay in the same channel.",
+          "Replies must stay in the same group chat and topic.",
         );
         message.replyTo = parent.id;
         await notify(

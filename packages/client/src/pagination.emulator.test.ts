@@ -11,6 +11,7 @@ import { directoryFields } from "../../../functions/src/directory";
 import { messageCursor } from "./data";
 import { HistorySearch, emptyHistorySearch, matchesMessageSearch } from "./historySearch";
 import { pinnedMessageQuery, directoryPageQuery, messagePageQuery, squadIncomingInvitesQuery, squadMembershipQuery, squadMessagePageQuery, squadOwnerInvitesQuery, squadParticipantInvitesQuery, type DirectoryCursor } from "./queries";
+import { replyPageQuery } from "./queries";
 
 // Explicit opt-in emulator suite; it never points at the deployed TheLoop project.
 const requireBackend = createRequire(new URL("../../../functions/package.json", import.meta.url));
@@ -180,6 +181,7 @@ test("private room pagination is denied after membership revocation", async () =
   await env.withSecurityRulesDisabled(async context => { await adminSdk.updateDoc(adminSdk.doc(context.firestore(), "channels", privateRoom), { memberIds: [] }); });
   await assert.rejects(getDocs(messagePageQuery(db, privateRoom, "private")), error => (error as { code?: string }).code === "permission-denied");
   await assert.rejects(getDocsFromServer(pinnedMessageQuery(db, privateRoom, [`${uid}-private`])), error => (error as { code?: string }).code === "permission-denied");
+  await assert.rejects(getDocsFromServer(replyPageQuery(db, privateRoom, `${uid}-private`)), error => (error as { code?: string }).code === "permission-denied");
   assert.equal((await getDocs(query(collection(db, "channels"), where("visibility", "==", "public")))).docs.filter(record => record.id.startsWith(uid)).length, 35);
 });
 
@@ -224,4 +226,28 @@ test("removing Squad membership denies captured-audience history and removes cat
   await env.withSecurityRulesDisabled(async context => { await adminSdk.updateDoc(adminSdk.doc(context.firestore(), "squads", squadId), { memberIds: [friendId, recipientId] }); });
   await assert.rejects(getDocs(squadMessagePageQuery(db, squadId, uid)), error => (error as { code?: string }).code === "permission-denied");
   assert.ok(!(await getDocs(squadMembershipQuery(db, uid))).docs.some(record => record.id === squadId));
+});
+
+test("reply query pages equal-time responses without including other branches or channels", async () => {
+  const threadRoom = `${uid}-room-0`, parent = `${uid}-thread-parent`;
+  await env.withSecurityRulesDisabled(async context => {
+    const batch = adminSdk.writeBatch(context.firestore());
+    for (let index = 0; index < 101; index++) {
+      const path = `messages/${uid}-reply-${index.toString().padStart(4, "0")}`; paths.push(path);
+      batch.set(adminSdk.doc(context.firestore(), path), { channelId: threadRoom, replyTo: parent, topic: "General", body: `Reply ${index}`, authorId: uid, createdAt: "2026-10-27T12:00:00Z" });
+    }
+    for (const [suffix, data] of [["other-channel", { channelId: room, replyTo: parent }], ["other-branch", { channelId: threadRoom, replyTo: "another-parent" }]] as const) {
+      const path = `messages/${uid}-${suffix}`; paths.push(path);
+      batch.set(adminSdk.doc(context.firestore(), path), { ...data, topic: "General", body: "Excluded", createdAt: "2026-10-27T12:00:00Z" });
+    }
+    await batch.commit();
+  });
+  const first = await getDocsFromServer(replyPageQuery(db, threadRoom, parent));
+  assert.equal(first.size, 100);
+  const firstRows = first.docs.map(record => ({ ...record.data(), id: record.id }) as Message);
+  const second = await getDocsFromServer(replyPageQuery(db, threadRoom, parent, messageCursor(firstRows)));
+  assert.equal(second.size, 1);
+  assert.equal(new Set([...first.docs, ...second.docs].map(record => record.id)).size, 101);
+  assert.ok([...first.docs, ...second.docs].every(record => record.id.includes("-reply-")));
+  await assert.rejects(getDocsFromServer(replyPageQuery(recipientDb, privateRoom, parent)), error => (error as { code?: string }).code === "permission-denied");
 });

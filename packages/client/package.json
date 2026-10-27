@@ -1,1 +1,22 @@
-{ "name": "@theloop/client", "version": "0.1.0", "private": true, "type": "module", "main": "src/index.tsx", "types": "src/index.tsx", "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "tsx --test src/data.test.ts src/messagePages.test.ts src/preview.test.ts src/guideRequest.test.ts src/media.test.ts src/directData.test.ts src/directRead.test.ts src/directCatalog.test.ts src/documentWatch.test.ts src/documentCache.test.ts src/lazyRuntime.test.ts src/errorCopy.test.ts src/startupGate.test.ts src/historySearch.test.ts src/privateHistorySearch.test.ts", "test:pagination": "tsx --test src/pagination.emulator.test.ts src/directPagination.emulator.test.ts src/documentLinks.emulator.test.ts src/directCatalog.emulator.test.ts", "test:runtime": "tsx --test src/firebaseRuntime.emulator.test.ts" }, "dependencies": { "@theloop/core": "workspace:*", "firebase": "^12.17.1", "react": "19.3.0" }, "devDependencies": { "@types/react": "~19.3.0" } }
+{
+  "name": "@theloop/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "tsx --test src/data.test.ts src/messagePages.test.ts src/preview.test.ts src/guideRequest.test.ts src/media.test.ts src/directData.test.ts src/directRead.test.ts src/directCatalog.test.ts src/documentWatch.test.ts src/documentCache.test.ts src/lazyRuntime.test.ts src/errorCopy.test.ts src/startupGate.test.ts src/historySearch.test.ts src/privateHistorySearch.test.ts src/replyThread.test.ts",
+    "test:pagination": "tsx --test src/pagination.emulator.test.ts src/directPagination.emulator.test.ts src/documentLinks.emulator.test.ts src/directCatalog.emulator.test.ts",
+    "test:runtime": "tsx --test src/firebaseRuntime.emulator.test.ts"
+  },
+  "dependencies": {
+    "@theloop/core": "workspace:*",
+    "firebase": "^12.17.1",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0"
+  }
+}

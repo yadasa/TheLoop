@@ -80,6 +80,15 @@ async function database() {
   });
   return db;
 }
+test("message replies stay in their authorized channel and original topic", async () => {
+  const db = await database();
+  db.documents.set("messages/parent", { id: "parent", channelId: "lobby", topic: "General", authorId: "bob", body: "Original", createdAt: now, reactions: {} });
+  await assert.rejects(db.command("alice", { type: "message.send", channelId: "lobby", topic: "Travel", body: "Wrong topic", replyTo: "parent" }), /same group chat and topic/);
+  await assert.rejects(db.command("alice", { type: "message.send", channelId: "private", topic: "General", body: "Wrong channel", replyTo: "parent" }), /same group chat and topic/);
+  const result = await db.command("alice", { type: "message.send", channelId: "lobby", topic: "General", body: "Same conversation", replyTo: "parent" });
+  assert.equal(db.get(`messages/${result.id}`).replyTo, "parent");
+});
+
 test("bootstrap never seeds fabricated people, messages, badges or relationships", async () => {
   const db = new Database();
   await db.boot("new-member");

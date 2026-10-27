@@ -31,6 +31,7 @@ test('conference following is inherited by a channel and its topics', () => {
 test('reply targets cannot bypass channel membership or cross channel boundaries', () => {
   const state = initialState();
   const before = JSON.stringify(state);
+  assert.throws(() => applyCommand(state, { type: 'message.send', channelId: 'the-lobby', topic: 'Making plans', body: 'Wrong topic', replyTo: 'm1' }, context), /reply target/i);
   assert.throws(() => applyCommand(state, { type: 'message.send', channelId: 'career-moves', topic: 'Open roles', body: 'A reply', replyTo: 'm1' }, context), /reply target/i);
   const lobby = state.channels.find(channel => channel.id === 'the-lobby')!;
   lobby.visibility = 'private'; lobby.memberIds = ['nia'];

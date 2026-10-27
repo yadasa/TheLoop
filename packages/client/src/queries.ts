@@ -12,6 +12,10 @@ export function messagePageQuery(db: Firestore, channelId: string, topic?: strin
   return query(collection(db, "messages"), where("channelId", "==", channelId), ...(topic !== undefined ? [where("topic", "==", topic)] : []), orderBy("createdAt", "desc"), orderBy(documentId(), "desc"), ...(cursor ? [startAfter(cursor.createdAt, cursor.id)] : []), limit(100));
 }
 
+export function replyPageQuery(db: Firestore, channelId: string, messageId: string, cursor?: MessageCursor) {
+  return query(collection(db, "messages"), where("channelId", "==", channelId), where("replyTo", "==", messageId), orderBy("createdAt", "desc"), orderBy(documentId(), "desc"), ...(cursor ? [startAfter(cursor.createdAt, cursor.id)] : []), limit(100));
+}
+
 export function squadMessagePageQuery(db: Firestore, squadId: string, userId: string, cursor?: MessageCursor) {
   return query(collection(db, "squadMessages"), where("squadId", "==", squadId), where("audienceIds", "array-contains", userId), orderBy("createdAt", "desc"), orderBy(documentId(), "desc"), ...(cursor ? [startAfter(cursor.createdAt, cursor.id)] : []), limit(100));
 }

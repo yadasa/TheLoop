@@ -35,6 +35,8 @@ import {
 } from "@theloop/core";
 import { documentIdBatches, matchesDirectory, mergeMessages, mergeSquadInvites, normalizeDirectoryQuery, previewChannelIds, revokePrivateProfiles, visibleSquadMessages } from "./data";
 import { MessagePages } from "./messagePages";
+import { ReplyThread, type ReplyThreadHandle, type ReplyThreadState } from "./replyThread";
+export { emptyReplyThread, type ReplyThreadHandle, type ReplyThreadState } from "./replyThread";
 import { canSearchChannel, filterHistoryResults, validMessageSearch, type HistorySearchRequest, type HistorySearchPage } from "./historySearch";
 export { HistorySearch, emptyHistorySearch, canSearchChannel, normalizeMessageSearch, validMessageSearch, type HistorySearchState, type HistorySearchRequest } from "./historySearch";
 import { directConversationId, isDirectConversation, mergeDirectMessages, type DirectSnapshot } from "./directData";
@@ -99,6 +101,7 @@ type LoopContextValue = {
   loadOlderMessages(): Promise<void>;
   readChannelSearchPage(request: HistorySearchRequest): Promise<HistorySearchPage>;
   readPinnedMessages(channelId: string): Promise<Message[]>;
+  watchReplyThread(channelId: string, messageId: string, publish: (state: ReplyThreadState) => void, failure: (error: unknown) => void): ReplyThreadHandle;
   readPrivateSearchPage(request: PrivateHistoryRequest): Promise<HistorySearchPage<PrivateSearchHit>>;
   history: { loading: boolean; hasMore: boolean };
   directory: { results: Profile[]; loading: boolean; hasMore: boolean };
@@ -325,6 +328,40 @@ export function LoopProvider({
     if (last && (typeof last.createdAt !== "string" || !Number.isFinite(Date.parse(last.createdAt)))) throw new Error("Could not read this part of the message history.");
     return { matches: privateHistoryHits(rows, request, stateRef.current), scanned: rows.length, hasMore: rows.length === 100,
       ...(last ? { cursor: { id: last.id, createdAt: last.createdAt } } : {}) };
+  };
+  const watchReplyThread = (channelId: string, messageId: string, publish: (state: ReplyThreadState) => void, failure: (error: unknown) => void): ReplyThreadHandle => {
+    const userId = stateRef.current.currentUserId, generation = transportGeneration.current, requestMode = modeRef.current;
+    let closed = false, thread: ReplyThread | undefined;
+    const current = () => !closed && generation === transportGeneration.current && requestMode === modeRef.current && stateRef.current.currentUserId === userId && canSearchChannel(stateRef.current, channelId);
+    const visible = (message: Message) => !stateRef.current.preferences.blockedIds.includes(message.authorId) && stateRef.current.preferences.subscriptions[`${channelId}:${message.topic}`] !== "hidden";
+    const fail = (error: unknown) => { if (closed) return; closed = true; thread?.close(); failure(error); };
+    if (!current() || !messageId || messageId.includes("/")) fail(new MediaScopeChanged());
+    else if (requestMode === "demo") {
+      thread = new ReplyThread({ channelId, messageId, visible,
+        subscribeParent: next => { next(stateRef.current.messages.find(message => message.id === messageId && message.channelId === channelId) || null); return () => {}; },
+        subscribeReplies: (cursor, next) => { next(stateRef.current.messages.filter(message => message.channelId === channelId && message.replyTo === messageId && (!cursor || message.createdAt < cursor.createdAt || (message.createdAt === cursor.createdAt && message.id < cursor.id))).sort((a, b) => a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0).slice(0, 100)); return () => {}; },
+        publish: value => { if (current()) publish(value); }, failure: fail,
+      });
+      thread.start();
+    } else void liveCloud().then(({ sdk, c }) => {
+      const valid = () => current() && readyRef.current && c.auth.currentUser?.uid === userId;
+      if (!valid()) { if (!closed) fail(new MediaScopeChanged()); return; }
+      thread = new ReplyThread({ channelId, messageId, visible,
+        subscribeParent: (next, error) => sdk.onSnapshot(sdk.pinnedMessageQuery(c.db, channelId, [messageId]), { includeMetadataChanges: true }, page => {
+          if (!valid()) { fail(new MediaScopeChanged()); return; }
+          if (page.metadata.fromCache || page.metadata.hasPendingWrites) return;
+          const record = page.docs[0]; next(record ? { ...record.data(), id: record.id } as Message : null);
+        }, error),
+        subscribeReplies: (cursor, next, error) => sdk.onSnapshot(sdk.replyPageQuery(c.db, channelId, messageId, cursor), { includeMetadataChanges: true }, page => {
+          if (!valid()) { fail(new MediaScopeChanged()); return; }
+          if (page.metadata.fromCache || page.metadata.hasPendingWrites) return;
+          next(page.docs.map(record => ({ ...record.data(), id: record.id }) as Message));
+        }, error),
+        publish: value => { if (valid()) publish(value); }, failure: fail,
+      });
+      thread.start();
+    }).catch(fail);
+    return { close: () => { closed = true; thread?.close(); }, loadMore: async () => { if (current()) await thread?.loadMore(); } };
   };
   const readPinnedMessages = async (channelId: string): Promise<Message[]> => {
     const userId = stateRef.current.currentUserId, generation = transportGeneration.current, requestMode = modeRef.current;
@@ -1983,6 +2020,7 @@ export function LoopProvider({
         loadOlderMessages,
         readChannelSearchPage,
         readPinnedMessages,
+        watchReplyThread,
         readPrivateSearchPage,
         history,
         directory,

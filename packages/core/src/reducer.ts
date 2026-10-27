@@ -110,7 +110,7 @@ export function applyCommand(
       if (
         cmd.replyTo &&
         !s.messages.some(
-          (m) => m.id === cmd.replyTo && m.channelId === cmd.channelId,
+          (m) => m.id === cmd.replyTo && m.channelId === cmd.channelId && m.topic === clean(cmd.topic, 80),
         )
       )
         throw new Error("Reply target not found.");

@@ -39,6 +39,7 @@ import { useNavigationBusy } from "./useNavigationBusy";
 import { useConversationDraft, useSessionDrafts } from "./DraftProvider";
 import { PinnedMessages } from "./PinnedMessages";
 import { ConversationSearch } from "./ConversationSearch";
+import { MessageReplies } from "./MessageReplies";
 import { useSubscriptionPicker } from "./SubscriptionPicker";
 import {
   dayKey,
@@ -336,6 +337,7 @@ export function ChannelDetail({
   const [topicSheet, setTopicSheet] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [pinsVisible, setPinsVisible] = useState(false);
+  const [replyThreadId, setReplyThreadId] = useState<string | null>(null);
   const [topicSearch, setTopicSearch] = useState("");
   const [body, setBody] = useState(draft.initial?.body || "");
   const [reply, setReply] = useState<Message | null>(
@@ -390,6 +392,7 @@ export function ChannelDetail({
       !topicSheet &&
       !searchVisible &&
       !pinsVisible &&
+      !replyThreadId &&
       !actionMessage &&
       !subscriptionOpen &&
       !nav.dialogOpen &&
@@ -409,6 +412,7 @@ export function ChannelDetail({
     topicSheet,
     searchVisible,
     pinsVisible,
+    replyThreadId,
     actionMessage,
     subscriptionOpen,
     nav.dialogOpen,
@@ -543,6 +547,22 @@ export function ChannelDetail({
       keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
     >
       {subscriptionSheet}
+      <MessageReplies
+        nav={nav}
+        channelId={id}
+        messageId={replyThreadId}
+        onClose={() => setReplyThreadId(null)}
+        onOpen={setReplyThreadId}
+        onReply={(message) => {
+          if (editing || topic !== message.topic)
+            setBody(draft.readTopic(message.topic)?.body || "");
+          draftBeforeEdit.current = null;
+          setEditing(null);
+          setReply(message);
+          setTopic(message.topic);
+          requestAnimationFrame(() => composerInput.current?.focus());
+        }}
+      />
       <PinnedMessages
         channelId={id}
         visible={pinsVisible}
@@ -839,6 +859,15 @@ export function ChannelDetail({
             </View>
             {messageAction === "menu" ? (
               <>
+                <Button
+                  secondary
+                  title="View replies"
+                  disabled={locked}
+                  onPress={() => {
+                    setReplyThreadId(actionMessage.id);
+                    setActionMessage(null);
+                  }}
+                />
                 <Button
                   secondary
                   title="Reply"
@@ -1145,18 +1174,22 @@ export function ChannelDetail({
                       </Text>
                     )}
                   {m.replyTo && (
-                    <View
+                    <Touch
+                      label="Open reply conversation"
+                      onPress={() => setReplyThreadId(m.replyTo!)}
                       style={{
                         borderLeftWidth: 2,
                         borderColor: color.line,
                         paddingLeft: 10,
                         paddingVertical: 5,
+                        minHeight: 44,
                       }}
                     >
                       <Text style={s.small} numberOfLines={2}>
                         ↳ {quoted?.body || "Message unavailable"}
                       </Text>
-                    </View>
+                      <Text style={[s.small, { fontSize: 10 }]}>View conversation →</Text>
+                    </Touch>
                   )}
                   <LinkifiedText
                     text={m.body}
