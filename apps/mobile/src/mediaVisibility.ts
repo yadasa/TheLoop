@@ -5,7 +5,9 @@ export class MediaVisibility {
   getSnapshot = () => this.viewers.size > 0;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
-    return () => { this.listeners.delete(listener); };
+    return () => {
+      this.listeners.delete(listener);
+    };
   };
   open() {
     const key = Symbol("photo");
@@ -16,6 +18,8 @@ export class MediaVisibility {
       if (this.viewers.delete(key) && !this.getSnapshot()) this.emit();
     };
   }
-  private emit() { for (const listener of this.listeners) listener(); }
+  private emit() {
+    for (const listener of this.listeners) listener();
+  }
 }
 export const mediaVisibility = new MediaVisibility();

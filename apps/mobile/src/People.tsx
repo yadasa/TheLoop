@@ -1,3 +1,5 @@
+import { Sheet } from "./Sheet";
+import { CopyMessage } from "./CopyMessage";
 import { useMediaViewerOpen, isMediaViewerOpen } from "./Media";
 import { PrivateConversationSearch } from "./PrivateConversationSearch";
 import React, { useEffect, useRef, useState } from "react";
@@ -646,6 +648,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
   const appActive = useAppActive();
   const mediaViewerOpen = useMediaViewerOpen();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [actionId, setActionId] = useState<string | null>(null);
   const {
     state,
     watchDirectConversation,
@@ -699,6 +702,10 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     participant?.initials || catalogEntry?.memberInitials[id],
   );
   const messages = blocked ? [] : conversation;
+  const actionMessage = messages.find((message) => message.id === actionId);
+  useEffect(() => {
+    if (actionId && !actionMessage) setActionId(null);
+  }, [actionId, actionMessage]);
   const muted = state.preferences.dmMutedIds?.includes(id) || false;
   const incomingUnread = messages.filter(
     (message) => message.toId === state.currentUserId && !message.read,
@@ -729,6 +736,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
   useEffect(() => {
     if (
       searchOpen ||
+      !!actionId ||
       nav.dialogOpen ||
       !appActive ||
       !isAppActive() ||
@@ -763,6 +771,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     directHistory.loading,
     nav.dialogOpen,
     searchOpen,
+    actionId,
     readRevision,
     appActive,
     mediaViewerOpen,
@@ -945,96 +954,30 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
               <View
                 style={[
                   s.row,
-                  { alignSelf: mine ? "flex-end" : "flex-start", gap: 12 },
+                  {
+                    alignSelf: mine ? "flex-end" : "flex-start",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  },
                 ]}
               >
                 <RelativeTime date={m.createdAt} />
                 {!!m.editedAt && (
                   <Text style={[s.small, { fontSize: 10 }]}>edited</Text>
                 )}
-                {mine ? (
-                  <>
-                    <Touch
-                      label="Edit your private message"
-                      disabled={busy}
-                      onPress={() => {
-                        if (!editing) draftBeforeEdit.current = body;
-                        setEditing(m);
-                        setBody(m.body);
-                      }}
-                      style={{ paddingVertical: 8 }}
-                    >
-                      <Text style={[s.small, { fontSize: 10 }]}>Edit</Text>
-                    </Touch>
-                    <Touch
-                      label="Delete your private message"
-                      disabled={busy}
-                      onPress={() =>
-                        nav.alert(
-                          "Delete your message?",
-                          "Your message and any attached image will be removed from this conversation.",
-                          [
-                            { text: "Keep it", style: "cancel" },
-                            {
-                              text: "Delete message",
-                              style: "destructive",
-                              onPress: () => {
-                                setBusy(true);
-                                void nav
-                                  .run(
-                                    { type: "dm.delete", messageId: m.id },
-                                    "Private message deleted",
-                                  )
-                                  .then((ok) => {
-                                    if (ok && editing?.id === m.id) {
-                                      setEditing(null);
-                                      setBody("");
-                                    }
-                                  })
-                                  .finally(() => setBusy(false));
-                              },
-                            },
-                          ],
-                          { cancelable: true },
-                        )
-                      }
-                      style={{ paddingVertical: 8 }}
-                    >
-                      <Text style={[s.small, { fontSize: 10 }]}>Delete</Text>
-                    </Touch>
-                  </>
-                ) : (
-                  <Touch
-                    label="Report this private message"
-                    style={{ paddingVertical: 8 }}
-                    onPress={() =>
-                      nav.alert(
-                        "Report this private message?",
-                        "The selected message and any attached image will be shared with moderators. The rest of this conversation stays private.",
-                        [
-                          { text: "Cancel", style: "cancel" },
-                          {
-                            text: "Send report",
-                            onPress: () =>
-                              void nav.run(
-                                {
-                                  type: "report.create",
-                                  targetType: "directMessage",
-                                  targetId: m.id,
-                                  reason:
-                                    "Safety concern in this private message",
-                                },
-                                "Private message reported",
-                              ),
-                          },
-                        ],
-                        { cancelable: true },
-                      )
-                    }
-                  >
-                    <Text style={[s.small, { fontSize: 10 }]}>Report</Text>
-                  </Touch>
-                )}
+                <Touch
+                  label={`Message options: ${m.body.slice(0, 60) || "Shared image"}`}
+                  disabled={busy}
+                  onPress={() => setActionId(m.id)}
+                  style={{
+                    minHeight: 44,
+                    minWidth: 44,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={s.small}>•••</Text>
+                </Touch>
               </View>
             </View>
           );
@@ -1159,6 +1102,105 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
           </>
         )}
       </View>
+      <Sheet
+        visible={!!actionMessage}
+        title="Message"
+        onClose={() => {
+          if (!busy) setActionId(null);
+        }}
+      >
+        {actionMessage && (
+          <>
+            <Text style={s.body} numberOfLines={5}>
+              {actionMessage.body || "Shared image"}
+            </Text>
+            <CopyMessage text={actionMessage.body} nav={nav} disabled={busy} />
+            {actionMessage.fromId === state.currentUserId ? (
+              <>
+                <Button
+                  secondary
+                  title="Edit message"
+                  disabled={busy}
+                  onPress={() => {
+                    if (!editing) draftBeforeEdit.current = body;
+                    setEditing(actionMessage);
+                    setBody(actionMessage.body);
+                    setActionId(null);
+                  }}
+                />
+                <Button
+                  secondary
+                  title="Delete message"
+                  disabled={busy}
+                  onPress={() => {
+                    const message = actionMessage;
+                    setActionId(null);
+                    nav.alert(
+                      "Delete your message?",
+                      "Your message and any attached image will be removed from this conversation.",
+                      [
+                        { text: "Keep it", style: "cancel" },
+                        {
+                          text: "Delete message",
+                          style: "destructive",
+                          onPress: () => {
+                            setBusy(true);
+                            void nav
+                              .run(
+                                { type: "dm.delete", messageId: message.id },
+                                "Private message deleted",
+                              )
+                              .then((ok) => {
+                                if (ok && editing?.id === message.id) {
+                                  setEditing(null);
+                                  setBody(draftBeforeEdit.current || "");
+                                  draftBeforeEdit.current = null;
+                                }
+                              })
+                              .finally(() => setBusy(false));
+                          },
+                        },
+                      ],
+                      { cancelable: true },
+                    );
+                  }}
+                />
+              </>
+            ) : (
+              <Button
+                secondary
+                title="Report message"
+                disabled={busy}
+                onPress={() => {
+                  const message = actionMessage;
+                  setActionId(null);
+                  nav.alert(
+                    "Report this private message?",
+                    "The selected message and any attached image will be shared with moderators. The rest of this conversation stays private.",
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Send report",
+                        onPress: () =>
+                          void nav.run(
+                            {
+                              type: "report.create",
+                              targetType: "directMessage",
+                              targetId: message.id,
+                              reason: "Safety concern in this private message",
+                            },
+                            "Private message reported",
+                          ),
+                      },
+                    ],
+                    { cancelable: true },
+                  );
+                }}
+              />
+            )}
+          </>
+        )}
+      </Sheet>
       <PrivateConversationSearch
         kind="dm"
         id={id}

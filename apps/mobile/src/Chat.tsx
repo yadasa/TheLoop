@@ -1,3 +1,4 @@
+import { CopyMessage } from "./CopyMessage";
 import { useMediaViewerOpen, isMediaViewerOpen } from "./Media";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -916,6 +917,7 @@ export function ChannelDetail({
             </View>
             {messageAction === "menu" ? (
               <>
+                <CopyMessage text={actionMessage.body} nav={nav} disabled={locked} />
                 <Button
                   secondary
                   title="View replies"

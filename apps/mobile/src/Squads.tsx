@@ -1,3 +1,4 @@
+import { CopyMessage } from "./CopyMessage";
 import { useMediaViewerOpen, isMediaViewerOpen } from "./Media";
 import { PrivateConversationSearch } from "./PrivateConversationSearch";
 import React, { useEffect, useRef, useState } from "react";
@@ -774,6 +775,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                 )}
                 {actions === message.id && (
                   <View style={s.wrap}>
+                    <CopyMessage text={message.body} nav={nav} disabled={busy} />
                     <Button
                       small
                       secondary

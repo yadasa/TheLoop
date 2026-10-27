@@ -79,3 +79,6 @@ The EAS project preview environment initially had no variables. Its six validate
 
 ### October 27 notification release
 Verified CI 40470588145 at 9a144f52a727459eb35d145b95ca66270f29eb77. Deployed executeCommand, deliverPushNotification and sendCommunityDigests to theloop-community-2026. Includes bounded explicit notification read batches, reply topic metadata, queued sender-block checks and per-topic digest read markers. Local real emulator suites passed 30/30; no real user notifications or messages were fabricated for testing.
+
+### October 27 profile photos and saved messages deployment
+Verified backend through 0b0ad67 (CI40475404717). Successfully deployed uploadMedia, getMedia, executeCommand, cleanupPrivateMedia and deleteAccount. No new collections, indexes or rules were required. Profile media is owner-uploaded, authorized against current profile visibility/blocks, and deleted/replaced photos lose access. Message saves are private user preferences containing references only.

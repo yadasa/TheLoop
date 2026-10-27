@@ -2,7 +2,13 @@ import { useImageDrafts } from "./DraftProvider";
 import type { DraftTarget } from "./conversationDrafts";
 import type { ImageChoice } from "./imageDrafts";
 import { removeCreatedImage } from "./mediaFiles";
-import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Image, Modal, Platform, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -15,7 +21,11 @@ import type { Nav } from "./navigation";
 
 import { mediaVisibility } from "./mediaVisibility";
 export function useMediaViewerOpen() {
-  return useSyncExternalStore(mediaVisibility.subscribe, mediaVisibility.getSnapshot, () => false);
+  return useSyncExternalStore(
+    mediaVisibility.subscribe,
+    mediaVisibility.getSnapshot,
+    () => false,
+  );
 }
 export const isMediaViewerOpen = mediaVisibility.getSnapshot;
 
@@ -371,7 +381,7 @@ function ImageViewer({
   onClose: () => void;
 }) {
   const reducedMotion = useReducedMotion();
-  useLayoutEffect(() => uri ? mediaVisibility.open() : undefined, [uri]);
+  useLayoutEffect(() => (uri ? mediaVisibility.open() : undefined), [uri]);
   return (
     <Modal
       visible={!!uri}

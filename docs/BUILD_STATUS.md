@@ -210,3 +210,9 @@ All units pass (core65/client93/web4/mobile33/functions119), workspace typecheck
 ### October 27 — photo viewer read-state fix
 - Full-screen shared photos and attachment previews now suspend automatic read markers in group chats, direct messages and Squads. Read tracking resumes when the final viewer closes; opening/closing overlapping viewers cannot resume it early. The immediate visibility check also protects arrival callbacks before React subscriptions rerender.
 - Expo typecheck and 40 mobile tests pass, including overlapping-viewer and repeated-cleanup coverage. Usage 61%, same reset window.
+
+### October 27 — compact private-message menus and copy
+- Added Copy text to group-chat, Squad and direct-message actions using Expo Clipboard, with failure recovery. Direct-message actions now sit in a bottom sheet instead of repeating Edit/Delete/Report controls beneath every bubble. Read markers pause while the menu is open; removed/blocked messages cannot remain in its preview. Cancelling edits preserves the existing composer draft.
+- Rewrote fictional starter messages and posts with specific plans, questions and useful details using the existing copy guide. Removed repetitive motivational slogans and the sample claim about a real historical member's job offer. Existing saved sample content is preserved; new samples use the revised text.
+- Types and all units pass (69 core, 98 client, 4 web, 40 mobile, 126 functions). Phone-width sample QA verified Copy text feedback, the incoming/own message menus and draft restoration when cancelling an edit. Cross-app OS clipboard remains a physical-device check.
+- Saved-message commit 0b0ad67 passed full CI 40475404717. uploadMedia, getMedia, executeCommand, cleanupPrivateMedia and deleteAccount deployed successfully to the dedicated project, bringing live profile photos and saved references online.
