@@ -42,6 +42,7 @@ export type Route =
         | "tutorial";
     };
 export type Nav = {
+  lockNavigation: (key: string, busy: boolean) => void;
   alert: ShowDialog;
   dialogOpen: boolean;
   open: (route: Route) => void;

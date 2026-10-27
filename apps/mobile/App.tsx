@@ -36,6 +36,7 @@ import {
   CommunityDetail,
   CreateCommunity,
 } from "./src/Feed";
+import { DraftProvider } from "./src/DraftProvider";
 import { useDialogSheet } from "./src/DialogSheet";
 import { ConferenceHub } from "./src/ConferenceHub";
 import { Chats, ChannelDetail } from "./src/Chat";
@@ -113,7 +114,7 @@ export default function App() {
             emulators={runtime.mode === "emulator" ? runtime.emulators : undefined}
           >
             <MotionProvider>
-              <LoopApp />
+              <DraftProvider><LoopApp /></DraftProvider>
             </MotionProvider>
           </LoopProvider>
         ) : (
@@ -269,6 +270,11 @@ function LoopApp() {
   const transition = useRef(0);
   const requestedTab = useRef<Tab>("Home");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navigationLocks = useRef(new Set<string>());
+  const lockNavigation = useCallback((key: string, busy: boolean) => {
+    if (busy) navigationLocks.current.add(key);
+    else navigationLocks.current.delete(key);
+  }, []);
   const onboarded = useRef(false);
   const tutorialChecked = useRef<string | null>(null);
   const showToast = useCallback((text: string) => {
@@ -276,11 +282,16 @@ function LoopApp() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(""), 4500);
   }, []);
+  const canNavigate = useCallback(() => {
+    if (!navigationLocks.current.size) return true;
+    showToast("Please wait for your message or photo to finish.");
+    return false;
+  }, [showToast]);
   const open = useCallback(
-    (route: Route) => setStack((v) => [...v, route]),
-    [],
+    (route: Route) => { if (canNavigate()) setStack((v) => [...v, route]); },
+    [canNavigate],
   );
-  const close = useCallback(() => setStack((v) => v.slice(0, -1)), []);
+  const close = useCallback(() => { if (canNavigate()) setStack((v) => v.slice(0, -1)); }, [canNavigate]);
   const closeIfTop = useCallback(
     (kind: Route["kind"]) =>
       setStack((v) => (v.at(-1)?.kind === kind ? v.slice(0, -1) : v)),
@@ -288,6 +299,7 @@ function LoopApp() {
   );
   const navigate = useCallback(
     (target: Tab) => {
+      if (!canNavigate()) return;
       requestedTab.current = target;
       setStack([]);
       const token = ++transition.current;
@@ -311,7 +323,7 @@ function LoopApp() {
         }).start();
       });
     },
-    [fade, reducedMotion],
+    [fade, reducedMotion, canNavigate],
   );
   useEffect(() => {
     if (!reducedMotion) return;
@@ -338,7 +350,7 @@ function LoopApp() {
     [dispatch, showToast],
   );
   const { alert, dialogSheet, dialogOpen } = useDialogSheet(`${mode}:${state.currentUserId}:${ready && !startupError}`, showToast);
-  const nav: Nav = { open, close, closeIfTop, navigate, run, toast: showToast, alert, dialogOpen };
+  const nav: Nav = { open, close, closeIfTop, navigate, run, toast: showToast, alert, dialogOpen, lockNavigation };
   useEffect(() => {
     onboarded.current = false;
     transition.current++;
@@ -528,7 +540,7 @@ function LoopApp() {
       case "channel":
         return (
           <ChannelDetail
-            key={`${scope}:${route.id}:${route.topic || "all"}`}
+            key={JSON.stringify([scope, route.id, route.topic ?? null])}
             id={route.id}
             initialTopic={route.topic}
             nav={nav}

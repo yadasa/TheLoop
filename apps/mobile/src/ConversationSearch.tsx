@@ -38,7 +38,7 @@ export function ConversationSearch({
 }) {
   const { state, readChannelSearchPage } = useLoop();
   const [query, setQuery] = useState("");
-  const [topic, setTopic] = useState(initialTopic || "all");
+  const [topic, setTopic] = useState<string | null>(initialTopic || null);
   const [result, setResult] = useState(emptyHistorySearch);
   const [resultScope, setResultScope] = useState("");
   const readPage = useRef(readChannelSearchPage);
@@ -72,7 +72,7 @@ export function ConversationSearch({
   }, [scope, search]);
   useEffect(() => {
     if (visible) {
-      setTopic(initialTopic || "all");
+      setTopic(initialTopic || null);
       setQuery("");
     }
   }, [visible, channelId]);
@@ -83,7 +83,7 @@ export function ConversationSearch({
     void search.start({
       channelId,
       query,
-      ...(topic !== "all" ? { topic } : {}),
+      ...(topic !== null ? { topic } : {}),
     });
   };
   return (
@@ -112,8 +112,8 @@ export function ConversationSearch({
           <Horizontal>
             <Chip
               title="All topics"
-              selected={topic === "all"}
-              onPress={() => setTopic("all")}
+              selected={topic === null}
+              onPress={() => setTopic(null)}
             />
             {channel?.topics.map((name) => (
               <Chip
@@ -229,7 +229,7 @@ export function ConversationSearch({
                 style={[s.small, { textAlign: "center", paddingVertical: 8 }]}
               >
                 You've searched to the beginning of this{" "}
-                {topic === "all" ? "group chat" : "topic"}.
+                {topic === null ? "group chat" : "topic"}.
               </Text>
             )}
           {current.loading && (

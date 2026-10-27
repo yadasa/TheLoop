@@ -28,6 +28,8 @@ import {
   isAppActive,
 } from "./ui";
 import type { Nav } from "./navigation";
+import { useNavigationBusy } from "./useNavigationBusy";
+import { useConversationDraft } from "./DraftProvider";
 import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
 
 const capacity = 12;
@@ -478,10 +480,16 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
       value.memberIds.includes(state.currentUserId) &&
       !value.archived,
   );
-  const [body, setBody] = useState("");
+  const draft = useConversationDraft({ kind: "squad", id });
+  const [body, setBody] = useState(draft.initial?.body || "");
   const [busy, setBusy] = useState(false);
+  useNavigationBusy(nav, `squad:${id}`, busy || attachment.busy);
   const [editing, setEditing] = useState<string | null>(null);
+  useEffect(() => {
+    if (!editing) draft.remember({ body });
+  }, [body, editing, draft.remember]);
   const [reply, setReply] = useState<string | null>(null);
+  const draftBeforeEdit = useRef<{ body: string; reply: string | null } | null>(null);
   const [actions, setActions] = useState<string | null>(null);
   const [reacting, setReacting] = useState<string | null>(null);
   const [showJump, setShowJump] = useState(false);
@@ -753,6 +761,8 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                       secondary
                       title="Reply"
                       onPress={() => {
+                        if (editing) setBody(draftBeforeEdit.current?.body || "");
+                        draftBeforeEdit.current = null;
                         setReply(message.id);
                         setEditing(null);
                         setActions(null);
@@ -765,7 +775,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                           secondary
                           title="Edit"
                           onPress={() => {
-                            attachment.clear();
+                            if (!editing) draftBeforeEdit.current = { body, reply };
                             setEditing(message.id);
                             setBody(message.body);
                             setReply(null);
@@ -871,9 +881,12 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
               secondary
               title="Cancel"
               onPress={() => {
-                setEditing(null);
-                setReply(null);
-                setBody("");
+                if (editing) {
+                  setBody(draftBeforeEdit.current?.body || "");
+                  setReply(draftBeforeEdit.current?.reply || null);
+                  draftBeforeEdit.current = null;
+                  setEditing(null);
+                } else setReply(null);
               }}
             />
           </View>
@@ -921,10 +934,16 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                 )
                 .then((ok) => {
                   if (ok) {
-                    setBody("");
-                    setReply(null);
-                    setEditing(null);
-                    attachment.clear();
+                    if (editing) {
+                      setBody(draftBeforeEdit.current?.body || "");
+                      setReply(draftBeforeEdit.current?.reply || null);
+                      draftBeforeEdit.current = null;
+                      setEditing(null);
+                    } else {
+                      setBody("");
+                      setReply(null);
+                      attachment.clear();
+                    }
                   }
                 })
                 .catch((error) =>

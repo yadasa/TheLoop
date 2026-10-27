@@ -38,6 +38,8 @@ import {
   isAppActive,
 } from "./ui";
 import type { Nav } from "./navigation";
+import { useNavigationBusy } from "./useNavigationBusy";
+import { useConversationDraft } from "./DraftProvider";
 import { shareTargetURL } from "./sharedLinks";
 import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
 
@@ -600,9 +602,15 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     directCatalog,
   } = useLoop();
   const attachment = useImageAttachment(nav);
-  const [body, setBody] = useState("");
+  const draft = useConversationDraft({ kind: "dm", id });
+  const [body, setBody] = useState(draft.initial?.body || "");
   const [busy, setBusy] = useState(false);
+  useNavigationBusy(nav, `dm:${id}`, busy || attachment.busy);
   const [editing, setEditing] = useState<DirectMessage | null>(null);
+  const draftBeforeEdit = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editing) draft.remember({ body });
+  }, [body, editing, draft.remember]);
   const scroll = useRef<ScrollViewInstance>(null);
   const stickToBottom = useRef(true);
   const firstLayout = useRef(true);
@@ -656,6 +664,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     if (blocked) {
       attachment.clear();
       setEditing(null);
+      draftBeforeEdit.current = null;
       setBody("");
     }
     stickToBottom.current = true;
@@ -877,7 +886,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                       label="Edit your private message"
                       disabled={busy}
                       onPress={() => {
-                        attachment.clear();
+                        if (!editing) draftBeforeEdit.current = body;
                         setEditing(m);
                         setBody(m.body);
                       }}
@@ -999,7 +1008,8 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                   disabled={busy}
                   onPress={() => {
                     setEditing(null);
-                    setBody("");
+                    setBody(draftBeforeEdit.current || "");
+                    draftBeforeEdit.current = null;
                   }}
                 />
               </View>
@@ -1046,9 +1056,14 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                     )
                     .then((ok) => {
                       if (ok && readMounted.current) {
-                        setBody("");
-                        setEditing(null);
-                        attachment.clear();
+                        if (editing) {
+                          setBody(draftBeforeEdit.current || "");
+                          draftBeforeEdit.current = null;
+                          setEditing(null);
+                        } else {
+                          setBody("");
+                          attachment.clear();
+                        }
                       }
                     })
                     .catch((error) => {

@@ -35,6 +35,8 @@ import type { Nav } from "./navigation";
 import { SquadSummary } from "./Squads";
 import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
 import { Sheet } from "./Sheet";
+import { useNavigationBusy } from "./useNavigationBusy";
+import { useConversationDraft } from "./DraftProvider";
 import { ConversationSearch } from "./ConversationSearch";
 import { useSubscriptionPicker } from "./SubscriptionPicker";
 import {
@@ -298,29 +300,47 @@ export function ChannelDetail({
   const appActive = useAppActive();
   const attachment = useImageAttachment(nav);
   const channel = state.channels.find((c) => c.id === id);
-  const [topic, setTopic] = useState(() =>
-    initialTopic &&
-    (channel?.topics.includes(initialTopic) ||
+  const draft = useConversationDraft({
+    kind: "channel",
+    id,
+    topic: initialTopic,
+  });
+  const restoredTopic = initialTopic || draft.initial?.topic;
+  const [topic, setTopic] = useState<string | null>(() =>
+    restoredTopic &&
+    (channel?.topics.includes(restoredTopic) ||
       state.messages.some(
-        (m) => m.channelId === id && m.topic === initialTopic,
+        (m) => m.channelId === id && m.topic === restoredTopic,
       ))
-      ? initialTopic
-      : "all",
+      ? restoredTopic
+      : null,
   );
   const [newTopic, setNewTopic] = useState("");
   const [addingTopic, setAddingTopic] = useState(false);
   const [topicSheet, setTopicSheet] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [topicSearch, setTopicSearch] = useState("");
-  const [body, setBody] = useState("");
-  const [reply, setReply] = useState<Message | null>(null);
+  const [body, setBody] = useState(draft.initial?.body || "");
+  const [reply, setReply] = useState<Message | null>(
+    initialTopic && initialTopic !== draft.initial?.topic
+      ? null
+      : draft.initial?.reply || null,
+  );
   const [editing, setEditing] = useState<Message | null>(null);
   const draftBeforeEdit = useRef<{
     body: string;
     reply: Message | null;
-    topic: string;
+    topic: string | null;
   } | null>(null);
+  useEffect(() => {
+    if (!editing && topic !== null) draft.remember({ body, topic, reply });
+  }, [body, topic, reply, editing, draft.remember]);
+  useEffect(() => {
+    if (reply && state.preferences.blockedIds.includes(reply.authorId))
+      setReply(null);
+  }, [reply, state.preferences.blockedIds]);
   const [busy, setBusy] = useState(false);
+  useNavigationBusy(nav, `channel:${id}`, busy || attachment.busy);
   const [reacting, setReacting] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<Message | null>(null);
   const [messageAction, setMessageAction] = useState<
@@ -342,7 +362,7 @@ export function ChannelDetail({
     firstLayout.current = true;
     loadingOlder.current = false;
     setShowJump(false);
-    watchConversation(id, topic === "all" ? undefined : topic);
+    watchConversation(id, topic === null ? undefined : topic);
     return () => watchConversation(null);
   }, [id, topic, watchConversation]);
   useEffect(() => {
@@ -399,8 +419,8 @@ export function ChannelDetail({
     .filter(
       (m) =>
         m.channelId === id &&
-        (topic === "all" || m.topic === topic) &&
-        (topic !== "all" ||
+        (topic === null || m.topic === topic) &&
+        (topic !== null ||
           (state.preferences.subscriptions[`${id}:${m.topic}`] !== "hidden" &&
             state.preferences.subscriptions[`${id}:${m.topic}`] !== "muted")) &&
         !state.preferences.blockedIds.includes(m.authorId),
@@ -421,14 +441,18 @@ export function ChannelDetail({
       setTopic(saved.topic);
     }
   };
-  const selectTopic = (next: string) => {
+  const selectTopic = (next: string | null) => {
     if (locked) return;
+    if (next !== null && (next !== topic || editing)) {
+      const saved = draft.readTopic(next);
+      setBody(saved?.body || "");
+      setReply(saved?.reply || null);
+    } else if (next !== topic) setReply(null);
     if (editing) {
-      setBody(draftBeforeEdit.current?.body || "");
+      if (next === null) setBody(draftBeforeEdit.current?.body || "");
       setEditing(null);
       draftBeforeEdit.current = null;
     }
-    if (next !== topic) setReply(null);
     setTopic(next);
     setTopicSheet(false);
     setAddingTopic(false);
@@ -445,12 +469,12 @@ export function ChannelDetail({
           )
           .then((ok) => {
             if (ok && value === "hidden" && targetId === `${id}:${topic}`)
-              selectTopic("all");
+              selectTopic(null);
           }),
     );
   const send = async () => {
     if (!body.trim() || busy || attachment.busy) return;
-    if (!editing && (topic === "all" || !allTopicNames.includes(topic))) {
+    if (topic === null || (!editing && !allTopicNames.includes(topic))) {
       setTopicSheet(true);
       return;
     }
@@ -502,11 +526,13 @@ export function ChannelDetail({
       {subscriptionSheet}
       <ConversationSearch
         channelId={id}
-        initialTopic={topic === "all" ? undefined : topic}
+        initialTopic={topic === null ? undefined : topic}
         visible={searchVisible}
         onClose={() => setSearchVisible(false)}
         onReply={(message) => {
-          if (editing) restoreDraft();
+          if (editing || topic !== message.topic)
+            setBody(draft.readTopic(message.topic)?.body || "");
+          draftBeforeEdit.current = null;
           setEditing(null);
           setReply(message);
           setTopic(message.topic);
@@ -553,8 +579,8 @@ export function ChannelDetail({
             <Horizontal>
               <Chip
                 title="All topics"
-                selected={topic === "all"}
-                onPress={() => selectTopic("all")}
+                selected={topic === null}
+                onPress={() => selectTopic(null)}
                 disabled={locked}
               />
               {topicNames.map((t) => (
@@ -585,7 +611,7 @@ export function ChannelDetail({
           </Touch>
         </View>
         <View style={s.between}>
-          {topic !== "all" ? (
+          {topic !== null ? (
             <Touch
               label={`Manage ${topic} notifications`}
               disabled={locked}
@@ -620,7 +646,7 @@ export function ChannelDetail({
       <Sheet
         visible={topicSheet}
         title="Topics"
-        description="Pick a conversation. Your draft stays with you when you switch."
+        description="Drafts stay with their topics while the app is open."
         onClose={() => setTopicSheet(false)}
       >
         <Field
@@ -631,16 +657,16 @@ export function ChannelDetail({
         <Touch
           label="Read all topics"
           disabled={locked}
-          onPress={() => selectTopic("all")}
+          onPress={() => selectTopic(null)}
           style={[
             s.card,
             {
               padding: 14,
-              backgroundColor: topic === "all" ? color.soft : color.card,
+              backgroundColor: topic === null ? color.soft : color.card,
             },
           ]}
         >
-          <Text style={s.h3}>All topics {topic === "all" ? "✓" : ""}</Text>
+          <Text style={s.h3}>All topics {topic === null ? "✓" : ""}</Text>
           <Text style={s.small}>
             Catch up across the group chat. Muted and hidden topics stay out of
             this view.
@@ -716,6 +742,9 @@ export function ChannelDetail({
                   .then((ok) => {
                     if (ok) {
                       setTopic(name);
+                      setBody("");
+                      setEditing(null);
+                      draftBeforeEdit.current = null;
                       setAddingTopic(false);
                       setNewTopic("");
                       setReply(null);
@@ -760,7 +789,9 @@ export function ChannelDetail({
                   title="Reply"
                   disabled={locked}
                   onPress={() => {
-                    if (editing) restoreDraft();
+                    if (editing || topic !== actionMessage.topic)
+                      setBody(draft.readTopic(actionMessage.topic)?.body || "");
+                    draftBeforeEdit.current = null;
                     setReply(actionMessage);
                     setTopic(actionMessage.topic);
                     setEditing(null);
@@ -1020,7 +1051,7 @@ export function ChannelDetail({
                     </Touch>
                   </View>
                   {(i === 0 || messages[i - 1].topic !== m.topic) &&
-                    topic === "all" && (
+                    topic === null && (
                       <Text style={[s.overline, { fontSize: 9 }]}>
                         {m.topic}
                       </Text>
@@ -1150,15 +1181,15 @@ export function ChannelDetail({
             </View>
             <View style={{ gap: 8 }}>
               <Text style={s.overline}>
-                {topic === "all" ? "YOUR CONVERSATIONS" : topic.toUpperCase()}
+                {topic === null ? "YOUR CONVERSATIONS" : topic.toUpperCase()}
               </Text>
               <Text style={s.h2}>
-                {topic === "all"
+                {topic === null
                   ? "Find your conversation"
                   : topicStarter(topic).title}
               </Text>
               <Text style={s.body}>
-                {topic === "all"
+                {topic === null
                   ? channel.description
                   : topicStarter(topic).body}
               </Text>
@@ -1167,14 +1198,14 @@ export function ChannelDetail({
               secondary
               disabled={locked}
               title={
-                topic === "all"
+                topic === null
                   ? "Explore topics"
                   : body.trim()
                     ? "Continue your draft"
                     : "Start a message"
               }
               onPress={() => {
-                if (topic === "all") setTopicSheet(true);
+                if (topic === null) setTopicSheet(true);
                 else {
                   if (!body.trim()) setBody(topicStarter(topic).draft);
                   composerInput.current?.focus();
@@ -1182,7 +1213,7 @@ export function ChannelDetail({
               }}
             />
             <Text style={s.small}>
-              {topic === "all"
+              {topic === null
                 ? "Choose a topic to read or write. Muted topics stay out of the combined view."
                 : "Nothing posted here yet. Your message stays a draft until you send it."}
             </Text>
@@ -1234,7 +1265,7 @@ export function ChannelDetail({
             </Touch>
           </View>
         )}
-        {topic === "all" && !editing ? (
+        {topic === null && !editing ? (
           <>
             <Text style={[s.small, { textAlign: "center" }]}>
               {body.trim()
