@@ -1,3 +1,4 @@
+import { groupReplyCurrent } from "./notifications";
 import {
   assert,
   calculateTrust,
@@ -261,6 +262,7 @@ export async function execute(
     targetId: string,
     suffix: string,
     topic?: string,
+    messageId?: string,
   ): Promise<void> {
     if (userId === actor.uid) return;
     const recipient = await store.get(`users/${userId}`);
@@ -268,7 +270,8 @@ export async function execute(
       !recipient ||
       recipient.disabled ||
       recipient.deletionPending ||
-      recipient.preferences?.blockedIds?.includes(actor.uid)
+      recipient.preferences?.blockedIds?.includes(actor.uid) ||
+      prefs.blockedIds.includes(userId)
     )
       return;
     if (
@@ -276,6 +279,10 @@ export async function execute(
       recipient.preferences?.dmMutedIds?.includes(actor.uid)
     )
       return;
+    if (kind === "message" && suffix !== "dm") {
+      const channel = await store.get(`channels/${targetId}`);
+      if (!groupReplyCurrent({ targetId, topic }, recipient.preferences || {}, userId, channel)) return;
+    }
     const notificationId = `${requestId}_${suffix}`;
     store.set(`notifications/${notificationId}`, {
       id: notificationId,
@@ -289,6 +296,7 @@ export async function execute(
       unreadUserId: userId,
       ...(["message", "connection", "community"].includes(kind) ? { actorId: actor.uid } : {}),
       ...(topic ? { topic } : {}),
+      ...(messageId ? { messageId } : {}),
       ...(suffix === "dm" ? { dmSenderId: actor.uid } : {}),
       ...(kind === "event" && suffix === "promoted"
         ? { eventNoticeType: "promoted" }
@@ -733,11 +741,12 @@ export async function execute(
         await notify(
           parent.authorId,
           `${profile.name} replied`,
-          body.slice(0, 180),
+          "Open the group chat to read the reply.",
           "message",
           channel.id,
           "reply",
           topic,
+          entityId,
         );
       }
       const image = await linkImage(

@@ -1,3 +1,4 @@
+import { notificationAccessible } from "@theloop/core";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -248,7 +249,7 @@ export default function App() {
             ? s.squadMessages.find((m) => m.id === reportTarget.id)?.image
             : undefined;
   const myNotifications = s.notifications.filter(
-    (n) => n.userId === s.currentUserId,
+    (n) => notificationAccessible(s, n),
   );
   const unread = myNotifications.filter((n) => !n.read).length;
   const toast = (text: string) => {

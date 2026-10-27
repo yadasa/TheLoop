@@ -1,3 +1,4 @@
+import { notificationAccessible } from "@theloop/core";
 import type { LoopState, Notification } from "@theloop/core";
 import type { Route, Tab } from "./navigation";
 
@@ -40,7 +41,7 @@ export function visibleNotifications(state: LoopState) {
   return state.notifications
     .filter(
       (n) =>
-        n.userId === state.currentUserId &&
+        notificationAccessible(state, n) &&
         !state.preferences.blockedIds.includes(actorFor(state, n) || ""),
     )
     .sort(

@@ -82,6 +82,7 @@ async function database() {
 }
 test("message replies stay in their authorized channel and original topic", async () => {
   const db = await database();
+  db.get("users/bob").preferences.subscriptions.lobby = "following";
   db.documents.set("messages/parent", { id: "parent", channelId: "lobby", topic: "General", authorId: "bob", body: "Original", createdAt: now, reactions: {} });
   await assert.rejects(db.command("alice", { type: "message.send", channelId: "lobby", topic: "Travel", body: "Wrong topic", replyTo: "parent" }), /same group chat and topic/);
   await assert.rejects(db.command("alice", { type: "message.send", channelId: "private", topic: "General", body: "Wrong channel", replyTo: "parent" }), /same group chat and topic/);
@@ -90,6 +91,8 @@ test("message replies stay in their authorized channel and original topic", asyn
   const replyNotice = [...db.documents.entries()].find(([path, row]) => path.startsWith("notifications/") && row.targetId === "lobby")?.[1];
   assert.equal(replyNotice?.topic, "General");
   assert.equal(replyNotice?.actorId, "alice");
+  assert.equal(replyNotice?.messageId, result.id);
+  assert.ok(!replyNotice?.body.includes("Same conversation"));
 });
 
 test("saved chat messages store only private references and enforce access, capacity and explicit removal", async () => {
@@ -1307,4 +1310,19 @@ test("community moderators can manage their channel pins and report removal clea
   await db.command("alice", { type: "report.review", reportId: "pinned-report", outcome: "remove" });
   assert.equal(db.documents.has("messages/community-pin"), false);
   assert.deepEqual(db.get("channels/lobby").pinnedMessageIds, []);
+});
+
+test("reply alerts respect explicit mutes and never copy private reply text to a departed author", async () => {
+  const db = await database();
+  db.documents.set("messages/parent-private", { id: "parent-private", channelId: "private", topic: "General", authorId: "bob", body: "Earlier contribution" });
+  db.get("users/bob").preferences.subscriptions.private = "following";
+  const send = () => db.command("alice", { type: "message.send", channelId: "private", topic: "General", replyTo: "parent-private", body: "Private reply text" });
+  const notices = () => [...db.documents.entries()].filter(([path]) => path.startsWith("notifications/"));
+  await send(); assert.equal(notices().length, 0);
+  db.get("channels/private").memberIds.push("bob");
+  db.get("users/bob").preferences.subscriptions["private:General"] = "muted";
+  await send(); assert.equal(notices().length, 0);
+  db.get("users/bob").preferences.subscriptions["private:General"] = "following";
+  await send(); assert.equal(notices().length, 1);
+  assert.ok(!JSON.stringify(notices()).includes("Private reply text"));
 });

@@ -10,3 +10,5 @@ export * from './eventForm';
 export * from './directConversations';
 export * from './pins';
 export * from './savedMessages';
+
+export { notificationAccessible } from "./notificationAccess";

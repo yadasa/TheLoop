@@ -7,6 +7,7 @@ import {
   localClock,
   subscription,
   shouldDeliverPush,
+  groupReplyCurrent,
 } from "../src/notifications";
 import { defaultPreferences } from "../src/policy";
 
@@ -225,4 +226,20 @@ test("digests keep unread topics separate and honor newer legacy channel reads",
     }),
     0,
   );
+});
+
+test("queued group replies recheck membership, topic settings, source existence and read markers", () => {
+  const prefs = { ...defaultPreferences(), subscriptions: { room: "following" } };
+  const channel = { id: "room", conferenceId: "conference", visibility: "private", memberIds: ["me"], topics: ["General"] };
+  const notice = { targetId: "room", topic: "General", messageId: "reply" };
+  const message = { id: "reply", channelId: "room", topic: "General", authorId: "friend", createdAt: "2026-10-27T12:00:00Z" };
+  assert.equal(groupReplyCurrent(notice, prefs, "me", channel, message), true);
+  assert.equal(groupReplyCurrent(notice, prefs, "me", { ...channel, memberIds: [] }, message), false);
+  for (const value of ["muted", "hidden"]) assert.equal(groupReplyCurrent(notice, { ...prefs, subscriptions: { room: "following", "room:General": value } }, "me", channel, message), false);
+  assert.equal(groupReplyCurrent(notice, { ...prefs, subscriptions: { room: "hidden", "room:General": "following" } }, "me", channel, message), false);
+  assert.equal(groupReplyCurrent(notice, prefs, "me", channel), false);
+  assert.equal(groupReplyCurrent(notice, prefs, "me", channel, { ...message, channelId: "another" }), false);
+  assert.equal(groupReplyCurrent(notice, { ...prefs, blockedIds: ["friend"] }, "me", channel, message), false);
+  assert.equal(groupReplyCurrent(notice, { ...prefs, readChannels: { "room:General": message.createdAt } }, "me", channel, message), false);
+  assert.equal(shouldDeliverPush({ id: "older_dm", kind: "message", targetId: "friend" }, { ...prefs, blockedIds: ["friend"] }, new Date()), false);
 });

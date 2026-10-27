@@ -290,6 +290,27 @@ test(
         },
       );
 
+      await t.test("real reply alerts honor recipient mutes and revoke access after leaving a private chat", async () => {
+        const parent = remember("messages", (await command(bob, { type: "message.send", channelId: channel, topic: "General", body: "Earlier private contribution" })).id);
+        const reply = async () => {
+          const requestId = nextId();
+          const result = await command(alice, { type: "message.send", channelId: channel, topic: "General", body: "Private reply contents", replyTo: parent }, requestId);
+          remember("messages", result.id);
+          return { id: result.id, notice: await db.doc(`notifications/${requestId}_reply`).get() };
+        };
+        await command(bob, { type: "subscription.set", targetId: `${channel}:General`, value: "muted" });
+        assert.equal((await reply()).notice.exists, false);
+        await command(bob, { type: "subscription.set", targetId: `${channel}:General`, value: "following" });
+        const active = await reply();
+        assert.equal(active.notice.exists, true);
+        assert.equal(active.notice.get("messageId"), active.id);
+        assert.ok(!active.notice.get("body").includes("Private reply contents"));
+        await command(alice, { type: "channel.member", channelId: channel, userId: bob.uid, add: false });
+        assert.equal((await reply()).notice.exists, false);
+        await command(alice, { type: "channel.member", channelId: channel, userId: bob.uid, add: true });
+        for (const actor of [alice, bob]) await db.doc(`users/${actor.uid}/system/rate`).delete();
+      });
+
       await t.test("saved messages remain private references and can be removed after membership loss", async () => {
         await command(bob, { type: "message.save", messageId: firstMessage, saved: true });
         await command(bob, { type: "message.save", messageId: firstMessage, saved: true });

@@ -89,7 +89,11 @@ export function shouldDeliverPush(
     String(notification.id || "").endsWith("_dm")
       ? notification.targetId
       : undefined);
-  return !dmSenderId || !preferences.dmMutedIds?.includes(dmSenderId);
+  return (
+    !dmSenderId ||
+    (!preferences.dmMutedIds?.includes(dmSenderId) &&
+      !preferences.blockedIds?.includes(dmSenderId))
+  );
 }
 export function subscription(
   preferences: Doc,
@@ -142,4 +146,52 @@ export function digestContent(
       Date.parse(post.createdAt) >= cutoff,
   ).length;
   return { messageCount, postCount };
+}
+
+/** Recheck current access/preferences immediately before a group reply alert is delivered. */
+export function groupReplyCurrent(
+  notification: Doc,
+  preferences: Doc,
+  uid: string,
+  channel?: Doc,
+  message?: Doc,
+): boolean {
+  if (
+    !channel ||
+    channel.id !== notification.targetId ||
+    (channel.visibility !== "public" && !channel.memberIds?.includes(uid))
+  )
+    return false;
+  const choices = preferences.subscriptions || {};
+  if (
+    choices[channel.id] === "hidden" ||
+    choices[channel.conferenceId] === "hidden" ||
+    subscription(preferences, channel, notification.topic) !== "following"
+  )
+    return false;
+  if (
+    notification.topic &&
+    channel.topics &&
+    !channel.topics.includes(notification.topic)
+  )
+    return false;
+  if (notification.messageId) {
+    if (
+      !message ||
+      message.id !== notification.messageId ||
+      message.channelId !== channel.id ||
+      message.topic !== notification.topic ||
+      preferences.blockedIds?.includes(message.authorId)
+    )
+      return false;
+    const read = [
+      preferences.readChannels?.[channel.id],
+      preferences.readChannels?.[`${channel.id}:${message.topic}`],
+    ]
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+    if (read && message.createdAt <= read) return false;
+  }
+  return true;
 }

@@ -31,7 +31,7 @@ import {
   pairId,
   text,
 } from "./policy";
-import { shouldDeliverPush } from "./notifications";
+import { shouldDeliverPush, groupReplyCurrent } from "./notifications";
 import { scrubCommunityOwner, scrubPost, scrubReactions } from "./cleanup";
 import { exportCursor, projectContribution } from "./contributions";
 import {
@@ -643,8 +643,9 @@ export const registerPushToken = onCall(callableOptions, async (request) => {
 export const deliverPushNotification = onDocumentCreated(
   "notifications/{notificationId}",
   async (event) => {
-    const notification = event.data?.data();
-    if (!notification) return;
+    if (!event.data) return;
+    const notification = (await event.data.ref.get()).data();
+    if (!notification || notification.read) return;
     const user = await db.doc(`users/${notification.userId}`).get();
     if (!user.exists || user.get("disabled") || user.get("deletionPending"))
       return;
@@ -668,6 +669,11 @@ export const deliverPushNotification = onDocumentCreated(
         )
       )
         return;
+    }
+    if (notification.kind === "message" && !notification.dmSenderId && !String(notification.id || "").endsWith("_dm")) {
+      const channel = await db.doc(`channels/${notification.targetId}`).get();
+      const message = notification.messageId ? await db.doc(`messages/${notification.messageId}`).get() : undefined;
+      if (!groupReplyCurrent(notification, prefs, user.id, channel.exists ? { ...channel.data(), id: channel.id } : undefined, message?.exists ? { ...message.data(), id: message.id } : undefined)) return;
     }
     // Only a generic message is sent to lock screens; private message bodies stay in-app.
     const messages = tokens.docs.map((doc) => ({
