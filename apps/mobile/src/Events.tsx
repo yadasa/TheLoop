@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   Linking,
   Platform,
   ScrollView,
@@ -606,7 +605,7 @@ export function EventDetail({ id, nav }: { id: string; nav: Nav }) {
         disabled={(expired || cancelled) && !going && !waiting}
         onPress={() => {
           if (going || waiting) {
-            Alert.alert(
+            nav.alert(
               waiting ? "Leave this waitlist?" : "Withdraw your RSVP?",
               cancelled || expired
                 ? "Your RSVP will be removed. This event is closed, so its waitlist will not change."

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -553,7 +552,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
           <Touch
             label="Member safety actions"
             onPress={() =>
-              Alert.alert(p.name, "Block this member or report their profile.", [
+              nav.alert(p.name, "Block this member or report their profile.", [
                 {
                   text: blocked ? "Unblock member" : "Block member",
                   style: "destructive",
@@ -668,6 +667,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
   }, [id, blocked, watchDirectConversation]);
   useEffect(() => {
     if (
+      nav.dialogOpen ||
       !appActive ||
       !isAppActive() ||
       blocked ||
@@ -697,6 +697,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
     blocked,
     showJump,
     directHistory.loading,
+    nav.dialogOpen,
     readRevision,
     appActive,
   ]);
@@ -888,7 +889,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                       label="Delete your private message"
                       disabled={busy}
                       onPress={() =>
-                        Alert.alert(
+                        nav.alert(
                           "Delete your message?",
                           "Your message and any attached image will be removed from this conversation.",
                           [
@@ -926,7 +927,7 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                     label="Report this private message"
                     style={{ paddingVertical: 8 }}
                     onPress={() =>
-                      Alert.alert(
+                      nav.alert(
                         "Report this private message?",
                         "The selected message and any attached image will be shared with moderators. The rest of this conversation stays private.",
                         [

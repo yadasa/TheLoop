@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Linking, ScrollView, Share, Text, View } from "react-native";
+import { Linking, ScrollView, Share, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
 import { safeURL, type Post, type Comment } from "@theloop/core";
 import {
@@ -536,7 +536,7 @@ export function PostCard({
             label="More post actions"
             onPress={() =>
               mine
-                ? Alert.alert(
+                ? nav.alert(
                     "Your post",
                     post.title,
                     [
@@ -554,7 +554,7 @@ export function PostCard({
                     ],
                     { cancelable: true },
                   )
-                : Alert.alert(
+                : nav.alert(
                     "Post options",
                     post.title,
                     [
@@ -763,7 +763,7 @@ export function PostDetail({ id, nav }: { id: string; nav: Nav }) {
 }
 
 function confirmPostDelete(post: Post, nav: Nav) {
-  Alert.alert(
+  nav.alert(
     "Delete your post?",
     "Your post and its replies will be removed. This cannot be undone.",
     [
@@ -1007,7 +1007,7 @@ function CommentItem({
                     label="Delete your reply"
                     disabled={busy}
                     onPress={() =>
-                      Alert.alert(
+                      nav.alert(
                         "Delete your reply?",
                         "This reply will be deleted from the post.",
                         [

@@ -1,4 +1,5 @@
 import type { Command } from "@theloop/core";
+import type { ShowDialog } from "./dialogQueue";
 export type Tab = "Home" | "Chat" | "Events" | "People" | "You";
 export type Route =
   | {
@@ -41,6 +42,8 @@ export type Route =
         | "tutorial";
     };
 export type Nav = {
+  alert: ShowDialog;
+  dialogOpen: boolean;
   open: (route: Route) => void;
   close: () => void;
   closeIfTop: (kind: Route["kind"]) => void;

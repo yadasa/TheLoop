@@ -354,6 +354,7 @@ export function ChannelDetail({
       !searchVisible &&
       !actionMessage &&
       !subscriptionOpen &&
+      !nav.dialogOpen &&
       !history.loading &&
       newestMessageId &&
       channel &&
@@ -371,6 +372,7 @@ export function ChannelDetail({
     searchVisible,
     actionMessage,
     subscriptionOpen,
+    nav.dialogOpen,
   ]);
   if (
     !channel ||

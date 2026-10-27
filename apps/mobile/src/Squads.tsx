@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -511,6 +510,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
     if (
       appActive &&
       isAppActive() &&
+      !nav.dialogOpen &&
       !showJump &&
       !squadHistory.loading &&
       messages.length &&
@@ -524,6 +524,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
     appActive,
     showJump,
     squadHistory.loading,
+    nav.dialogOpen,
   ]);
   if (!squad)
     return (
@@ -776,7 +777,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                           secondary
                           title="Delete"
                           onPress={() =>
-                            Alert.alert(
+                            nav.alert(
                               "Delete your message?",
                               "This message will be removed from the squad.",
                               [
@@ -805,7 +806,7 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                         secondary
                         title="Report"
                         onPress={() =>
-                          Alert.alert(
+                          nav.alert(
                             "Report this squad message?",
                             "The selected message and any attached image will be shared with moderators. The rest of the squad conversation stays private.",
                             [
@@ -985,14 +986,14 @@ export function SquadMembers({ id, nav }: { id: string; nav: Nav }) {
   );
   const manageMember = (userId: string) => {
     const name = squad.memberProfiles[userId]?.name || "this member";
-    Alert.alert(
+    nav.alert(
       name,
       "Choose a member action.",
       [
         {
           text: "Make squad host",
           onPress: () =>
-            Alert.alert(
+            nav.alert(
               "Transfer your squad?",
               `${name} will become the host and manage squad details and membership. You will stay as a member.`,
               [
@@ -1017,7 +1018,7 @@ export function SquadMembers({ id, nav }: { id: string; nav: Nav }) {
           text: "Remove member",
           style: "destructive",
           onPress: () =>
-            Alert.alert(
+            nav.alert(
               "Remove this member?",
               "They will no longer receive new squad messages. Messages already shared keep their original audience.",
               [
@@ -1140,7 +1141,7 @@ export function SquadMembers({ id, nav }: { id: string; nav: Nav }) {
                     onPress={() => {
                       const blocked =
                         state.preferences.blockedIds.includes(userId);
-                      Alert.alert(
+                      nav.alert(
                         blocked ? "Unblock this member?" : "Block this member?",
                         blocked
                           ? "Their new content can appear again, subject to your message privacy settings."
@@ -1250,7 +1251,7 @@ export function SquadMembers({ id, nav }: { id: string; nav: Nav }) {
                   title="Revoke"
                   disabled={busy}
                   onPress={() =>
-                    Alert.alert(
+                    nav.alert(
                       "Revoke this invitation?",
                       "This invitation will no longer be available to accept.",
                       [
@@ -1296,7 +1297,7 @@ export function SquadMembers({ id, nav }: { id: string; nav: Nav }) {
         title="Leave this squad"
         disabled={busy}
         onPress={() =>
-          Alert.alert(
+          nav.alert(
             "Leave your squad?",
             mine
               ? squad.memberIds.length > 1

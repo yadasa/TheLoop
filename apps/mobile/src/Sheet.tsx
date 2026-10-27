@@ -20,12 +20,14 @@ export function Sheet({
   title,
   description,
   onClose,
+  dismissible = true,
   children,
 }: {
   visible: boolean;
   title: string;
   description?: string;
   onClose: () => void;
+  dismissible?: boolean;
   children: React.ReactNode;
 }) {
   const reduced = useReducedMotion();
@@ -52,6 +54,8 @@ export function Sheet({
       >
         <Pressable
           accessibilityRole="button"
+          accessible={dismissible}
+          disabled={!dismissible}
           accessibilityLabel={`Close ${title}`}
           onPress={onClose}
           style={{
@@ -104,18 +108,20 @@ export function Sheet({
               >
                 {title}
               </Text>
-              <Touch
-                label={`Close ${title}`}
-                onPress={onClose}
-                style={{
-                  width: 44,
-                  height: 44,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text style={{ color: color.ink, fontSize: 24 }}>×</Text>
-              </Touch>
+              {dismissible && (
+                <Touch
+                  label={`Close ${title}`}
+                  onPress={onClose}
+                  style={{
+                    width: 44,
+                    height: 44,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ color: color.ink, fontSize: 24 }}>×</Text>
+                </Touch>
+              )}
             </View>
             {description && <Text style={s.small}>{description}</Text>}
           </View>

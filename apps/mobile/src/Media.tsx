@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Image, Modal, Platform, Text, View } from "react-native";
+import { Image, Modal, Platform, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
@@ -63,7 +63,7 @@ export function confirmContentReport(
   command: Extract<Command, { type: "report.create" }>,
   hasImage: boolean,
 ) {
-  Alert.alert(
+  nav.alert(
     "Report this content?",
     `Moderators will receive this selected content${hasImage ? " and its attached image" : ""} for review.`,
     [

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Platform, ScrollView, Switch, Text, View } from "react-native";
+import { Platform, ScrollView, Switch, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
 import { interests, safeURL, subscriptionFor } from "@theloop/core";
 import {
@@ -763,7 +763,7 @@ function DeleteAccount({ nav }: { nav: Nav }) {
         title={busy ? "Deleting…" : "Delete my account"}
         disabled={busy || confirmation !== "DELETE"}
         onPress={() =>
-          Alert.alert(
+          nav.alert(
             "Permanently delete your account?",
             "Your profile, preferences and personal content will be removed. This action cannot be undone.",
             [

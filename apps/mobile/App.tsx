@@ -36,6 +36,7 @@ import {
   CommunityDetail,
   CreateCommunity,
 } from "./src/Feed";
+import { useDialogSheet } from "./src/DialogSheet";
 import { ConferenceHub } from "./src/ConferenceHub";
 import { Chats, ChannelDetail } from "./src/Chat";
 import { DirectInbox } from "./src/DirectInbox";
@@ -336,7 +337,8 @@ function LoopApp() {
     },
     [dispatch, showToast],
   );
-  const nav: Nav = { open, close, closeIfTop, navigate, run, toast: showToast };
+  const { alert, dialogSheet, dialogOpen } = useDialogSheet(`${mode}:${state.currentUserId}:${ready && !startupError}`, showToast);
+  const nav: Nav = { open, close, closeIfTop, navigate, run, toast: showToast, alert, dialogOpen };
   useEffect(() => {
     onboarded.current = false;
     transition.current++;
@@ -833,6 +835,7 @@ function LoopApp() {
           {!!toast && <Toast text={toast} dismiss={() => setToast("")} />}
         </SafeAreaView>
       </Modal>
+      {dialogSheet}
       {!!toast && !active && (
         <Toast text={toast} dismiss={() => setToast("")} />
       )}

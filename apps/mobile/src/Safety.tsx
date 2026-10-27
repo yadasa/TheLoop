@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Alert, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
 import type { Report } from "@theloop/core";
 import { Button, Empty, Field, Label, s, Section } from "./ui";
@@ -156,7 +156,7 @@ function ReportCard({
                       !r.snapshot)
                   }
                   onPress={() =>
-                    Alert.alert(
+                    nav.alert(
                       "Remove this content?",
                       r.targetType === "comment"
                         ? "Only this reply will be removed. The rest of the conversation stays. Your action is recorded."
