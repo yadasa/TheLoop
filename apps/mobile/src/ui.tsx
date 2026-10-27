@@ -12,7 +12,6 @@ import {
   Image,
   Appearance,
   AppState,
-  ActionSheetIOS,
   AccessibilityInfo,
   Alert,
   Linking,
@@ -32,7 +31,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { Profile, Subscription } from "@theloop/core";
+import type { Profile } from "@theloop/core";
 import { safeURL } from "@theloop/core";
 
 const MotionContext = createContext(true);
@@ -587,17 +586,20 @@ export function Chip({
   selected,
   onPress,
   count,
+  disabled,
 }: {
   title: string;
   selected?: boolean;
   onPress: () => void;
   count?: number;
+  disabled?: boolean;
 }) {
   return (
     <Touch
       onPress={onPress}
       label={title}
       selected={selected}
+      disabled={disabled}
       style={[
         s.chip,
         {
@@ -706,6 +708,7 @@ export function Logo({
   );
 }
 export function Field({
+  inputRef,
   label,
   value,
   onChangeText,
@@ -719,6 +722,7 @@ export function Field({
   autoCapitalize,
   disabled = false,
 }: {
+  inputRef?: React.Ref<React.ComponentRef<typeof TextInput>>;
   label?: string;
   value: string;
   onChangeText: (s: string) => void;
@@ -737,6 +741,7 @@ export function Field({
     <View>
       {label && <Text style={s.label}>{label}</Text>}
       <TextInput
+        ref={inputRef}
         accessibilityLabel={label || placeholder}
         accessibilityState={{ disabled }}
         editable={!disabled}
@@ -940,41 +945,4 @@ export function LinkifiedText({
       })}
     </Text>
   );
-}
-
-export function pickSubscription(
-  title: string,
-  current: Subscription,
-  onPick: (value: Subscription) => void,
-) {
-  const values: Subscription[] = ["following", "muted", "hidden"];
-  const labels = values.map(
-    (v) =>
-      `${v === "following" ? "Follow" : v === "muted" ? "Mute" : "Hide"}${current === v ? " ✓" : ""}`,
-  );
-  const message =
-    "Follow to receive updates. Mute to stop alerts. Hide to remove it from normal views.";
-  if (Platform.OS === "ios") {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title,
-        message,
-        options: [...labels, "Cancel"],
-        cancelButtonIndex: 3,
-        userInterfaceStyle: currentTheme,
-      },
-      (index) => {
-        if (index >= 0 && index < 3) onPick(values[index]);
-      },
-    );
-  } else
-    Alert.alert(
-      title,
-      message,
-      values.map((value, index) => ({
-        text: labels[index],
-        onPress: () => onPick(value),
-      })),
-      { cancelable: true },
-    );
 }

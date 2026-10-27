@@ -15,13 +15,13 @@ import {
   Label,
   LinkifiedText,
   MotionScene,
-  pickSubscription,
   RelativeTime,
   s,
   Section,
   Touch,
 } from "./ui";
 import type { Nav } from "./navigation";
+import { useSubscriptionPicker } from "./SubscriptionPicker";
 import { DetailState } from "./DetailState";
 import { shareTargetURL } from "./sharedLinks";
 import {
@@ -1219,10 +1219,12 @@ export function Compose({
 }
 
 export function Communities({ nav }: { nav: Nav }) {
+  const { pickSubscription, subscriptionSheet } = useSubscriptionPicker();
   const { state } = useLoop();
   const [search, setSearch] = useState("");
   return (
     <ScrollView contentContainerStyle={s.content}>
+      {subscriptionSheet}
       <Text style={s.title}>Communities</Text>
       <Field
         value={search}
@@ -1300,6 +1302,7 @@ export function Communities({ nav }: { nav: Nav }) {
 }
 
 export function CommunityDetail({ id, nav }: { id: string; nav: Nav }) {
+  const { pickSubscription, subscriptionSheet } = useSubscriptionPicker();
   const { state, hasMore, loadMore } = useLoop();
   const community = state.communities.find((c) => c.id === id);
   if (!community)
@@ -1322,6 +1325,7 @@ export function CommunityDetail({ id, nav }: { id: string; nav: Nav }) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
     <ScrollView contentContainerStyle={s.content}>
+      {subscriptionSheet}
       <Text style={{ fontSize: 38, color: color.ink }}>
         {community.icon || "◎"}
       </Text>

@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   Text,
+  TextInput,
   View,
   type ScrollViewInstance,
 } from "react-native";
@@ -13,6 +13,7 @@ import type { Message, Subscription } from "@theloop/core";
 import { channelUnread } from "@theloop/core";
 import {
   Avatar,
+  AmbientGradient,
   Button,
   Chip,
   color,
@@ -23,7 +24,6 @@ import {
   Label,
   LinkifiedText,
   MotionScene,
-  pickSubscription,
   RelativeTime,
   s,
   Touch,
@@ -33,15 +33,20 @@ import {
 } from "./ui";
 import type { Nav } from "./navigation";
 import { SquadSummary } from "./Squads";
+import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
+import { Sheet } from "./Sheet";
+import { useSubscriptionPicker } from "./SubscriptionPicker";
 import {
-  confirmContentReport,
-  ImageAttachmentPicker,
-  MediaImage,
-  useImageAttachment,
-} from "./Media";
+  dayKey,
+  dayLabel,
+  isMessageContinuation,
+  visibleQuote,
+  topicStarter,
+} from "./chatPresentation";
 
 export function Chats({ nav }: { nav: Nav }) {
   const { state } = useLoop();
+  const { pickSubscription, subscriptionSheet } = useSubscriptionPicker();
   const [conference, setConference] = useState("all");
   const [search, setSearch] = useState("");
   const [discover, setDiscover] = useState(false);
@@ -66,6 +71,7 @@ export function Chats({ nav }: { nav: Nav }) {
   );
   return (
     <ScrollView contentContainerStyle={s.content}>
+      {subscriptionSheet}
       <View>
         <Text style={s.overline}>GROUP CHATS</Text>
         <Text style={[s.title, { marginTop: 5 }]}>Group chats</Text>
@@ -274,6 +280,7 @@ export function ChannelDetail({
   nav: Nav;
 }) {
   const { state, watchConversation, loadOlderMessages, history } = useLoop();
+  const { pickSubscription, subscriptionSheet } = useSubscriptionPicker();
   const appActive = useAppActive();
   const attachment = useImageAttachment(nav);
   const channel = state.channels.find((c) => c.id === id);
@@ -288,13 +295,24 @@ export function ChannelDetail({
   );
   const [newTopic, setNewTopic] = useState("");
   const [addingTopic, setAddingTopic] = useState(false);
-  const [showHiddenTopics, setShowHiddenTopics] = useState(false);
+  const [topicSheet, setTopicSheet] = useState(false);
+  const [topicSearch, setTopicSearch] = useState("");
   const [body, setBody] = useState("");
   const [reply, setReply] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
+  const draftBeforeEdit = useRef<{
+    body: string;
+    reply: Message | null;
+    topic: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [reacting, setReacting] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<Message | null>(null);
+  const [messageAction, setMessageAction] = useState<
+    "menu" | "delete" | "report"
+  >("menu");
   const scroll = useRef<ScrollViewInstance>(null);
+  const composerInput = useRef<React.ComponentRef<typeof TextInput>>(null);
   const stickToBottom = useRef(true);
   const firstLayout = useRef(true);
   const loadingOlder = useRef(false);
@@ -344,9 +362,7 @@ export function ChannelDetail({
   );
   const topicNames = allTopicNames.filter(
     (t) =>
-      showHiddenTopics ||
-      t === topic ||
-      state.preferences.subscriptions[`${id}:${t}`] !== "hidden",
+      t === topic || state.preferences.subscriptions[`${id}:${t}`] !== "hidden",
   );
   const messages = state.messages
     .filter(
@@ -363,6 +379,29 @@ export function ChannelDetail({
     state.preferences.subscriptions[id] ||
     state.preferences.subscriptions[channel.conferenceId] ||
     "muted";
+  const locked = busy || attachment.busy;
+  const restoreDraft = () => {
+    const saved = draftBeforeEdit.current;
+    setEditing(null);
+    draftBeforeEdit.current = null;
+    if (saved) {
+      setBody(saved.body);
+      setReply(saved.reply);
+      setTopic(saved.topic);
+    }
+  };
+  const selectTopic = (next: string) => {
+    if (locked) return;
+    if (editing) {
+      setBody(draftBeforeEdit.current?.body || "");
+      setEditing(null);
+      draftBeforeEdit.current = null;
+    }
+    if (next !== topic) setReply(null);
+    setTopic(next);
+    setTopicSheet(false);
+    setAddingTopic(false);
+  };
   const subscription = (targetId: string, label: string) =>
     pickSubscription(
       label,
@@ -375,15 +414,19 @@ export function ChannelDetail({
           )
           .then((ok) => {
             if (ok && value === "hidden" && targetId === `${id}:${topic}`)
-              setTopic("all");
+              selectTopic("all");
           }),
     );
   const send = async () => {
     if (!body.trim() || busy || attachment.busy) return;
+    if (!editing && (topic === "all" || !allTopicNames.includes(topic))) {
+      setTopicSheet(true);
+      return;
+    }
     loadingOlder.current = false;
     stickToBottom.current = true;
     setShowJump(false);
-    const sendTopic = topic === "all" ? topicNames[0] || "General" : topic;
+    const sendTopic = topic;
     setBusy(true);
     try {
       const image = editing
@@ -402,10 +445,12 @@ export function ChannelDetail({
             },
       );
       if (ok) {
-        attachment.clear();
-        setBody("");
-        setReply(null);
-        setEditing(null);
+        if (editing) restoreDraft();
+        else {
+          attachment.clear();
+          setBody("");
+          setReply(null);
+        }
       }
     } catch (error) {
       nav.toast(
@@ -423,10 +468,11 @@ export function ChannelDetail({
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
     >
+      {subscriptionSheet}
       <View
         style={{
-          padding: 20,
-          gap: 15,
+          padding: 16,
+          gap: 12,
           borderBottomWidth: 1,
           borderColor: color.line,
         }}
@@ -437,11 +483,11 @@ export function ChannelDetail({
               {channel.icon} {channel.name}
             </Text>
             <Text style={s.small}>
-              {channel.members.toLocaleString()} people ·{" "}
-              {
-                state.conferences.find((c) => c.id === channel.conferenceId)
-                  ?.shortName
-              }
+              {state.conferences.find((c) => c.id === channel.conferenceId)
+                ?.name || "Conference chat"}
+              {channel.members > 0
+                ? ` · ${channel.members.toLocaleString()} ${channel.members === 1 ? "person" : "people"}`
+                : ""}
             </Text>
           </View>
           <Button
@@ -455,40 +501,49 @@ export function ChannelDetail({
                   : "Muted ▾"
             }
             onPress={() => subscription(id, channel.name)}
+            disabled={locked}
           />
         </View>
-        <Horizontal>
-          <Chip
-            title="All topics"
-            selected={topic === "all"}
-            onPress={() => setTopic("all")}
-          />
-          {topicNames.map((t) => (
-            <Chip
-              key={t}
-              title={t}
-              selected={topic === t}
-              onPress={() => setTopic(t)}
-            />
-          ))}
-          <Chip title="＋ Topic" onPress={() => setAddingTopic(!addingTopic)} />
-          {allTopicNames.some(
-            (t) => state.preferences.subscriptions[`${id}:${t}`] === "hidden",
-          ) && (
-            <Chip
-              title={
-                showHiddenTopics
-                  ? "Hide hidden topics"
-                  : "Discover hidden topics"
-              }
-              selected={showHiddenTopics}
-              onPress={() => setShowHiddenTopics(!showHiddenTopics)}
-            />
-          )}
-        </Horizontal>
+        <View style={[s.row, { gap: 6 }]}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Horizontal>
+              <Chip
+                title="All topics"
+                selected={topic === "all"}
+                onPress={() => selectTopic("all")}
+                disabled={locked}
+              />
+              {topicNames.map((t) => (
+                <Chip
+                  key={t}
+                  title={t}
+                  selected={topic === t}
+                  onPress={() => selectTopic(t)}
+                  disabled={locked}
+                />
+              ))}
+            </Horizontal>
+          </View>
+          <Touch
+            label="Browse all topics"
+            disabled={locked}
+            onPress={() => setTopicSheet(true)}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 14,
+              backgroundColor: color.soft,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: color.ink, fontSize: 20 }}>☷</Text>
+          </Touch>
+        </View>
         {topic !== "all" && (
           <Touch
             label={`Manage ${topic} notifications`}
+            disabled={locked}
             onPress={() => subscription(`${id}:${topic}`, topic)}
           >
             <Text style={s.small}>
@@ -499,6 +554,81 @@ export function ChannelDetail({
             </Text>
           </Touch>
         )}
+      </View>
+      <Sheet
+        visible={topicSheet}
+        title="Topics"
+        description="Pick a conversation. Your draft stays with you when you switch."
+        onClose={() => setTopicSheet(false)}
+      >
+        <Field
+          value={topicSearch}
+          onChangeText={setTopicSearch}
+          placeholder="Find a topic"
+        />
+        <Touch
+          label="Read all topics"
+          disabled={locked}
+          onPress={() => selectTopic("all")}
+          style={[
+            s.card,
+            {
+              padding: 14,
+              backgroundColor: topic === "all" ? color.soft : color.card,
+            },
+          ]}
+        >
+          <Text style={s.h3}>All topics {topic === "all" ? "✓" : ""}</Text>
+          <Text style={s.small}>
+            Catch up across the group chat. Muted and hidden topics stay out of
+            this view.
+          </Text>
+        </Touch>
+        {allTopicNames
+          .filter((name) =>
+            name.toLowerCase().includes(topicSearch.trim().toLowerCase()),
+          )
+          .map((name) => {
+            const status = state.preferences.subscriptions[`${id}:${name}`];
+            return (
+              <Touch
+                key={name}
+                label={`Open topic ${name}`}
+                disabled={locked}
+                onPress={() => selectTopic(name)}
+                style={[
+                  s.card,
+                  {
+                    padding: 14,
+                    backgroundColor: topic === name ? color.soft : color.card,
+                  },
+                ]}
+              >
+                <View style={s.between}>
+                  <Text style={[s.h3, { flex: 1 }]}>{name}</Text>
+                  <Text style={s.small}>{topic === name ? "✓" : "→"}</Text>
+                </View>
+                <Text style={s.small}>
+                  {status === "hidden"
+                    ? "Hidden from your topic list"
+                    : status === "muted"
+                      ? "Muted"
+                      : status === "following"
+                        ? "Following"
+                        : "Uses group chat notifications"}
+                </Text>
+              </Touch>
+            );
+          })}
+        {!allTopicNames.some((name) =>
+          name.toLowerCase().includes(topicSearch.trim().toLowerCase()),
+        ) && <Text style={s.small}>No topics match your search.</Text>}
+        <Button
+          secondary
+          title={addingTopic ? "Cancel new topic" : "Create a topic"}
+          disabled={locked}
+          onPress={() => setAddingTopic(!addingTopic)}
+        />
         {addingTopic && (
           <View style={s.row}>
             <View style={s.grow}>
@@ -512,7 +642,7 @@ export function ChannelDetail({
             <Button
               small
               title={busy ? "…" : "Create topic"}
-              disabled={busy || !newTopic.trim()}
+              disabled={locked || !newTopic.trim()}
               onPress={() => {
                 const name = newTopic.trim();
                 setBusy(true);
@@ -526,6 +656,8 @@ export function ChannelDetail({
                       setTopic(name);
                       setAddingTopic(false);
                       setNewTopic("");
+                      setReply(null);
+                      setTopicSheet(false);
                     }
                   })
                   .finally(() => setBusy(false));
@@ -533,13 +665,144 @@ export function ChannelDetail({
             />
           </View>
         )}
-      </View>
+      </Sheet>
+      <Sheet
+        visible={!!actionMessage}
+        title={
+          messageAction === "delete"
+            ? "Delete this message?"
+            : messageAction === "report"
+              ? "Report this message?"
+              : "Message"
+        }
+        description={
+          messageAction === "delete"
+            ? "It will be removed from the group chat. This cannot be undone."
+            : messageAction === "report"
+              ? `Moderators will receive this message${actionMessage?.image ? " and its attached image" : ""} for review.`
+              : undefined
+        }
+        onClose={() => !busy && setActionMessage(null)}
+      >
+        {actionMessage && (
+          <>
+            <View style={[s.card, { padding: 16 }]}>
+              <Text style={s.small} numberOfLines={4}>
+                {actionMessage.body}
+              </Text>
+            </View>
+            {messageAction === "menu" ? (
+              <>
+                <Button
+                  secondary
+                  title="Reply"
+                  disabled={locked}
+                  onPress={() => {
+                    if (editing) restoreDraft();
+                    setReply(actionMessage);
+                    setTopic(actionMessage.topic);
+                    setEditing(null);
+                    setActionMessage(null);
+                    requestAnimationFrame(() => composerInput.current?.focus());
+                  }}
+                />
+                {actionMessage.authorId === state.currentUserId ? (
+                  <>
+                    <Button
+                      secondary
+                      title="Edit message"
+                      disabled={locked}
+                      onPress={() => {
+                        if (!editing)
+                          draftBeforeEdit.current = { body, reply, topic };
+                        setEditing(actionMessage);
+                        setBody(actionMessage.body);
+                        setReply(null);
+                        setTopic(actionMessage.topic);
+                        setActionMessage(null);
+                        requestAnimationFrame(() =>
+                          composerInput.current?.focus(),
+                        );
+                      }}
+                    />
+                    <Button
+                      secondary
+                      title="Delete message"
+                      disabled={locked}
+                      onPress={() => setMessageAction("delete")}
+                    />
+                  </>
+                ) : (
+                  <Button
+                    secondary
+                    title="Report message"
+                    disabled={locked}
+                    onPress={() => setMessageAction("report")}
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                <Button
+                  title={
+                    busy
+                      ? "Working…"
+                      : messageAction === "delete"
+                        ? "Delete message"
+                        : "Send report"
+                  }
+                  disabled={locked}
+                  onPress={() => {
+                    const selected = actionMessage;
+                    setBusy(true);
+                    void nav
+                      .run(
+                        messageAction === "delete"
+                          ? { type: "message.delete", messageId: selected.id }
+                          : {
+                              type: "report.create",
+                              targetType: "message",
+                              targetId: selected.id,
+                              reason: "Community guideline concern",
+                            },
+                        messageAction === "delete"
+                          ? "Message deleted"
+                          : "Report sent to moderators",
+                      )
+                      .then((ok) => {
+                        if (ok) {
+                          if (editing?.id === selected.id) restoreDraft();
+                          if (reply?.id === selected.id) setReply(null);
+                          setActionMessage(null);
+                        }
+                      })
+                      .finally(() => setBusy(false));
+                  }}
+                />
+                <Button
+                  secondary
+                  title="Cancel"
+                  disabled={locked}
+                  onPress={() => setActionMessage(null)}
+                />
+              </>
+            )}
+          </>
+        )}
+      </Sheet>
       <ScrollView
         ref={scroll}
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: 20, gap: 24, paddingBottom: 35 }}
+        contentContainerStyle={{
+          padding: 16,
+          gap: 6,
+          paddingBottom: 24,
+          ...(messages.length === 0
+            ? { flexGrow: 1, justifyContent: "center" as const }
+            : {}),
+        }}
         scrollEventThrottle={64}
         onScroll={(event) => {
           if (loadingOlder.current) return;
@@ -560,13 +823,6 @@ export function ChannelDetail({
           firstLayout.current = false;
         }}
       >
-        <View style={{ alignItems: "center", paddingVertical: 14, gap: 7 }}>
-          <Text style={{ fontSize: 33, color: color.ink }}>◎</Text>
-          <Text style={s.h3}>Messages are organized by topic.</Text>
-          <Text style={[s.small, { textAlign: "center" }]}>
-            {channel.description}
-          </Text>
-        </View>
         {history.hasMore && (
           <Button
             secondary
@@ -607,228 +863,251 @@ export function ChannelDetail({
             m.authorInitials,
           );
           const mine = m.authorId === state.currentUserId;
-          const quoted = m.replyTo
-            ? state.messages.find((q) => q.id === m.replyTo)
-            : undefined;
+          const quoted = visibleQuote(
+            m,
+            state.messages,
+            state.preferences.blockedIds,
+          );
+          const continuation = isMessageContinuation(messages[i - 1], m);
+          const newDay =
+            i === 0 ||
+            dayKey(messages[i - 1].createdAt) !== dayKey(m.createdAt);
           return (
-            <View
-              key={m.id}
-              style={[s.row, { alignItems: "flex-start", gap: 10 }]}
-            >
-              <Touch
-                label={`View ${author?.name || "member"}`}
-                onPress={() => nav.open({ kind: "profile", id: m.authorId })}
+            <View key={m.id}>
+              {newDay && (
+                <View style={[s.row, { paddingVertical: 18, gap: 12 }]}>
+                  <View
+                    style={{ flex: 1, height: 1, backgroundColor: color.line }}
+                  />
+                  <Text style={[s.small, { fontSize: 11 }]}>
+                    {dayLabel(m.createdAt)}
+                  </Text>
+                  <View
+                    style={{ flex: 1, height: 1, backgroundColor: color.line }}
+                  />
+                </View>
+              )}
+              <View
+                style={[
+                  s.row,
+                  {
+                    alignItems: "flex-start",
+                    gap: 10,
+                    marginTop: !continuation && !newDay ? 16 : 0,
+                  },
+                ]}
               >
-                <Avatar profile={author} size={33} />
-              </Touch>
-              <View style={{ flex: 1, gap: 6 }}>
-                <View style={s.between}>
-                  <View style={[s.row, { gap: 7 }]}>
-                    <Text
+                {!continuation ? (
+                  <Touch
+                    label={`View ${author?.name || "member"}`}
+                    onPress={() =>
+                      nav.open({ kind: "profile", id: m.authorId })
+                    }
+                  >
+                    <Avatar profile={author} size={33} />
+                  </Touch>
+                ) : (
+                  <View style={{ width: 33 }} />
+                )}
+                <View style={{ flex: 1, gap: 6 }}>
+                  <View style={[s.between, continuation && { position: "absolute", right: 0, top: 0, zIndex: 1 }]}>
+                    <View
+                      style={[s.row, { gap: 7, flex: 1, flexWrap: "wrap" }]}
+                    >
+                      {!continuation && (
+                        <>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: "600",
+                              color: color.ink,
+                            }}
+                          >
+                            {mine ? "You" : author?.name || "Loop member"}
+                          </Text>
+                          <RelativeTime date={m.createdAt} />
+                        </>
+                      )}
+                      {m.editedAt && <Text style={s.small}>edited</Text>}
+                    </View>
+                    <Touch
+                      label={`Message actions: ${m.body.slice(0, 60)}`}
+                      disabled={locked}
+                      onPress={() => {
+                        setActionMessage(m);
+                        setMessageAction("menu");
+                      }}
                       style={{
-                        fontSize: 13,
-                        fontWeight: "600",
-                        color: color.ink,
+                        minWidth: 44,
+                        minHeight: 36,
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
-                      {mine ? "You" : author?.name || "Loop member"}
-                    </Text>
-                    <RelativeTime date={m.createdAt} />
-                    {m.editedAt && <Text style={s.small}>edited</Text>}
+                      <Text style={s.small}>•••</Text>
+                    </Touch>
                   </View>
-                  <Touch
-                    label="Message actions"
-                    onPress={() =>
-                      Alert.alert(
-                        "Message",
-                        m.body.length > 160
-                          ? `${m.body.slice(0, 160)}…`
-                          : m.body,
-                        [
-                          {
-                            text: "Reply",
-                            onPress: () => {
-                              setReply(m);
-                              setTopic(m.topic);
-                              setEditing(null);
-                            },
-                          },
-                          ...(mine
-                            ? [
-                                {
-                                  text: "Edit or delete",
-                                  onPress: () =>
-                                    Alert.alert(
-                                      "Your message",
-                                      "Make a change or remove this message.",
-                                      [
-                                        {
-                                          text: "Edit",
-                                          onPress: () => {
-                                            attachment.clear();
-                                            setEditing(m);
-                                            setBody(m.body);
-                                            setReply(null);
-                                          },
-                                        },
-                                        {
-                                          text: "Delete",
-                                          style: "destructive",
-                                          onPress: () =>
-                                            Alert.alert(
-                                              "Delete your message?",
-                                              "This message will be deleted from the group chat.",
-                                              [
-                                                {
-                                                  text: "Keep message",
-                                                  style: "cancel",
-                                                },
-                                                {
-                                                  text: "Delete message",
-                                                  style: "destructive",
-                                                  onPress: () =>
-                                                    void nav.run(
-                                                      {
-                                                        type: "message.delete",
-                                                        messageId: m.id,
-                                                      },
-                                                      "Message deleted",
-                                                    ),
-                                                },
-                                              ],
-                                              { cancelable: true },
-                                            ),
-                                        },
-                                        { text: "Cancel", style: "cancel" },
-                                      ],
-                                      { cancelable: true },
-                                    ),
-                                },
-                              ]
-                            : [
-                                {
-                                  text: "Report",
-                                  onPress: () =>
-                                    confirmContentReport(
-                                      nav,
-                                      {
-                                        type: "report.create",
-                                        targetId: m.id,
-                                        targetType: "message",
-                                        reason: "Community guideline concern",
-                                      },
-                                      !!m.image,
-                                    ),
-                                },
-                              ]),
-                          { text: "Cancel", style: "cancel" },
-                        ],
-                        { cancelable: true },
-                      )
-                    }
-                    style={{ padding: 5 }}
-                  >
-                    <Text style={s.small}>•••</Text>
-                  </Touch>
-                </View>
-                {(i === 0 || messages[i - 1].topic !== m.topic) &&
-                  topic === "all" && (
-                    <Text style={[s.overline, { fontSize: 9 }]}>{m.topic}</Text>
+                  {(i === 0 || messages[i - 1].topic !== m.topic) &&
+                    topic === "all" && (
+                      <Text style={[s.overline, { fontSize: 9 }]}>
+                        {m.topic}
+                      </Text>
+                    )}
+                  {m.replyTo && (
+                    <View
+                      style={{
+                        borderLeftWidth: 2,
+                        borderColor: color.line,
+                        paddingLeft: 10,
+                        paddingVertical: 5,
+                      }}
+                    >
+                      <Text style={s.small} numberOfLines={2}>
+                        ↳ {quoted?.body || "Message unavailable"}
+                      </Text>
+                    </View>
                   )}
-                {quoted && (
-                  <View
-                    style={{
-                      borderLeftWidth: 2,
-                      borderColor: color.line,
-                      paddingLeft: 10,
-                      paddingVertical: 5,
-                    }}
-                  >
-                    <Text style={s.small} numberOfLines={2}>
-                      ↳ {quoted.body}
-                    </Text>
+                  <LinkifiedText text={m.body} style={continuation ? { paddingRight: 44, minHeight: 36 } : undefined} />
+                  <MediaImage image={m.image} caption={m.body} nav={nav} />
+                  <View style={[s.row, { gap: 6, flexWrap: "wrap" }]}>
+                    {Object.entries(m.reactions)
+                      .filter(([, ids]) => ids.length > 0)
+                      .map(([emoji, ids]) => (
+                        <Touch
+                          key={emoji}
+                          label={`React ${emoji}, ${ids.length}`}
+                          selected={ids.includes(state.currentUserId)}
+                          onPress={() =>
+                            void nav.run({
+                              type: "message.react",
+                              messageId: m.id,
+                              emoji,
+                            })
+                          }
+                          style={{
+                            borderWidth: 1,
+                            borderColor: ids.includes(state.currentUserId)
+                              ? color.ink
+                              : color.line,
+                            paddingHorizontal: 9,
+                            minHeight: 36,
+                            justifyContent: "center",
+                            borderRadius: 20,
+                            backgroundColor: color.soft,
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, color: color.ink }}>
+                            {emoji} {ids.length}
+                          </Text>
+                        </Touch>
+                      ))}
+                    <Touch
+                      label="Add reaction"
+                      onPress={() =>
+                        setReacting(reacting === m.id ? null : m.id)
+                      }
+                      style={{
+                        minWidth: 36,
+                        minHeight: 36,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text style={s.small}>＋</Text>
+                    </Touch>
                   </View>
-                )}
-                <LinkifiedText text={m.body} />
-                <MediaImage image={m.image} caption={m.body} nav={nav} />
-                <View style={[s.row, { gap: 6, flexWrap: "wrap" }]}>
-                  {Object.entries(m.reactions)
-                    .filter(([, ids]) => ids.length > 0)
-                    .map(([emoji, ids]) => (
-                      <Touch
-                        key={emoji}
-                        label={`React ${emoji}, ${ids.length}`}
-                        onPress={() =>
-                          void nav.run({
-                            type: "message.react",
-                            messageId: m.id,
-                            emoji,
-                          })
-                        }
-                        style={{
-                          borderWidth: 1,
-                          borderColor: ids.includes(state.currentUserId)
-                            ? color.ink
-                            : color.line,
-                          paddingHorizontal: 9,
-                          paddingVertical: 4,
-                          borderRadius: 20,
-                          backgroundColor: color.soft,
-                        }}
-                      >
-                        <Text style={{ fontSize: 12, color: color.ink }}>
-                          {emoji} {ids.length}
-                        </Text>
-                      </Touch>
-                    ))}
-                  <Touch
-                    label="Add reaction"
-                    onPress={() => setReacting(reacting === m.id ? null : m.id)}
-                    style={{ paddingHorizontal: 5, paddingVertical: 4 }}
-                  >
-                    <Text style={s.small}>＋</Text>
-                  </Touch>
+                  {reacting === m.id && (
+                    <View style={[s.wrap, { gap: 6 }]}>
+                      {["🖤", "🔥", "🙌", "💯", "😂"].map((emoji) => (
+                        <Touch
+                          key={emoji}
+                          label={`React ${emoji}`}
+                          onPress={() => {
+                            void nav.run({
+                              type: "message.react",
+                              messageId: m.id,
+                              emoji,
+                            });
+                            setReacting(null);
+                          }}
+                          style={{
+                            padding: 10,
+                            borderRadius: 12,
+                            backgroundColor: color.soft,
+                            minWidth: 39,
+                            minHeight: 43,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Text style={{ fontSize: 19, color: color.ink }}>
+                            {emoji}
+                          </Text>
+                        </Touch>
+                      ))}
+                    </View>
+                  )}
                 </View>
-                {reacting === m.id && (
-                  <View style={[s.wrap, { gap: 6 }]}>
-                    {["🖤", "🔥", "🙌", "💯", "😂"].map((emoji) => (
-                      <Touch
-                        key={emoji}
-                        label={`React ${emoji}`}
-                        onPress={() => {
-                          void nav.run({
-                            type: "message.react",
-                            messageId: m.id,
-                            emoji,
-                          });
-                          setReacting(null);
-                        }}
-                        style={{
-                          padding: 10,
-                          borderRadius: 12,
-                          backgroundColor: color.soft,
-                          minWidth: 39,
-                          minHeight: 43,
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Text style={{ fontSize: 19, color: color.ink }}>
-                          {emoji}
-                        </Text>
-                      </Touch>
-                    ))}
-                  </View>
-                )}
               </View>
             </View>
           );
         })}
-        {messages.length === 0 && (
-          <Empty
-            title="No messages in this topic"
-            body="Send the first message."
-          />
+        {messages.length === 0 && !history.loading && (
+          <View style={[s.card, { padding: 24, gap: 18, overflow: "hidden" }]}>
+            <AmbientGradient variant="hero" animated={false} />
+            <View
+              style={{
+                width: 50,
+                height: 50,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: color.line,
+                backgroundColor: color.soft,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 26, color: color.ink }}>#</Text>
+            </View>
+            <View style={{ gap: 8 }}>
+              <Text style={s.overline}>
+                {topic === "all" ? "YOUR CONVERSATIONS" : topic.toUpperCase()}
+              </Text>
+              <Text style={s.h2}>
+                {topic === "all"
+                  ? "Find your conversation"
+                  : topicStarter(topic).title}
+              </Text>
+              <Text style={s.body}>
+                {topic === "all"
+                  ? channel.description
+                  : topicStarter(topic).body}
+              </Text>
+            </View>
+            <Button
+              secondary
+              disabled={locked}
+              title={
+                topic === "all"
+                  ? "Explore topics"
+                  : body.trim()
+                    ? "Continue your draft"
+                    : "Start a message"
+              }
+              onPress={() => {
+                if (topic === "all") setTopicSheet(true);
+                else {
+                  if (!body.trim()) setBody(topicStarter(topic).draft);
+                  composerInput.current?.focus();
+                }
+              }}
+            />
+            <Text style={s.small}>
+              {topic === "all"
+                ? "Choose a topic to read or write. Muted topics stay out of the combined view."
+                : "Nothing posted here yet. Your message stays a draft until you send it."}
+            </Text>
+          </View>
         )}
       </ScrollView>
       {showJump && (
@@ -865,10 +1144,10 @@ export function ChannelDetail({
             </Text>
             <Touch
               label="Cancel reply or edit"
+              disabled={locked}
               onPress={() => {
-                setReply(null);
-                setEditing(null);
-                setBody("");
+                if (editing) restoreDraft();
+                else setReply(null);
               }}
               style={{ padding: 8 }}
             >
@@ -876,31 +1155,45 @@ export function ChannelDetail({
             </Touch>
           </View>
         )}
-        {!editing && (
-          <ImageAttachmentPicker attachment={attachment} disabled={busy} />
-        )}
-        <View style={[s.row, { alignItems: "flex-end" }]}>
-          <View style={s.grow}>
-            <Field
-              value={body}
-              onChangeText={setBody}
-              disabled={busy}
-              placeholder={`Message ${topic === "all" ? topicNames[0] || "General" : topic}…`}
-              multiline
-              compact
-              maxLength={4000}
+        {topic === "all" && !editing ? (
+          <>
+            <Text style={[s.small, { textAlign: "center" }]}>
+              {body.trim()
+                ? "Your draft is saved here. Pick its topic before sending."
+                : "You're reading across topics. Choose one to join in."}
+            </Text>
+            <Button
+              title="Choose a topic to message"
+              onPress={() => setTopicSheet(true)}
+              disabled={locked}
             />
-          </View>
-          <Button
-            title={busy ? "…" : editing ? "Save" : "Send"}
-            disabled={busy || attachment.busy || !body.trim()}
-            onPress={send}
-          />
-        </View>
-        <Text style={[s.small, { fontSize: 10, paddingHorizontal: 3 }]}>
-          Follow the group guidelines. Do not share someone else’s private
-          information.
-        </Text>
+          </>
+        ) : (
+          <>
+            {!editing && (
+              <ImageAttachmentPicker attachment={attachment} disabled={busy} />
+            )}
+            <View style={[s.row, { alignItems: "flex-end" }]}>
+              <View style={s.grow}>
+                <Field
+                  inputRef={composerInput}
+                  value={body}
+                  onChangeText={setBody}
+                  disabled={busy}
+                  placeholder={`Message ${editing?.topic || topic}…`}
+                  multiline
+                  compact
+                  maxLength={4000}
+                />
+              </View>
+              <Button
+                title={busy ? "…" : editing ? "Save" : "Send"}
+                disabled={busy || attachment.busy || !body.trim()}
+                onPress={send}
+              />
+            </View>
+          </>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
