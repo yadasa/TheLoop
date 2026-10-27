@@ -260,3 +260,6 @@ Shared native controls now reserve at least44px height/width while preserving la
 
 ## October 27 — conference date validation
 The backend now applies strict calendar-day validation before creating a conference, matching the Expo form. Impossible dates such as February30 or a non-leap February29 are rejected instead of rolling into March; reversed ranges remain invalid. Leap dates and same-day ranges remain supported. Functions types and130 tests pass, including transactional rejection without storing records. Awaiting CI/deployment; existing live AfroTech dates are unchanged.
+
+## October 27 — read receipts preserve posting capacity
+Automatic channel/DM/Squad read updates now share a separate server-owned rate allowance (120/minute,10,000/UTC day). Member actions retain45/minute and2,000/day; retries consume one allowance. A busy chat can no longer spend the member's posting budget on read markers. Functions types and131 units pass; both real Auth/Firestore/Functions/Storage suites pass34/34, including independent limits and retry behavior. Integration actors are now referenced by their named role instead of creation order. Awaiting full CI before executeCommand deployment.

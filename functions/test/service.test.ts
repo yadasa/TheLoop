@@ -315,6 +315,26 @@ test("idempotent retry creates only one message and consumes one rate-limit unit
   );
   assert.equal(db.get("users/alice/system/rate").count, 1);
 });
+test("automatic read markers have a bounded budget separate from member actions", async () => {
+  const db = await database();
+  const bucket = Math.floor(Date.parse(now) / 60000), day = now.slice(0, 10);
+  db.documents.set("users/alice/system/readRate", { bucket, count: 120, day, dailyCount: 120 });
+  await assert.rejects(() => db.command("alice", { type: "channel.read", channelId: "lobby" }), /Read status/);
+  await db.command("alice", { type: "preferences.update", preferences: { quietHours: false } });
+  assert.equal(db.get("users/alice/system/rate").count, 1);
+  db.documents.set("users/alice/system/rate", { bucket, count: 45, day, dailyCount: 2000 });
+  db.documents.set("users/alice/system/readRate", { bucket, count: 0, day, dailyCount: 0 });
+  await db.command("alice", { type: "channel.read", channelId: "lobby" }, "read-once");
+  const retry = await db.command("alice", { type: "channel.read", channelId: "lobby" }, "read-once");
+  assert.equal(retry.duplicate, true);
+  await db.command("alice", { type: "dm.read", userId: "bob" });
+  assert.equal(db.get("users/alice/system/readRate").count, 2);
+  assert.equal(db.get("users/alice/system/rate").count, 45);
+  await assert.rejects(() => db.command("alice", { type: "preferences.update", preferences: { quietHours: true } }), /try again in a minute/);
+  db.documents.set("users/alice/system/readRate", { bucket, count: 0, day, dailyCount: 10000 });
+  await assert.rejects(() => db.command("alice", { type: "channel.read", channelId: "lobby" }), /Daily read status limit/);
+});
+
 test("private-channel membership and authorship are checked server-side", async () => {
   const db = await database();
   await assert.rejects(

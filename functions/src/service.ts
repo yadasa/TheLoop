@@ -155,10 +155,12 @@ export async function execute(
   const receiptPath = `users/${actor.uid}/requests/${requestId}`;
   const receipt = await store.get(receiptPath);
   if (receipt) return { ...receipt.result, duplicate: true };
+  const readOnlyActivity = ["channel.read", "dm.read", "squad.read"].includes(commandType);
+  const ratePath = `users/${actor.uid}/system/${readOnlyActivity ? "readRate" : "rate"}`;
   const [user, profile, rate, signals] = await Promise.all([
     store.get(`users/${actor.uid}`),
     store.get(`profiles/${actor.uid}`),
-    store.get(`users/${actor.uid}/system/rate`),
+    store.get(ratePath),
     store.get(`trustSignals/${actor.uid}`),
   ]);
   assert(
@@ -170,16 +172,16 @@ export async function execute(
   const bucket = Math.floor(Date.parse(now) / 60000);
   const count = rate?.bucket === bucket ? Number(rate.count || 0) : 0;
   assert(
-    count < 45,
+    count < (readOnlyActivity ? 120 : 45),
     "resource-exhausted",
-    "Take a breath. Please try again in a minute.",
+    readOnlyActivity ? "Read status could not update yet. Please try again in a minute." : "Too many actions. Please try again in a minute.",
   );
   const day = now.slice(0, 10);
   const dailyCount = rate?.day === day ? Number(rate.dailyCount || 0) : 0;
   assert(
-    dailyCount < 2000,
+    dailyCount < (readOnlyActivity ? 10000 : 2000),
     "resource-exhausted",
-    "Daily activity limit reached. Please try again tomorrow.",
+    readOnlyActivity ? "Daily read status limit reached. Please try again tomorrow." : "Daily activity limit reached. Please try again tomorrow.",
   );
   const entityId = requestId;
   let result: Doc = { ok: true, id: entityId };
@@ -1997,7 +1999,7 @@ export async function execute(
       });
     }
   }
-  store.set(`users/${actor.uid}/system/rate`, {
+  store.set(ratePath, {
     bucket,
     count: count + 1,
     day,

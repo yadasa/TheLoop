@@ -65,6 +65,7 @@ test(
     const db = getFirestore(app),
       auth = getAuth(app);
     const actors: TestActor[] = [];
+    const actorsByLabel = new Map<string, TestActor>();
     const created = new Map<string, Set<string>>();
     let sequence = 0;
     const nextId = () => `qa-${runId}-${++sequence}`;
@@ -100,6 +101,7 @@ test(
       );
       const actor = { uid: String(body.localId), token: String(body.idToken) };
       actors.push(actor);
+      actorsByLabel.set(label, actor);
       await callable(actor, "bootstrap", { name: `Integration ${label}` });
       return actor;
     }
@@ -289,6 +291,26 @@ test(
           );
         },
       );
+
+      await t.test("automatic read budgets do not exhaust posting capacity", async () => {
+        const reader = await createActor("readlimits");
+        const publicRoom = remember("channels", nextId());
+        await db.doc(`channels/${publicRoom}`).set({ id: publicRoom, conferenceId: conference, name: "Read limit fixture", visibility: "public", topics: ["General"], memberIds: [] });
+        const today = new Date().toISOString().slice(0, 10);
+        await db.doc(`users/${reader.uid}/system/readRate`).set({ day: today, dailyCount: 10000, count: 0, bucket: 0 });
+        await denied(command(reader, { type: "channel.read", channelId: publicRoom, topic: "General" }), ["RESOURCE_EXHAUSTED"]);
+        await command(reader, { type: "preferences.update", preferences: { quietHours: false } });
+        assert.equal((await db.doc(`users/${reader.uid}/system/rate`).get()).get("dailyCount"), 1);
+        await db.doc(`users/${reader.uid}/system/rate`).set({ day: today, dailyCount: 2000, count: 0, bucket: 0 });
+        await db.doc(`users/${reader.uid}/system/readRate`).delete();
+        const requestId = nextId();
+        await command(reader, { type: "channel.read", channelId: publicRoom, topic: "General" }, requestId);
+        const retry = await command(reader, { type: "channel.read", channelId: publicRoom, topic: "General" }, requestId);
+        assert.equal(retry.duplicate, true);
+        assert.equal((await db.doc(`users/${reader.uid}/system/readRate`).get()).get("dailyCount"), 1);
+        assert.equal((await db.doc(`users/${reader.uid}/system/rate`).get()).get("dailyCount"), 2000);
+        await denied(command(reader, { type: "preferences.update", preferences: { quietHours: true } }), ["RESOURCE_EXHAUSTED"]);
+      });
 
       await t.test("real reply alerts honor recipient mutes and revoke access after leaving a private chat", async () => {
         const parent = remember("messages", (await command(bob, { type: "message.send", channelId: channel, topic: "General", body: "Earlier private contribution" })).id);
@@ -1197,7 +1219,7 @@ test(
               type: "squad.message.send",
               squadId: squad,
               body: "Cannot forge a recipient.",
-              audienceIds: [actors[2].uid],
+              audienceIds: [actorsByLabel.get("outsider")!.uid],
             }),
             ["INVALID_ARGUMENT"],
           );
@@ -1254,7 +1276,7 @@ test(
               (record: Record<string, unknown>) => record.authorId === bob.uid,
             ),
           );
-          const moderator = actors[2];
+          const moderator = actorsByLabel.get("outsider")!;
           assert.equal(
             (await readDocument(moderator, `squadMessages/${message}`)).response
               .status,
@@ -1377,7 +1399,7 @@ test(
             }),
           );
           await denied(
-            command(actors[2], { type: "dm.delete", messageId: message }),
+            command(actorsByLabel.get("outsider")!, { type: "dm.delete", messageId: message }),
           );
           await denied(
             command(alice, {
@@ -1485,10 +1507,10 @@ test(
             [a, b].sort().join("~");
           for (let n = 0; n < 1205; n++) {
             for (const [sender, ids] of [
-              [actors[2], unrelated],
+              [actorsByLabel.get("outsider")!, unrelated],
               [alice, selected],
             ] as const) {
-              if (sender === actors[2] && n >= 205) continue;
+              if (sender === actorsByLabel.get("outsider")! && n >= 205) continue;
               const id = remember("directMessages", nextId());
               ids.push(id);
               if (writes && writes % 400 === 0) batches.push(db.batch());
@@ -1692,7 +1714,7 @@ test(
           assert.equal(
             (
               await readDocument(
-                actors[2],
+                actorsByLabel.get("outsider")!,
                 `directConversations/${pair(alice.uid)}`,
               )
             ).response.status,
