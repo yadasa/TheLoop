@@ -1,3 +1,4 @@
+import { PostDrafts, postDraftTarget, type PostDraft } from "./postDrafts";
 import { ImageDrafts } from "./imageDrafts";
 import { removeCreatedImage } from "./mediaFiles";
 import React, {
@@ -19,6 +20,7 @@ import {
 const DraftContext = createContext<{
   book: ConversationDrafts;
   images: ImageDrafts;
+  posts: PostDrafts;
   state: () => LoopState;
 } | null>(null);
 export function DraftProvider({ children }: { children: React.ReactNode }) {
@@ -36,9 +38,13 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
       }),
     [state.currentUserId],
   );
+  const posts = useMemo(
+    () => new PostDrafts(state.currentUserId),
+    [state.currentUserId],
+  );
   const context = useMemo(
-    () => ({ book, images, state: () => current.current }),
-    [book, images],
+    () => ({ book, images, posts, state: () => current.current }),
+    [book, images, posts],
   );
   useEffect(() => {
     book.prune(state);
@@ -46,10 +52,11 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
   }, [book, images, state]);
   useEffect(
     () => () => {
+      posts.clear();
       book.clear();
       images.clear();
     },
-    [book, images],
+    [book, images, posts],
   );
   return (
     <DraftContext.Provider value={context}>
@@ -105,6 +112,14 @@ export function useSessionDrafts() {
       hasReply: !!value.reply,
       hasImage: false,
     });
+  const post = context.posts.read(state.currentUserId);
+  if (post)
+    entries.set(slot(postDraftTarget), {
+      target: postDraftTarget,
+      body: [post.title, post.body].filter(Boolean).join("\n"),
+      hasReply: false,
+      hasImage: false,
+    });
   for (const target of context.images.targets(state)) {
     const previous = entries.get(slot(target));
     entries.set(slot(target), {
@@ -117,8 +132,25 @@ export function useSessionDrafts() {
   return {
     entries: [...entries.values()],
     remove: (target: DraftTarget) => {
+      if (target.kind === "post") context.posts.clear();
       context.book.remove(target);
       context.images.remove(target);
     },
   };
+}
+
+export function usePostDraft() {
+  const context = useContext(DraftContext);
+  if (!context) throw new Error("Post drafts require the signed-in workspace.");
+  const { posts, state } = context;
+  const initial = useMemo(
+    () => posts.read(state().currentUserId),
+    [posts, state],
+  );
+  const remember = useCallback(
+    (value: PostDraft) => posts.remember(state().currentUserId, value),
+    [posts, state],
+  );
+  const clear = useCallback(() => posts.clear(), [posts]);
+  return { initial, remember, clear };
 }

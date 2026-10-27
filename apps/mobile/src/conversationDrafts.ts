@@ -1,7 +1,7 @@
 import type { LoopState, Message } from "@theloop/core";
 
 export type DraftTarget = {
-  kind: "channel" | "dm" | "squad";
+  kind: "channel" | "dm" | "squad" | "post";
   id: string;
   topic?: string;
 };
@@ -19,6 +19,7 @@ const key = (target: DraftTarget) =>
 
 export function draftAllowed(state: LoopState, target: DraftTarget): boolean {
   if (!state.currentUserId) return false;
+  if (target.kind === "post") return target.id === "new-post";
   if (target.kind === "dm")
     return !state.preferences.blockedIds.includes(target.id);
   if (target.kind === "squad")

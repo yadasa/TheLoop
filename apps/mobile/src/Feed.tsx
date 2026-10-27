@@ -1,4 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { usePostDraft, useSessionDrafts } from "./DraftProvider";
+import { defaultPollChoices, postDraftTarget } from "./postDrafts";
+import { useNavigationBusy } from "./useNavigationBusy";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Linking, ScrollView, Share, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
 import { safeURL, type Post, type Comment } from "@theloop/core";
@@ -38,6 +41,7 @@ import {
 } from "./Media";
 
 export function Feed({ nav }: { nav: Nav }) {
+  const sessionDrafts = useSessionDrafts();
   const { state, hasMore, loadMore, loadSavedPosts } = useLoop();
   const [filter, setFilter] = useState("for-you");
   const [sort, setSort] = useState("Hot");
@@ -95,6 +99,13 @@ export function Feed({ nav }: { nav: Nav }) {
       showsVerticalScrollIndicator={false}
       contentContainerStyle={s.content}
     >
+      {sessionDrafts.entries.some((entry) => entry.target.kind === "post") && (
+        <Button
+          secondary
+          title="Continue your post draft"
+          onPress={() => nav.open({ kind: "compose" })}
+        />
+      )}
       <View style={s.between}>
         <View>
           <Text style={s.overline}>YOUR FEED</Text>
@@ -1073,24 +1084,51 @@ export function Compose({
   initialCommunityId?: string;
 }) {
   const { state } = useLoop();
-  const attachment = useImageAttachment(nav);
+  const draft = usePostDraft();
+  const attachment = useImageAttachment(nav, postDraftTarget);
+  const published = useRef(false);
   const [communityId, setCommunity] = useState(
-    (initialCommunityId &&
-    state.communities.some((c) => c.id === initialCommunityId)
-      ? initialCommunityId
-      : "") ||
+    draft.initial?.communityId ||
+      (initialCommunityId &&
+      state.communities.some((c) => c.id === initialCommunityId)
+        ? initialCommunityId
+        : "") ||
       state.preferences.joinedCommunityIds[0] ||
       state.communities[0]?.id ||
       "",
   );
-  const [kind, setKind] = useState<Post["kind"]>("discussion");
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [url, setUrl] = useState("");
+  const [kind, setKind] = useState<Post["kind"]>(
+    draft.initial?.kind || "discussion",
+  );
+  const [title, setTitle] = useState(draft.initial?.title || "");
+  const [body, setBody] = useState(draft.initial?.body || "");
+  const [url, setUrl] = useState(draft.initial?.url || "");
   const [options, setOptions] = useState(
-    "Coffee meetup\nDinner\nA panel discussion",
+    draft.initial?.options ?? defaultPollChoices,
   );
   const [busy, setBusy] = useState(false);
+  useNavigationBusy(nav, "compose-post", busy || attachment.busy);
+  useEffect(() => {
+    if (!published.current)
+      draft.remember({
+        communityId,
+        kind,
+        title,
+        body,
+        url,
+        options,
+        hasImage: !!attachment.choice,
+      });
+  }, [
+    communityId,
+    kind,
+    title,
+    body,
+    url,
+    options,
+    attachment.choice,
+    draft.remember,
+  ]);
   const selectedCommunity = state.communities.find(
     (community) => community.id === communityId,
   );
@@ -1100,7 +1138,10 @@ export function Compose({
       contentContainerStyle={s.content}
     >
       <Text style={s.title}>Create post</Text>
-      <Text style={s.body}>Choose a community, then write your post.</Text>
+      {draft.initial && <Label>DRAFT RESTORED</Label>}
+      <Text style={s.small}>
+        Your post and photo stay in Drafts while the app is open. Restarting or signing out clears them.
+      </Text>
       {!selectedCommunity && (
         <View style={s.card}>
           <Text style={s.h3}>
@@ -1233,6 +1274,8 @@ export function Compose({
             )
             .then((ok) => {
               if (ok) {
+                published.current = true;
+                draft.clear();
                 attachment.clear();
                 nav.closeIfTop("compose");
               }
@@ -1246,6 +1289,30 @@ export function Compose({
             )
             .finally(() => setBusy(false));
         }}
+      />
+      <Button
+        secondary
+        title="Discard post draft"
+        disabled={busy || attachment.busy}
+        onPress={() =>
+          nav.alert(
+            "Discard this post draft?",
+            "This removes the unsent title, text, poll choices and photo from this device.",
+            [
+              { text: "Keep draft", style: "cancel" },
+              {
+                text: "Discard draft",
+                style: "destructive",
+                onPress: () => {
+                  published.current = true;
+                  draft.clear();
+                  attachment.clear();
+                  nav.closeIfTop("compose");
+                },
+              },
+            ],
+          )
+        }
       />
     </ScrollView>
   );

@@ -14,38 +14,42 @@ export function SessionDrafts({ nav }: { nav: Nav }) {
       <Text style={s.overline}>NOT SENT</Text>
       <Text style={s.title}>Your drafts</Text>
       <Text style={s.body}>
-        Pick up a message or photo where you left it. These drafts stay on this
-        device while the app is open. Signing out or restarting the app clears
-        them.
+        Pick up a message, post or photo where you left it. These drafts stay on
+        this device while the app is open. Signing out or restarting the app
+        clears them.
       </Text>
       {!drafts.entries.length && (
         <Empty
-          title="No unfinished messages"
-          body="Messages and photos you leave in a conversation appear here until you send or discard them."
+          title="No unfinished drafts"
+          body="Unsent messages, posts and photos appear here until you publish or discard them."
           action="Group chats"
           onPress={() => nav.navigate("Chat")}
         />
       )}
       {drafts.entries.map(({ target, body, hasReply, hasImage }) => {
         const identity =
-          target.kind === "channel"
-            ? state.channels.find((channel) => channel.id === target.id)?.name
-            : target.kind === "squad"
-              ? state.squads.find((squad) => squad.id === target.id)?.name
-              : state.profiles.find((profile) => profile.id === target.id)
-                  ?.name ||
-                directCatalog.results.find((conversation) =>
-                  conversation.participantIds.includes(target.id),
-                )?.memberNames[target.id];
+          target.kind === "post"
+            ? "Community post"
+            : target.kind === "channel"
+              ? state.channels.find((channel) => channel.id === target.id)?.name
+              : target.kind === "squad"
+                ? state.squads.find((squad) => squad.id === target.id)?.name
+                : state.profiles.find((profile) => profile.id === target.id)
+                    ?.name ||
+                  directCatalog.results.find((conversation) =>
+                    conversation.participantIds.includes(target.id),
+                  )?.memberNames[target.id];
         const name =
           identity ||
           (target.kind === "dm" ? "Direct message" : "Conversation");
         const label =
-          target.kind === "channel"
-            ? target.topic || "Group chat"
-            : target.kind === "dm"
-              ? "Direct message"
-              : "Private Squad";
+          target.kind === "post"
+            ? "Unpublished post"
+            : target.kind === "channel"
+              ? target.topic || "Group chat"
+              : target.kind === "dm"
+                ? "Direct message"
+                : "Private Squad";
         return (
           <MotionScene
             key={JSON.stringify(target)}
@@ -75,13 +79,15 @@ export function SessionDrafts({ nav }: { nav: Nav }) {
                   title="Continue"
                   onPress={() =>
                     nav.open(
-                      target.kind === "channel"
-                        ? {
-                            kind: "channel",
-                            id: target.id,
-                            topic: target.topic,
-                          }
-                        : { kind: target.kind, id: target.id },
+                      target.kind === "post"
+                        ? { kind: "compose" }
+                        : target.kind === "channel"
+                          ? {
+                              kind: "channel",
+                              id: target.id,
+                              topic: target.topic,
+                            }
+                          : { kind: target.kind, id: target.id },
                     )
                   }
                 />

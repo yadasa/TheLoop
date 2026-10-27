@@ -86,8 +86,7 @@ export function ProfileCard({ nav }: { nav: Nav }) {
               width={dimension}
               height={dimension}
               viewBox={`0 0 ${code.size} ${code.size}`}
-              accessible={false}
-            >
+              >
               <Rect width={code.size} height={code.size} fill="#ffffff" />
               <Path d={code.path} fill="#000000" />
             </Svg>

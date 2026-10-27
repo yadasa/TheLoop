@@ -42,7 +42,7 @@ export class ImageDrafts {
     this.prune(state);
     if (!this.allowed(target, state))
       throw new Error(
-        "This conversation is no longer available. Choose the photo again in another chat.",
+        "This draft is no longer available. Choose the photo again in a new draft.",
       );
     const previous = this.entries.get(key(target));
     const bytes =
@@ -57,7 +57,7 @@ export class ImageDrafts {
       bytes > this.byteLimit
     )
       throw new Error(
-        "You have photos waiting in several chats. Send or remove one before adding another.",
+        "You have photos waiting in several drafts. Send or remove one before adding another.",
       );
     this.entries.set(key(target), { target: { ...target }, choice });
     if (previous && previous.choice.uri !== choice.uri)

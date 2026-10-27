@@ -307,7 +307,7 @@ export function ImageAttachmentPicker({
           >
             <Image
               source={{ uri: attachment.choice.uri }}
-              accessibilityLabel="Image selected for your next message"
+              accessibilityLabel="Selected image"
               style={{
                 width: 64,
                 height: 64,
@@ -328,7 +328,7 @@ export function ImageAttachmentPicker({
             </Text>
             <Text style={[s.small, { fontSize: 11 }]}>
               {attachment.retained
-                ? "Saved in this chat for this session"
+                ? "Saved in your drafts for this session"
                 : "Stays on this device until sent"}
             </Text>
           </View>
