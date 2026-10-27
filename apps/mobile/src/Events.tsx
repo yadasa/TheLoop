@@ -31,9 +31,9 @@ import { shareTargetURL } from "./sharedLinks";
 import { shareCalendarFile } from "./shareCalendar";
 
 const dayKey = (d: string | Date) => new Date(d).toLocaleDateString("en-CA");
-export function Events({ nav }: { nav: Nav }) {
+export function Events({ nav, initialScope = "all" }: { nav: Nav; initialScope?: string }) {
   const { state, hasMore, loadMore } = useLoop();
-  const [scope, setScope] = useState("all");
+  const [scope, setScope] = useState(initialScope);
   const [kind, setKind] = useState("all");
   const [mode, setMode] = useState("agenda");
   const [month, setMonth] = useState(() => {
@@ -120,7 +120,7 @@ export function Events({ nav }: { nav: Nav }) {
         {state.conferences.map((c) => (
           <Chip
             key={c.id}
-            title={c.shortName}
+            title={c.name}
             selected={scope === c.id}
             onPress={() => setScope(c.id)}
           />

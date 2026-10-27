@@ -36,6 +36,7 @@ import {
   CommunityDetail,
   CreateCommunity,
 } from "./src/Feed";
+import { ConferenceHub } from "./src/ConferenceHub";
 import { Chats, ChannelDetail } from "./src/Chat";
 import { DirectInbox } from "./src/DirectInbox";
 import { Events, EventDetail, CreateEvent, EditEvent } from "./src/Events";
@@ -466,6 +467,8 @@ function LoopApp() {
   if (!ready) return <Loading />;
   const title = (route: Route) =>
     ({
+      conference: "Conference",
+      "conference-calendar": "Conference calendar",
       post: "Post",
       community: "Community",
       "edit-post": "Edit post",
@@ -500,6 +503,10 @@ function LoopApp() {
   const renderRoute = (route: Route) => {
     const scope = state.currentUserId || "signed-out";
     switch (route.kind) {
+      case "conference-calendar":
+        return <Events key={`${scope}:${route.id}`} nav={nav} initialScope={route.id} />;
+      case "conference":
+        return <ConferenceHub key={`${scope}:${route.id}`} id={route.id} nav={nav} initialDiscover={route.discover} />;
       case "post":
         return (
           <PostDetail key={`${scope}:${route.id}`} id={route.id} nav={nav} />

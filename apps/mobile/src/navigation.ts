@@ -14,6 +14,8 @@ export type Route =
         | "squad-members";
       id: string;
     }
+  | { kind: "conference-calendar"; id: string }
+  | { kind: "conference"; id: string; discover?: boolean }
   | { kind: "channel"; id: string; topic?: string }
   | { kind: "compose"; communityId?: string }
   | {

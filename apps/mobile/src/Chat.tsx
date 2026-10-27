@@ -106,7 +106,7 @@ export function Chats({ nav }: { nav: Nav }) {
         {state.conferences.map((c) => (
           <Chip
             key={c.id}
-            title={c.shortName}
+            title={c.name}
             selected={conference === c.id}
             onPress={() => setConference(c.id)}
           />
@@ -114,9 +114,16 @@ export function Chats({ nav }: { nav: Nav }) {
       </Horizontal>
       {conference !== "all" && (
         <View style={s.between}>
-          <Text style={s.small}>
-            {state.conferences.find((c) => c.id === conference)?.city}
-          </Text>
+          <Touch
+            label="Open conference chats and events"
+            onPress={() => nav.open({ kind: "conference", id: conference })}
+            style={{ paddingVertical: 10 }}
+          >
+            <Text style={[s.small, { color: color.ink }]}>
+              {state.conferences.find((c) => c.id === conference)?.city} · View
+              conference →
+            </Text>
+          </Touch>
           <Touch
             label="Conference notification preferences"
             onPress={() =>
@@ -195,9 +202,11 @@ export function Chats({ nav }: { nav: Nav }) {
                     <Text style={s.small}>
                       {
                         state.conferences.find((f) => f.id === c.conferenceId)
-                          ?.shortName
-                      }{" "}
-                      · {c.members.toLocaleString()} people
+                          ?.name
+                      }
+                      {c.members > 0
+                        ? ` · ${c.members.toLocaleString()} people`
+                        : ""}
                     </Text>
                   </View>
                 </View>

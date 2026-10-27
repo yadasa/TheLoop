@@ -21,6 +21,11 @@ import {
   Touch,
 } from "./ui";
 import type { Nav } from "./navigation";
+import {
+  featuredConference,
+  conferenceDateRange,
+  conferenceTiming,
+} from "./conferencePresentation";
 import { useSubscriptionPicker } from "./SubscriptionPicker";
 import { DetailState } from "./DetailState";
 import { shareTargetURL } from "./sharedLinks";
@@ -79,8 +84,9 @@ export function Feed({ nav }: { nav: Nav }) {
         ),
     [state.posts, state.preferences, filter, sort],
   );
+  const spotlight = featuredConference(state);
   const upcoming = state.events
-    .filter((e) => new Date(e.endAt) > new Date())
+    .filter((e) => e.status !== "cancelled" && new Date(e.endAt) > new Date())
     .sort((a, b) => a.startAt.localeCompare(b.startAt))[0];
   const unread = state.notifications.filter(
     (n) => n.userId === state.currentUserId && !n.read,
@@ -192,7 +198,9 @@ export function Feed({ nav }: { nav: Nav }) {
           }}
         />
         <Text style={[s.overline, { color: color.heroMuted }]}>
-          CONFERENCE CHATS AND COMMUNITIES
+          {spotlight
+            ? conferenceTiming(spotlight)
+            : "CONFERENCE CHATS AND COMMUNITIES"}
         </Text>
         <Text
           style={{
@@ -204,18 +212,44 @@ export function Feed({ nav }: { nav: Nav }) {
             maxWidth: 235,
           }}
         >
-          Group chats,{`\n`}organized by topic.
+          {spotlight ? (
+            spotlight.name
+          ) : (
+            <>Group chats,{`\n`}organized by topic.</>
+          )}
         </Text>
+        {spotlight && (
+          <View style={{ gap: 6 }}>
+            <Text style={{ color: color.onHero, fontSize: 16 }}>
+              {spotlight.city}
+            </Text>
+            <Text style={{ color: color.heroMuted, fontSize: 12 }}>
+              {conferenceDateRange(spotlight)}
+            </Text>
+          </View>
+        )}
         <View style={[s.row, { flexWrap: "wrap", gap: 18 }]}>
           <Touch
-            label="Open group chats"
-            onPress={() => nav.navigate("Chat")}
+            label={
+              spotlight
+                ? `Explore ${spotlight.name} chats and events`
+                : "Open group chats"
+            }
+            onPress={() =>
+              spotlight
+                ? nav.open({
+                    kind: "conference",
+                    id: spotlight.id,
+                    discover: true,
+                  })
+                : nav.navigate("Chat")
+            }
             style={{ minHeight: 44, justifyContent: "center" }}
           >
             <Text
               style={{ color: color.onHero, fontSize: 13, fontWeight: "600" }}
             >
-              Open group chats
+              {spotlight ? "Find the group chat →" : "Open group chats"}
             </Text>
           </Touch>
           <Touch
