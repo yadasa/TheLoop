@@ -10,7 +10,12 @@ import {
 } from "react-native";
 import { useLoop } from "@theloop/client";
 import type { Message, Subscription } from "@theloop/core";
-import { channelUnread, canManagePins, pinnedIds } from "@theloop/core";
+import {
+  channelUnread,
+  canManagePins,
+  pinnedIds,
+  savedMessages,
+} from "@theloop/core";
 import {
   Avatar,
   AmbientGradient,
@@ -108,6 +113,11 @@ export function Chats({ nav }: { nav: Nav }) {
           <Text style={s.small}>Pick up where you left off →</Text>
         </Touch>
       )}
+      <Button
+        secondary
+        title={`Saved messages${savedMessages(state).length ? ` · ${savedMessages(state).length}` : ""}`}
+        onPress={() => nav.open({ kind: "saved-messages" })}
+      />
       <Field
         value={search}
         onChangeText={setSearch}
@@ -923,6 +933,40 @@ export function ChannelDetail({
                     setEditing(null);
                     setActionMessage(null);
                     requestAnimationFrame(() => composerInput.current?.focus());
+                  }}
+                />
+                <Button
+                  secondary
+                  disabled={locked}
+                  title={
+                    savedMessages(state).some(
+                      (entry) => entry.messageId === actionMessage.id,
+                    )
+                      ? "Remove from saved"
+                      : "Save message"
+                  }
+                  onPress={async () => {
+                    const saved = !savedMessages(state).some(
+                      (entry) => entry.messageId === actionMessage.id,
+                    );
+                    setBusy(true);
+                    try {
+                      if (
+                        await nav.run(
+                          {
+                            type: "message.save",
+                            messageId: actionMessage.id,
+                            saved,
+                          },
+                          saved
+                            ? "Saved to your messages"
+                            : "Removed from saved messages",
+                        )
+                      )
+                        setActionMessage(null);
+                    } finally {
+                      setBusy(false);
+                    }
                   }}
                 />
                 {canManagePins(state, channel, role) && (

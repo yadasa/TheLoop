@@ -1,4 +1,5 @@
 import { SessionDrafts } from "./src/SessionDrafts";
+import { SavedMessages } from "./src/SavedMessages";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -494,6 +495,7 @@ function LoopApp() {
       dm: "Direct message",
       inbox: "Direct messages",
       drafts: "Drafts",
+      "saved-messages": "Saved messages",
       compose: "Create post",
       communities: "Your communities",
       "create-community": "Create community",
@@ -564,6 +566,8 @@ function LoopApp() {
         return (
           <DirectChat key={`${scope}:${route.id}`} id={route.id} nav={nav} />
         );
+      case "saved-messages":
+        return <SavedMessages nav={nav} />;
       case "drafts":
         return <SessionDrafts nav={nav} />;
       case "inbox":

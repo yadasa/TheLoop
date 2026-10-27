@@ -4,6 +4,16 @@ import { initialState, type LoopState } from "@theloop/core";
 import { restorePreview } from "./index";
 import { encodeImageBase64 } from "./media";
 
+test("saved message references survive reload and reject malformed or oversized lists", () => {
+  const state = initialState();
+  const entry = { messageId: "saved", channelId: "room", savedAt: "2026-10-27T12:00:00Z" };
+  const restore = (savedMessages: unknown) => restorePreview({ ...state, preferences: { ...state.preferences, savedMessages } } as LoopState);
+  assert.deepEqual(restore([entry]).preferences.savedMessages, [entry]);
+  for (const invalid of [[null], [{ ...entry, channelId: "../private" }], [{ ...entry, savedAt: "invalid" }], Array(101).fill(entry), "saved"]) {
+    assert.throws(() => restore(invalid), /Invalid saved message/);
+  }
+});
+
 test("saved previews from before Squads restore with empty private collections", () => {
   const legacy = structuredClone(initialState()) as unknown as Record<string, unknown>;
   delete legacy.squads;

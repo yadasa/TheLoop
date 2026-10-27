@@ -92,6 +92,21 @@ test("message replies stay in their authorized channel and original topic", asyn
   assert.equal(replyNotice?.actorId, "alice");
 });
 
+test("saved chat messages store only private references and enforce access, capacity and explicit removal", async () => {
+  const db = await database();
+  db.documents.set("messages/save", { id: "save", channelId: "lobby", topic: "General", authorId: "bob", body: "Never copied into preferences" });
+  await db.command("alice", { type: "message.save", messageId: "save", saved: true });
+  await db.command("alice", { type: "message.save", messageId: "save", saved: true });
+  assert.deepEqual(db.get("users/alice").preferences.savedMessages, [{ messageId: "save", channelId: "lobby", savedAt: now }]);
+  assert.deepEqual(db.get("users/bob").preferences.savedMessages, []);
+  db.documents.set("messages/private-save", { id: "private-save", channelId: "private", topic: "General", authorId: "alice" });
+  await assert.rejects(db.command("bob", { type: "message.save", messageId: "private-save", saved: true }), /private|access|member/i);
+  db.documents.set("users/alice", { ...db.get("users/alice"), preferences: { ...db.get("users/alice").preferences, savedMessages: Array.from({ length: 100 }, (_, i) => ({ messageId: `saved-${i}`, channelId: "lobby", savedAt: now })) } });
+  await assert.rejects(db.command("alice", { type: "message.save", messageId: "save", saved: true }), /100 saved/);
+  await db.command("alice", { type: "message.save", messageId: "saved-0", saved: false });
+  assert.equal(db.get("users/alice").preferences.savedMessages.length, 99);
+});
+
 test("notification batch reads affect only selected owned updates and reject mixed ownership atomically", async () => {
   const db = await database();
   for (const [id, userId] of [["one", "alice"], ["two", "alice"], ["three", "bob"]]) db.documents.set(`notifications/${id}`, { id, userId, read: false, unreadUserId: userId });

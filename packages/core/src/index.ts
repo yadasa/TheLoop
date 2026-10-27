@@ -9,3 +9,4 @@ export * from './links';
 export * from './eventForm';
 export * from './directConversations';
 export * from './pins';
+export * from './savedMessages';

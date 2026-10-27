@@ -290,6 +290,23 @@ test(
         },
       );
 
+      await t.test("saved messages remain private references and can be removed after membership loss", async () => {
+        await command(bob, { type: "message.save", messageId: firstMessage, saved: true });
+        await command(bob, { type: "message.save", messageId: firstMessage, saved: true });
+        const saved = (await db.doc(`users/${bob.uid}`).get()).get("preferences.savedMessages");
+        assert.equal(saved.length, 1);
+        assert.deepEqual(Object.keys(saved[0]).sort(), ["channelId", "messageId", "savedAt"]);
+        assert.equal(saved[0].messageId, firstMessage);
+        assert.equal((await readDocument(alice, `users/${bob.uid}`)).response.status, 403);
+        await command(alice, { type: "channel.member", channelId: channel, userId: bob.uid, add: false });
+        await denied(command(bob, { type: "message.save", messageId: firstMessage, saved: true }));
+        assert.equal((await readDocument(bob, `messages/${firstMessage}`)).response.status, 403);
+        await command(bob, { type: "message.save", messageId: firstMessage, saved: false });
+        assert.deepEqual((await db.doc(`users/${bob.uid}`).get()).get("preferences.savedMessages"), []);
+        await command(alice, { type: "channel.member", channelId: channel, userId: bob.uid, add: true });
+        for (const actor of [alice, bob]) await db.doc(`users/${actor.uid}/system/rate`).delete();
+      });
+
       await t.test("moderator pins persist through the real callable and reject ordinary members", async () => {
         await denied(command(bob, { type: "message.pin", channelId: channel, messageId: firstMessage, pinned: true }));
         const pinRequest = remember("moderationAudit", nextId());

@@ -4,6 +4,7 @@ import { connected, safeURL } from "./selectors";
 import { applySquadCommand } from "./squads";
 import { applyEventCommand } from "./events";
 import { bindPreviewImage, prunePreviewImages } from "./previewImages";
+import { savedMessages, visibleSavedMessage } from "./savedMessages";
 const clean = (v: string, max: number, required = true) => {
   const value = v.trim();
   if ((required && !value) || value.length > max)
@@ -136,6 +137,18 @@ export function applyCommand(
           : {}),
         ...(cmd.replyTo ? { replyTo: cmd.replyTo } : {}),
       });
+      break;
+    }
+    case "message.save": {
+      const saved = savedMessages(s);
+      if (!cmd.saved) { s.preferences.savedMessages = saved.filter(entry => entry.messageId !== cmd.messageId); break; }
+      const message = s.messages.find(item => item.id === cmd.messageId);
+      const channel = s.channels.find(item => item.id === message?.channelId);
+      if (!message || !channel || !visibleSavedMessage(s, channel, message)) throw new Error("This message is unavailable.");
+      if (!saved.some(entry => entry.messageId === message.id)) {
+        if (saved.length >= 100) throw new Error("You have 100 saved messages. Remove one before saving another.");
+        s.preferences.savedMessages = [{ messageId: message.id, channelId: channel.id, savedAt: ctx.now }, ...saved];
+      }
       break;
     }
     case "message.pin": {

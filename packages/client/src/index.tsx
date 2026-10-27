@@ -15,6 +15,10 @@ import {
   applyCommand,
   pinnedIds,
   visiblePinnedMessages,
+  savedMessages,
+  visibleSavedMessage,
+  type SavedMessage,
+  type Channel,
   initialState,
   emptyState,
   defaultPreferences,
@@ -36,6 +40,8 @@ import {
 import { documentIdBatches, matchesDirectory, mergeMessages, mergeSquadInvites, normalizeDirectoryQuery, previewChannelIds, revokePrivateProfiles, visibleSquadMessages } from "./data";
 export { matchesDirectory } from "./data";
 import { MessagePages } from "./messagePages";
+import { SavedMessageWindow, type SavedMessageRow } from "./savedMessageWindow";
+export type { SavedMessageRow } from "./savedMessageWindow";
 import { ReplyThread, type ReplyThreadHandle, type ReplyThreadState } from "./replyThread";
 export { emptyReplyThread, type ReplyThreadHandle, type ReplyThreadState } from "./replyThread";
 import { canSearchChannel, filterHistoryResults, validMessageSearch, type HistorySearchRequest, type HistorySearchPage } from "./historySearch";
@@ -101,6 +107,7 @@ type LoopContextValue = {
   watchConversation(channelId: string | null, topic?: string): void;
   loadOlderMessages(): Promise<void>;
   readChannelSearchPage(request: HistorySearchRequest): Promise<HistorySearchPage>;
+  watchSavedMessages(references: SavedMessage[], publish: (rows: SavedMessageRow[]) => void): () => void;
   readPinnedMessages(channelId: string): Promise<Message[]>;
   watchReplyThread(channelId: string, messageId: string, publish: (state: ReplyThreadState) => void, failure: (error: unknown) => void): ReplyThreadHandle;
   readPrivateSearchPage(request: PrivateHistoryRequest): Promise<HistorySearchPage<PrivateSearchHit>>;
@@ -166,6 +173,7 @@ export function restorePreview(saved: LoopState): LoopState {
     if (message.conversationId !== undefined && message.conversationId !== directConversationId(message.fromId, message.toId)) throw new Error("Invalid saved direct-message conversation.");
   }
   if (saved.directConversations !== undefined && (!Array.isArray(saved.directConversations) || saved.directConversations.some(conversation => !parseDirectConversation(conversation, conversation.id, saved.currentUserId)))) throw new Error("Invalid saved private conversation catalog.");
+  if (preferences.savedMessages !== undefined && (!Array.isArray(preferences.savedMessages) || preferences.savedMessages.length > 100 || preferences.savedMessages.some(entry => !object(entry) || !safeMediaId(entry.messageId) || !safeMediaId(entry.channelId) || typeof entry.savedAt !== "string" || !Number.isFinite(Date.parse(entry.savedAt))))) throw new Error("Invalid saved message references.");
   if (saved.previewImages !== undefined) {
     if (!object(saved.previewImages) || Object.keys(saved.previewImages).length > 64) throw new Error("Invalid saved preview images.");
     let total = 0;
@@ -363,6 +371,36 @@ export function LoopProvider({
       thread.start();
     }).catch(fail);
     return { close: () => { closed = true; thread?.close(); }, loadMore: async () => { if (current()) await thread?.loadMore(); } };
+  };
+  const watchSavedMessages = (references: SavedMessage[], publish: (rows: SavedMessageRow[]) => void): (() => void) => {
+    const userId = stateRef.current.currentUserId, generation = transportGeneration.current, requestMode = modeRef.current;
+    let closed = false, window: SavedMessageWindow | undefined;
+    const current = () => !closed && !!userId && generation === transportGeneration.current && requestMode === modeRef.current && stateRef.current.currentUserId === userId && references.length <= 20 && references.every(ref => savedMessages(stateRef.current).some(saved => saved.messageId === ref.messageId && saved.channelId === ref.channelId));
+    const fail = () => { if (closed) return; if (current()) publish(references.map(reference => ({ reference, status: "error" }))); closed = true; window?.close(); };
+    const common = { references, userId, visible: (channel: Channel, message: Message) => visibleSavedMessage(stateRef.current, channel, message), publish: (rows: SavedMessageRow[]) => { if (current()) publish(rows); } };
+    if (!current()) fail();
+    else if (requestMode === "demo") {
+      window = new SavedMessageWindow({ ...common,
+        subscribeChannel: (id, next) => { next(stateRef.current.channels.find(channel => channel.id === id) || null); return () => {}; },
+        subscribeMessages: (id, ids, next) => { next(stateRef.current.messages.filter(message => message.channelId === id && ids.includes(message.id))); return () => {}; },
+      }); window.start();
+    } else void liveCloud().then(({ sdk, c }) => {
+      const valid = () => current() && readyRef.current && c.auth.currentUser?.uid === userId;
+      if (!valid()) { fail(); return; }
+      window = new SavedMessageWindow({ ...common,
+        subscribeChannel: (id, next, error) => sdk.onSnapshot(sdk.doc(c.db, "channels", id), { includeMetadataChanges: true }, snapshot => {
+          if (!valid()) { fail(); return; }
+          if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+          next(snapshot.exists() ? { ...snapshot.data(), id: snapshot.id } as Channel : null);
+        }, error),
+        subscribeMessages: (id, ids, next, error) => sdk.onSnapshot(sdk.pinnedMessageQuery(c.db, id, ids), { includeMetadataChanges: true }, snapshot => {
+          if (!valid()) { fail(); return; }
+          if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+          next(snapshot.docs.map(record => ({ ...record.data(), id: record.id }) as Message));
+        }, error),
+      }); window.start();
+    }).catch(fail);
+    return () => { closed = true; window?.close(); };
   };
   const readPinnedMessages = async (channelId: string): Promise<Message[]> => {
     const userId = stateRef.current.currentUserId, generation = transportGeneration.current, requestMode = modeRef.current;
@@ -2022,6 +2060,7 @@ export function LoopProvider({
         loadOlderMessages,
         readChannelSearchPage,
         readPinnedMessages,
+        watchSavedMessages,
         watchReplyThread,
         readPrivateSearchPage,
         history,

@@ -759,6 +759,24 @@ export async function execute(
       // Sending a message deliberately does not subscribe a muted/hidden channel or topic.
       break;
     }
+    case "message.save": {
+      commandFields(command, ["type", "messageId", "saved"]);
+      const messageId = id(command.messageId);
+      assert(typeof command.saved === "boolean", "invalid-argument", "Choose whether to save this message.");
+      const saved = prefs.savedMessages || [];
+      if (!command.saved) prefs.savedMessages = saved.filter((entry: Doc) => entry.messageId !== messageId);
+      else {
+        const message = await requireDoc("messages", messageId);
+        const channel = await channelAccess(message.channelId);
+        assert(!prefs.blockedIds.includes(message.authorId) && prefs.subscriptions[channel.conferenceId] !== "hidden" && prefs.subscriptions[channel.id] !== "hidden" && prefs.subscriptions[`${channel.id}:${message.topic}`] !== "hidden", "permission-denied", "This message is unavailable.");
+        if (!saved.some((entry: Doc) => entry.messageId === messageId)) {
+          assert(saved.length < 100, "resource-exhausted", "You have 100 saved messages. Remove one before saving another.");
+          prefs.savedMessages = [{ messageId, channelId: channel.id, savedAt: now }, ...saved];
+        }
+      }
+      savePreferences();
+      break;
+    }
     case "message.pin": {
       commandFields(command, ["type", "channelId", "messageId", "pinned"]);
       assert(typeof command.pinned === "boolean", "invalid-argument", "Choose whether to pin or unpin this message.");

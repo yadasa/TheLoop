@@ -94,6 +94,7 @@ export function defaultPreferences(): Doc {
     followingIds: [],
     blockedIds: [],
     savedPostIds: [],
+    savedMessages: [],
     readChannels: {},
     squadReadAt: {},
     squadMutedIds: [],
