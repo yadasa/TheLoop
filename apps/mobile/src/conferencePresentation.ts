@@ -36,7 +36,10 @@ export function conferenceTiming(
   const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 12);
   const days = Math.round((start.getTime() - today) / 86_400_000);
   if (today > end.getTime()) return "PAST CONFERENCE";
-  if (days <= 0) return "HAPPENING NOW";
+  if (days <= 0)
+    return end.getTime() - start.getTime() > 30 * 86_400_000
+      ? "ONGOING"
+      : "HAPPENING NOW";
   if (days === 1) return "STARTS TOMORROW";
   return days <= 30 ? `IN ${days} DAYS` : "COMING UP";
 }
@@ -70,11 +73,19 @@ export function featuredConference(
       );
     })
     .sort((a, b) => {
+      // A year-round community should not permanently displace a dated conference.
+      const extended = (conference: Conference) =>
+        calendarDay(conference.endDate)!.getTime() -
+          calendarDay(conference.startDate)!.getTime() >
+        30 * 86_400_000
+          ? 1
+          : 0;
       const active = (conference: Conference) =>
         calendarDay(conference.startDate)!.getTime() <= today ? 1 : 0;
       const followed = (conference: Conference) =>
         state.preferences.subscriptions[conference.id] === "following" ? 1 : 0;
       return (
+        extended(a) - extended(b) ||
         active(b) - active(a) ||
         followed(b) - followed(a) ||
         a.startDate.localeCompare(b.startDate) ||

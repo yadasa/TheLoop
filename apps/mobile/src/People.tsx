@@ -465,7 +465,7 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
           <Section title="Open to" />
           <View style={s.wrap}>
             {p.openTo.map((v) => (
-              <Chip key={v} title={v} onPress={() => {}} />
+              <Label key={v}>{v}</Label>
             ))}
           </View>
           {p.links.length > 0 && (

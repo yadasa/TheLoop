@@ -109,3 +109,33 @@ test("ongoing conferences lead, then followed upcoming conferences", () => {
   assert.equal(featuredConference(state, new Date(2026, 9, 27))?.id, "now");
   assert.equal(featuredConference(state, new Date(2026, 9, 29))?.id, "later");
 });
+
+test("year-round spaces remain available without displacing a dated conference", () => {
+  const state = emptyState("me");
+  state.conferences = [
+    conference("everyday", { startDate: "2026-01-01", endDate: "2026-12-31" }),
+    conference(),
+  ];
+  state.channels = state.conferences.map((item) => ({
+    id: item.id,
+    conferenceId: item.id,
+    name: "Chat",
+    description: "",
+    icon: "#",
+    members: 0,
+    topics: [],
+    visibility: "public",
+  }));
+  assert.equal(
+    featuredConference(state, new Date(2026, 9, 27))?.id,
+    "afrotech",
+  );
+  assert.equal(
+    conferenceTiming(state.conferences[0], new Date(2026, 9, 27)),
+    "ONGOING",
+  );
+  assert.equal(
+    featuredConference(state, new Date(2026, 10, 7))?.id,
+    "everyday",
+  );
+});
