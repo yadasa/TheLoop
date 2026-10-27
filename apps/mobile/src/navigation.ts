@@ -23,6 +23,7 @@ export type Route =
       kind:
         | "communities"
         | "inbox"
+        | "drafts"
         | "create-community"
         | "create-event"
         | "notifications"

@@ -36,7 +36,7 @@ import { SquadSummary } from "./Squads";
 import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
 import { Sheet } from "./Sheet";
 import { useNavigationBusy } from "./useNavigationBusy";
-import { useConversationDraft } from "./DraftProvider";
+import { useConversationDraft, useSessionDrafts } from "./DraftProvider";
 import { PinnedMessages } from "./PinnedMessages";
 import { ConversationSearch } from "./ConversationSearch";
 import { useSubscriptionPicker } from "./SubscriptionPicker";
@@ -49,6 +49,7 @@ import {
 } from "./chatPresentation";
 
 export function Chats({ nav }: { nav: Nav }) {
+  const drafts = useSessionDrafts();
   const { state } = useLoop();
   const { pickSubscription, subscriptionSheet } = useSubscriptionPicker();
   const [conference, setConference] = useState("all");
@@ -95,6 +96,16 @@ export function Chats({ nav }: { nav: Nav }) {
           <SquadSummary nav={nav} compact />
         </View>
       </View>
+      {drafts.entries.length > 0 && (
+        <Touch
+          label={`Open ${drafts.entries.length} unsent drafts`}
+          onPress={() => nav.open({ kind: "drafts" })}
+          style={[s.between, { paddingVertical: 10 }]}
+        >
+          <Text style={s.h3}>Drafts · {drafts.entries.length}</Text>
+          <Text style={s.small}>Pick up where you left off →</Text>
+        </Touch>
+      )}
       <Field
         value={search}
         onChangeText={setSearch}

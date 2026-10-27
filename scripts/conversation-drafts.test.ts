@@ -109,3 +109,26 @@ test("topic drafts stay separate and explicit topic navigation never restores an
   drafts.remember(channel, { body: "", topic: "Travel" }, state);
   assert.equal(drafts.read(channel, state)?.topic, "General");
 });
+
+test("draft inbox returns isolated copies, discards only the selected topic, and excludes revoked conversations", () => {
+  const state = fixture(),
+    drafts = new ConversationDrafts("me");
+  drafts.remember(channel, { body: "General draft", topic: "General" }, state);
+  drafts.remember(channel, { body: "Travel draft", topic: "Travel" }, state);
+  const listing = drafts.list(state);
+  assert.deepEqual(
+    listing.map((entry) => entry.target.topic),
+    ["Travel", "General"],
+  );
+  listing[0].target.topic = "Changed";
+  listing[0].value.body = "Changed";
+  assert.equal(
+    drafts.read({ ...channel, topic: "Travel" }, state)?.body,
+    "Travel draft",
+  );
+  drafts.remove({ ...channel, topic: "Travel" });
+  assert.equal(drafts.list(state).length, 1);
+  assert.equal(drafts.list(state)[0].value.body, "General draft");
+  state.channels[0].memberIds = [];
+  assert.deepEqual(drafts.list(state), []);
+});

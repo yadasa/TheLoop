@@ -82,6 +82,12 @@ export class ImageDrafts {
     for (const entry of this.entries.values())
       if (!this.allowed(entry.target, state)) this.remove(entry.target);
   }
+  targets(state: LoopState): DraftTarget[] {
+    return [...this.entries.values()]
+      .reverse()
+      .filter((entry) => this.allowed(entry.target, state))
+      .map((entry) => ({ ...entry.target }));
+  }
   clear() {
     for (const entry of this.entries.values()) this.dispose(entry.choice);
     this.entries.clear();

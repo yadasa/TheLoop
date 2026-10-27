@@ -98,3 +98,19 @@ test("membership loss and blocked DM prune files, and do not accept a late selec
   );
   assert.deepEqual(disposed.sort(), ["private-dm", "private-room"]);
 });
+
+test("photo draft inbox does not expose another account or allow callers to mutate its targets", () => {
+  const state = fixture();
+  const book = new ImageDrafts("me", () => {});
+  book.remember(general, photo("general"), state);
+  book.remember(travel, photo("travel"), state);
+  const targets = book.targets(state);
+  assert.deepEqual(
+    targets.map((target) => target.topic),
+    ["Travel", "General"],
+  );
+  targets[0].topic = "Changed";
+  assert.equal(book.read(travel, state)?.uri, "travel");
+  state.currentUserId = "another-account";
+  assert.deepEqual(book.targets(state), []);
+});

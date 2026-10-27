@@ -145,3 +145,8 @@ Native typecheck and25 native tests pass. Phone-width Expo sample QA verified th
 
 ## October 27: live Android preview preparation
 Version0.3.2/code5 includes the October27 chat clarity, pins, private history search, text/photo drafts and event planning work. Native configuration checks and both native exports pass (850 modules each,4.3MB). The seven EAS preview configuration variables are set for the dedicated live project, including the public Android configuration file. The next livepreview build is prepared from a clean release checkout after push/CI; this paragraph does not claim an APK has been built or downloaded. Physical-device behavior, FCM delivery and App Check remain release gates. Usage49%, no reset; continue under the69%-or-reset instruction.
+
+## October 27: find and resume unsent drafts
+Expo Group chats and the DM inbox now expose a Drafts screen for unsent text, replies and photos. Each entry names its conversation/topic; Continue restores that destination and Discard uses the themed confirmation sheet. Drafts remain account-scoped and memory-only, with explicit restart/sign-out behavior. Listing returns copies and filters revoked conversations. Also fixed an empty-string child in the month calendar that caused a React Native Web rendering warning.
+
+Native typecheck and27 tests pass. Phone-width sample QA verified draft discovery, exact-topic restoration, cancel preservation and discarding only the synthetic draft. No live content was sent. CI40464239880 passed for91a971e. Live Android0.3.2/code5 build489d69d3-225f-4245-9aff-1cd04214649d has been queued from that commit; it excludes this later Drafts screen/calendar warning fix. Usage50%, unchanged reset window.

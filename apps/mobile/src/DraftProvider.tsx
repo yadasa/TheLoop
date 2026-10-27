@@ -87,3 +87,38 @@ export function useImageDrafts() {
     throw new Error("Image drafts require the signed-in workspace.");
   return { book: context.images, state: context.state };
 }
+
+export function useSessionDrafts() {
+  const context = useContext(DraftContext);
+  if (!context) throw new Error("Drafts require the signed-in workspace.");
+  const state = context.state();
+  const entries = new Map<
+    string,
+    { target: DraftTarget; body: string; hasReply: boolean; hasImage: boolean }
+  >();
+  const slot = (target: DraftTarget) =>
+    JSON.stringify([target.kind, target.id, target.topic]);
+  for (const { target, value } of context.book.list(state))
+    entries.set(slot(target), {
+      target,
+      body: value.body,
+      hasReply: !!value.reply,
+      hasImage: false,
+    });
+  for (const target of context.images.targets(state)) {
+    const previous = entries.get(slot(target));
+    entries.set(slot(target), {
+      target,
+      body: previous?.body || "",
+      hasReply: previous?.hasReply || false,
+      hasImage: true,
+    });
+  }
+  return {
+    entries: [...entries.values()],
+    remove: (target: DraftTarget) => {
+      context.book.remove(target);
+      context.images.remove(target);
+    },
+  };
+}

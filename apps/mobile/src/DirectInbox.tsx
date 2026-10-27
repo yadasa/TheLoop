@@ -1,3 +1,4 @@
+import { useSessionDrafts } from "./DraftProvider";
 import React, { useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
@@ -16,6 +17,7 @@ import {
 import type { Nav } from "./navigation";
 
 export function DirectInbox({ nav }: { nav: Nav }) {
+  const drafts = useSessionDrafts();
   const {
     state,
     mode,
@@ -64,9 +66,17 @@ export function DirectInbox({ nav }: { nav: Nav }) {
       <Text style={s.overline}>YOUR INBOX</Text>
       <Text style={s.title}>Direct messages</Text>
       <Text style={s.body}>
-        Messages between you and another member. Mute a conversation to stop
-        its notifications, or block someone to stop new messages.
+        Messages between you and another member. Mute a conversation to stop its
+        notifications, or block someone to stop new messages.
       </Text>
+      {drafts.entries.some((entry) => entry.target.kind === "dm") && (
+        <Button
+          small
+          secondary
+          title="Your unsent drafts"
+          onPress={() => nav.open({ kind: "drafts" })}
+        />
+      )}
       <Field
         value={search}
         onChangeText={setSearch}

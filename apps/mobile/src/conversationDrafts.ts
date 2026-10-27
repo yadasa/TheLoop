@@ -99,6 +99,15 @@ export class ConversationDrafts {
         entry.value.reply = null;
     }
   }
+  list(state: LoopState): { target: DraftTarget; value: ConversationDraft }[] {
+    this.prune(state);
+    return [...this.entries.values()]
+      .reverse()
+      .map((entry) => JSON.parse(JSON.stringify(entry)));
+  }
+  remove(target: DraftTarget) {
+    this.entries.delete(key(target));
+  }
   clear() {
     this.entries.clear();
   }

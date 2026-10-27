@@ -393,7 +393,7 @@ export function Events({
                 setSelected("");
               }}
             />
-            {selected && (
+            {!!selected && (
               <Button
                 secondary
                 small
