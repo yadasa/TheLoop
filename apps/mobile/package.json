@@ -11,7 +11,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test ../../scripts/chat-presentation.test.ts ../../scripts/conference-presentation.test.ts ../../scripts/dialog-queue.test.ts ../../scripts/conversation-drafts.test.ts ../../scripts/image-drafts.test.ts ../../scripts/event-presentation.test.ts",
+    "test": "tsx --test ../../scripts/chat-presentation.test.ts ../../scripts/conference-presentation.test.ts ../../scripts/dialog-queue.test.ts ../../scripts/conversation-drafts.test.ts ../../scripts/image-drafts.test.ts ../../scripts/event-presentation.test.ts ../../scripts/search-destinations.test.ts",
     "test:config": "node ../../scripts/native-config.test.cjs && tsx --test ../../scripts/native-runtime.test.ts",
     "start:live:check": "node ../../scripts/start-native-live.mjs --public-firebase-config ../../.cache/firebase.public-sdk.json --check",
     "start:live": "node ../../scripts/start-native-live.mjs --public-firebase-config ../../.cache/firebase.public-sdk.json --start",
