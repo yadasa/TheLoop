@@ -1,3 +1,4 @@
+import { MessageDay } from "./MessageDay";
 import { CopyMessage } from "./CopyMessage";
 import { useMediaViewerOpen, isMediaViewerOpen } from "./Media";
 import React, { useEffect, useRef, useState } from "react";
@@ -51,7 +52,6 @@ import { ShareSheet } from "./ShareSheet";
 import { useSubscriptionPicker } from "./SubscriptionPicker";
 import {
   dayKey,
-  dayLabel,
   isMessageContinuation,
   visibleQuote,
   topicStarter,
@@ -917,7 +917,11 @@ export function ChannelDetail({
             </View>
             {messageAction === "menu" ? (
               <>
-                <CopyMessage text={actionMessage.body} nav={nav} disabled={locked} />
+                <CopyMessage
+                  text={actionMessage.body}
+                  nav={nav}
+                  disabled={locked}
+                />
                 <Button
                   secondary
                   title="View replies"
@@ -1177,19 +1181,10 @@ export function ChannelDetail({
             dayKey(messages[i - 1].createdAt) !== dayKey(m.createdAt);
           return (
             <View key={m.id}>
-              {newDay && (
-                <View style={[s.row, { paddingVertical: 18, gap: 12 }]}>
-                  <View
-                    style={{ flex: 1, height: 1, backgroundColor: color.line }}
-                  />
-                  <Text style={[s.small, { fontSize: 11 }]}>
-                    {dayLabel(m.createdAt)}
-                  </Text>
-                  <View
-                    style={{ flex: 1, height: 1, backgroundColor: color.line }}
-                  />
-                </View>
-              )}
+              <MessageDay
+                timestamp={m.createdAt}
+                previous={messages[i - 1]?.createdAt}
+              />
               <View
                 style={[
                   s.row,
@@ -1506,7 +1501,11 @@ export function ChannelDetail({
                   value={body}
                   onChangeText={setBody}
                   disabled={busy}
-                  placeholder={`Message ${editing?.topic || topic}…`}
+                  placeholder={
+                    !editing && attachment.choice
+                      ? "Add a photo caption…"
+                      : `Message ${editing?.topic || topic}…`
+                  }
                   multiline
                   compact
                   maxLength={4000}

@@ -1,3 +1,4 @@
+import { MessageDay } from "./MessageDay";
 import { Sheet } from "./Sheet";
 import { CopyMessage } from "./CopyMessage";
 import { useMediaViewerOpen, isMediaViewerOpen } from "./Media";
@@ -929,63 +930,68 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
             body="Start with a short introduction and why you’re reaching out."
           />
         )}
-        {messages.map((m) => {
+        {messages.map((m, index) => {
           const mine = m.fromId === state.currentUserId;
           return (
-            <View
-              key={m.id}
-              style={{
-                alignSelf: mine ? "flex-end" : "flex-start",
-                maxWidth: "88%",
-                gap: 5,
-              }}
-            >
+            <React.Fragment key={m.id}>
+              <MessageDay
+                timestamp={m.createdAt}
+                previous={messages[index - 1]?.createdAt}
+              />
               <View
                 style={{
-                  padding: 15,
-                  borderRadius: 20,
-                  borderBottomRightRadius: mine ? 4 : 20,
-                  borderBottomLeftRadius: mine ? 20 : 4,
-                  backgroundColor: mine ? color.ink : color.card,
-                  borderWidth: mine ? 0 : 1,
-                  borderColor: color.line,
+                  alignSelf: mine ? "flex-end" : "flex-start",
+                  maxWidth: "88%",
+                  gap: 5,
                 }}
               >
-                <LinkifiedText
-                  text={m.body}
-                  style={{ color: mine ? color.onInk : color.ink }}
-                />
-                <MediaImage image={m.image} caption={m.body} nav={nav} />
-              </View>
-              <View
-                style={[
-                  s.row,
-                  {
-                    alignSelf: mine ? "flex-end" : "flex-start",
-                    gap: 12,
-                    flexWrap: "wrap",
-                  },
-                ]}
-              >
-                <RelativeTime date={m.createdAt} />
-                {!!m.editedAt && (
-                  <Text style={[s.small, { fontSize: 10 }]}>edited</Text>
-                )}
-                <Touch
-                  label={`Message options: ${m.body.slice(0, 60) || "Shared image"}`}
-                  disabled={busy}
-                  onPress={() => setActionId(m.id)}
+                <View
                   style={{
-                    minHeight: 44,
-                    minWidth: 44,
-                    alignItems: "center",
-                    justifyContent: "center",
+                    padding: 15,
+                    borderRadius: 20,
+                    borderBottomRightRadius: mine ? 4 : 20,
+                    borderBottomLeftRadius: mine ? 20 : 4,
+                    backgroundColor: mine ? color.ink : color.card,
+                    borderWidth: mine ? 0 : 1,
+                    borderColor: color.line,
                   }}
                 >
-                  <Text style={s.small}>•••</Text>
-                </Touch>
+                  <LinkifiedText
+                    text={m.body}
+                    style={{ color: mine ? color.onInk : color.ink }}
+                  />
+                  <MediaImage image={m.image} caption={m.body} nav={nav} />
+                </View>
+                <View
+                  style={[
+                    s.row,
+                    {
+                      alignSelf: mine ? "flex-end" : "flex-start",
+                      gap: 12,
+                      flexWrap: "wrap",
+                    },
+                  ]}
+                >
+                  <RelativeTime date={m.createdAt} />
+                  {!!m.editedAt && (
+                    <Text style={[s.small, { fontSize: 10 }]}>edited</Text>
+                  )}
+                  <Touch
+                    label={`Message options: ${m.body.slice(0, 60) || "Shared image"}`}
+                    disabled={busy}
+                    onPress={() => setActionId(m.id)}
+                    style={{
+                      minHeight: 44,
+                      minWidth: 44,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={s.small}>•••</Text>
+                  </Touch>
+                </View>
               </View>
-            </View>
+            </React.Fragment>
           );
         })}
       </ScrollView>
@@ -1044,7 +1050,11 @@ export function DirectChat({ id, nav }: { id: string; nav: Nav }) {
                   value={body}
                   onChangeText={setBody}
                   disabled={busy}
-                  placeholder="Write a message…"
+                  placeholder={
+                    !editing && attachment.choice
+                      ? "Add a photo caption…"
+                      : "Write a message…"
+                  }
                   multiline
                   compact
                   maxLength={4000}

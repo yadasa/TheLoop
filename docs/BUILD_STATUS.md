@@ -242,3 +242,6 @@ All units pass (core65/client93/web4/mobile33/functions119), workspace typecheck
 The Expo app now shows a compact, motion-aware offline notice in tabs and full-screen conversations. Unknown network signals do not produce a false warning; returning to the foreground refreshes connectivity, and late checks cannot overwrite newer network events. Sample mode stays local. Drafts remain session-only; the notice does not promise background delivery or server availability. Mobile typecheck, 47 mobile tests and both native exports pass. Real airplane-mode/reconnect testing remains a device gate.
 
 Reply-alert access/mute fixes from 4dab3f2 passed full CI40480130121 and deployed successfully to executeCommand and deliverPushNotification in the dedicated project.
+
+## October 27 — private conversation readability
+DMs and Squads now use the same local-calendar date dividers as group chats, including Today, Yesterday and a year for older history. Photo selection changes all three chat composers to a clear caption prompt; caption requirements remain enforced by the backend. Mobile typecheck and47 tests pass; Expo-web QA verified separate older/today sections and photo selection/removal without publishing live data.

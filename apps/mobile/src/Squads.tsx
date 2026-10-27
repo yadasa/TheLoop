@@ -1,3 +1,4 @@
+import { MessageDay } from "./MessageDay";
 import { CopyMessage } from "./CopyMessage";
 import { useMediaViewerOpen, isMediaViewerOpen } from "./Media";
 import { PrivateConversationSearch } from "./PrivateConversationSearch";
@@ -675,155 +676,194 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
             body="Write a message. Members can read messages shared with them while they belong to the Squad."
           />
         )}
-        {messages.map((message) => {
+        {messages.map((message, index) => {
           const mine = message.authorId === state.currentUserId;
           const quote = message.replyTo
             ? messages.find((value) => value.id === message.replyTo)
             : undefined;
           return (
-            <View
-              key={message.id}
-              style={[s.row, { alignItems: "flex-start", gap: 10 }]}
-            >
-              <Initials
-                name={message.authorName}
-                initials={message.authorInitials}
-                size={33}
+            <React.Fragment key={message.id}>
+              <MessageDay
+                timestamp={message.createdAt}
+                previous={messages[index - 1]?.createdAt}
               />
-              <View style={[s.grow, { gap: 7 }]}>
-                <View style={s.between}>
-                  <Text style={[s.h3, { fontSize: 13, flex: 1 }]}>
-                    {mine ? "You" : message.authorName}
-                  </Text>
-                  <RelativeTime date={message.editedAt || message.createdAt} />
-                  <Touch
-                    label="Squad message actions"
-                    onPress={() =>
-                      setActions(actions === message.id ? null : message.id)
-                    }
-                    style={{ padding: 6 }}
-                  >
-                    <Text style={s.small}>•••</Text>
-                  </Touch>
-                </View>
-                {message.editedAt && (
-                  <Text style={[s.small, { fontSize: 10 }]}>edited</Text>
-                )}
-                {quote && (
-                  <View
-                    style={{
-                      borderLeftWidth: 2,
-                      borderColor: color.line,
-                      paddingLeft: 10,
-                    }}
-                  >
-                    <Text style={s.small} numberOfLines={2}>
-                      ↳ {quote.body}
-                    </Text>
-                  </View>
-                )}
-                <LinkifiedText text={message.body} />
-                <MediaImage
-                  image={message.image}
-                  caption={message.body}
-                  nav={nav}
+              <View style={[s.row, { alignItems: "flex-start", gap: 10 }]}>
+                <Initials
+                  name={message.authorName}
+                  initials={message.authorInitials}
+                  size={33}
                 />
-                <View style={[s.wrap, { gap: 6 }]}>
-                  {Object.entries(message.reactions)
-                    .filter(([, ids]) => ids.length)
-                    .map(([emoji, ids]) => (
-                      <Chip
-                        key={emoji}
-                        title={`${emoji} ${ids.length}`}
-                        selected={ids.includes(state.currentUserId)}
-                        onPress={() =>
-                          void nav.run({
-                            type: "squad.message.react",
-                            messageId: message.id,
-                            emoji,
-                          })
-                        }
-                      />
-                    ))}
-                  <Touch
-                    label="Add squad reaction"
-                    onPress={() =>
-                      setReacting(reacting === message.id ? null : message.id)
-                    }
-                    style={{ padding: 5 }}
-                  >
-                    <Text style={s.small}>＋</Text>
-                  </Touch>
-                </View>
-                {reacting === message.id && (
-                  <View style={s.wrap}>
-                    {["🖤", "🔥", "🙌", "💯", "😂"].map((emoji) => (
-                      <Chip
-                        key={emoji}
-                        title={emoji}
-                        onPress={() => {
-                          setReacting(null);
-                          void nav.run({
-                            type: "squad.message.react",
-                            messageId: message.id,
-                            emoji,
-                          });
-                        }}
-                      />
-                    ))}
-                  </View>
-                )}
-                {actions === message.id && (
-                  <View style={s.wrap}>
-                    <CopyMessage text={message.body} nav={nav} disabled={busy} />
-                    <Button
-                      small
-                      secondary
-                      title="Reply"
-                      onPress={() => {
-                        if (editing)
-                          setBody(draftBeforeEdit.current?.body || "");
-                        draftBeforeEdit.current = null;
-                        setReply(message.id);
-                        setEditing(null);
-                        setActions(null);
-                      }}
+                <View style={[s.grow, { gap: 7 }]}>
+                  <View style={s.between}>
+                    <Text style={[s.h3, { fontSize: 13, flex: 1 }]}>
+                      {mine ? "You" : message.authorName}
+                    </Text>
+                    <RelativeTime
+                      date={message.editedAt || message.createdAt}
                     />
-                    {mine ? (
-                      <>
-                        <Button
-                          small
-                          secondary
-                          title="Edit"
+                    <Touch
+                      label="Squad message actions"
+                      onPress={() =>
+                        setActions(actions === message.id ? null : message.id)
+                      }
+                      style={{ padding: 6 }}
+                    >
+                      <Text style={s.small}>•••</Text>
+                    </Touch>
+                  </View>
+                  {message.editedAt && (
+                    <Text style={[s.small, { fontSize: 10 }]}>edited</Text>
+                  )}
+                  {quote && (
+                    <View
+                      style={{
+                        borderLeftWidth: 2,
+                        borderColor: color.line,
+                        paddingLeft: 10,
+                      }}
+                    >
+                      <Text style={s.small} numberOfLines={2}>
+                        ↳ {quote.body}
+                      </Text>
+                    </View>
+                  )}
+                  <LinkifiedText text={message.body} />
+                  <MediaImage
+                    image={message.image}
+                    caption={message.body}
+                    nav={nav}
+                  />
+                  <View style={[s.wrap, { gap: 6 }]}>
+                    {Object.entries(message.reactions)
+                      .filter(([, ids]) => ids.length)
+                      .map(([emoji, ids]) => (
+                        <Chip
+                          key={emoji}
+                          title={`${emoji} ${ids.length}`}
+                          selected={ids.includes(state.currentUserId)}
+                          onPress={() =>
+                            void nav.run({
+                              type: "squad.message.react",
+                              messageId: message.id,
+                              emoji,
+                            })
+                          }
+                        />
+                      ))}
+                    <Touch
+                      label="Add squad reaction"
+                      onPress={() =>
+                        setReacting(reacting === message.id ? null : message.id)
+                      }
+                      style={{ padding: 5 }}
+                    >
+                      <Text style={s.small}>＋</Text>
+                    </Touch>
+                  </View>
+                  {reacting === message.id && (
+                    <View style={s.wrap}>
+                      {["🖤", "🔥", "🙌", "💯", "😂"].map((emoji) => (
+                        <Chip
+                          key={emoji}
+                          title={emoji}
                           onPress={() => {
-                            if (!editing)
-                              draftBeforeEdit.current = { body, reply };
-                            setEditing(message.id);
-                            setBody(message.body);
-                            setReply(null);
-                            setActions(null);
+                            setReacting(null);
+                            void nav.run({
+                              type: "squad.message.react",
+                              messageId: message.id,
+                              emoji,
+                            });
                           }}
                         />
+                      ))}
+                    </View>
+                  )}
+                  {actions === message.id && (
+                    <View style={s.wrap}>
+                      <CopyMessage
+                        text={message.body}
+                        nav={nav}
+                        disabled={busy}
+                      />
+                      <Button
+                        small
+                        secondary
+                        title="Reply"
+                        onPress={() => {
+                          if (editing)
+                            setBody(draftBeforeEdit.current?.body || "");
+                          draftBeforeEdit.current = null;
+                          setReply(message.id);
+                          setEditing(null);
+                          setActions(null);
+                        }}
+                      />
+                      {mine ? (
+                        <>
+                          <Button
+                            small
+                            secondary
+                            title="Edit"
+                            onPress={() => {
+                              if (!editing)
+                                draftBeforeEdit.current = { body, reply };
+                              setEditing(message.id);
+                              setBody(message.body);
+                              setReply(null);
+                              setActions(null);
+                            }}
+                          />
+                          <Button
+                            small
+                            secondary
+                            title="Delete"
+                            onPress={() =>
+                              nav.alert(
+                                "Delete your message?",
+                                "This message will be removed from the squad.",
+                                [
+                                  { text: "Keep it", style: "cancel" },
+                                  {
+                                    text: "Delete message",
+                                    style: "destructive",
+                                    onPress: () =>
+                                      void nav.run(
+                                        {
+                                          type: "squad.message.delete",
+                                          messageId: message.id,
+                                        },
+                                        "Message deleted",
+                                      ),
+                                  },
+                                ],
+                                { cancelable: true },
+                              )
+                            }
+                          />
+                        </>
+                      ) : (
                         <Button
                           small
                           secondary
-                          title="Delete"
+                          title="Report"
                           onPress={() =>
                             nav.alert(
-                              "Delete your message?",
-                              "This message will be removed from the squad.",
+                              "Report this squad message?",
+                              "The selected message and any attached image will be shared with moderators. The rest of the squad conversation stays private.",
                               [
-                                { text: "Keep it", style: "cancel" },
+                                { text: "Cancel", style: "cancel" },
                                 {
-                                  text: "Delete message",
-                                  style: "destructive",
+                                  text: "Send report",
                                   onPress: () =>
                                     void nav.run(
                                       {
-                                        type: "squad.message.delete",
-                                        messageId: message.id,
+                                        type: "report.create",
+                                        targetType: "squadMessage",
+                                        targetId: message.id,
+                                        reason:
+                                          "Safety concern in this squad message",
                                       },
-                                      "Message deleted",
+                                      "Squad message reported",
                                     ),
                                 },
                               ],
@@ -831,42 +871,12 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
                             )
                           }
                         />
-                      </>
-                    ) : (
-                      <Button
-                        small
-                        secondary
-                        title="Report"
-                        onPress={() =>
-                          nav.alert(
-                            "Report this squad message?",
-                            "The selected message and any attached image will be shared with moderators. The rest of the squad conversation stays private.",
-                            [
-                              { text: "Cancel", style: "cancel" },
-                              {
-                                text: "Send report",
-                                onPress: () =>
-                                  void nav.run(
-                                    {
-                                      type: "report.create",
-                                      targetType: "squadMessage",
-                                      targetId: message.id,
-                                      reason:
-                                        "Safety concern in this squad message",
-                                    },
-                                    "Squad message reported",
-                                  ),
-                              },
-                            ],
-                            { cancelable: true },
-                          )
-                        }
-                      />
-                    )}
-                  </View>
-                )}
+                      )}
+                    </View>
+                  )}
+                </View>
               </View>
-            </View>
+            </React.Fragment>
           );
         })}
       </ScrollView>
@@ -925,7 +935,11 @@ export function SquadDetail({ id, nav }: { id: string; nav: Nav }) {
               multiline
               compact
               maxLength={4000}
-              placeholder="Message this squad…"
+              placeholder={
+                !editing && attachment.choice
+                  ? "Add a photo caption…"
+                  : "Message this squad…"
+              }
             />
           </View>
           <Button
