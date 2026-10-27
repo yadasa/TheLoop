@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
 import { useSessionDrafts } from "./DraftProvider";
@@ -8,7 +8,6 @@ import type { Nav } from "./navigation";
 export function SessionDrafts({ nav }: { nav: Nav }) {
   const { state, directCatalog } = useLoop();
   const drafts = useSessionDrafts();
-  const [, changed] = useState(0);
   return (
     <ScrollView contentContainerStyle={s.content}>
       <Text style={s.overline}>NOT SENT</Text>
@@ -106,7 +105,6 @@ export function SessionDrafts({ nav }: { nav: Nav }) {
                         style: "destructive",
                         onPress: () => {
                           drafts.remove(target);
-                          changed((value) => value + 1);
                         },
                       },
                     ],

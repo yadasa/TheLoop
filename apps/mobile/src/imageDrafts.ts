@@ -25,6 +25,7 @@ export class ImageDrafts {
     private dispose: (choice: ImageChoice) => void,
     private limit = 10,
     private byteLimit = 10 * 1024 * 1024,
+    private changed = () => {},
   ) {}
   private allowed(target: DraftTarget, state: LoopState) {
     return (
@@ -62,6 +63,7 @@ export class ImageDrafts {
     this.entries.set(key(target), { target: { ...target }, choice });
     if (previous && previous.choice.uri !== choice.uri)
       this.dispose(previous.choice);
+    this.changed();
   }
   latestTopic(channelId: string, state: LoopState): string | undefined {
     return [...this.entries.values()]
@@ -76,7 +78,10 @@ export class ImageDrafts {
   remove(target: DraftTarget) {
     const entry = this.entries.get(key(target));
     this.entries.delete(key(target));
-    if (entry) this.dispose(entry.choice);
+    if (entry) {
+      this.dispose(entry.choice);
+      this.changed();
+    }
   }
   prune(state: LoopState) {
     for (const entry of this.entries.values())
@@ -89,7 +94,9 @@ export class ImageDrafts {
       .map((entry) => ({ ...entry.target }));
   }
   clear() {
+    if (!this.entries.size) return;
     for (const entry of this.entries.values()) this.dispose(entry.choice);
     this.entries.clear();
+    this.changed();
   }
 }

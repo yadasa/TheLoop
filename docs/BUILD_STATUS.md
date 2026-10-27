@@ -245,3 +245,6 @@ Reply-alert access/mute fixes from 4dab3f2 passed full CI40480130121 and deploye
 
 ## October 27 — private conversation readability
 DMs and Squads now use the same local-calendar date dividers as group chats, including Today, Yesterday and a year for older history. Photo selection changes all three chat composers to a clear caption prompt; caption requirements remain enforced by the backend. Mobile typecheck and47 tests pass; Expo-web QA verified separate older/today sections and photo selection/removal without publishing live data.
+
+## October 27 — live draft counts
+Conversation, photo and post draft mutations now notify mounted draft lists and badges directly. Empty/unchanged writes do not churn; multiple synchronous changes coalesce, privacy pruning refreshes the view, and subscriptions detach on account/screen changes. The Drafts screen no longer needs a manual render workaround. All49 mobile tests and typecheck pass. Expo-web QA restored a community post with its destination and text, then discarded it and verified the Home resume entry disappeared immediately. No post was published.

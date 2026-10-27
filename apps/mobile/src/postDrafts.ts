@@ -13,7 +13,10 @@ export type PostDraft = {
 /** One unfinished post per signed-in account, held only while the app is open. */
 export class PostDrafts {
   private value?: PostDraft;
-  constructor(private accountId: string) {}
+  constructor(
+    private accountId: string,
+    private changed = () => {},
+  ) {}
   read(accountId: string) {
     if (accountId !== this.accountId) {
       this.clear();
@@ -36,15 +39,20 @@ export class PostDrafts {
       this.clear();
       return;
     }
-    this.value = {
+    const next = {
       ...value,
       title: value.title.slice(0, 160),
       body: value.body.slice(0, 5000),
       url: value.url.slice(0, 5000),
       options: value.options.slice(0, 5000),
     };
+    if (JSON.stringify(next) === JSON.stringify(this.value)) return;
+    this.value = next;
+    this.changed();
   }
   clear() {
+    if (!this.value) return;
     this.value = undefined;
+    this.changed();
   }
 }

@@ -46,6 +46,7 @@ export class ConversationDrafts {
   constructor(
     private accountId: string,
     private limit = 50,
+    private changed = () => {},
   ) {}
   read(target: DraftTarget, state: LoopState): ConversationDraft | undefined {
     this.prune(state);
@@ -70,8 +71,14 @@ export class ConversationDrafts {
       target.kind === "channel"
         ? { ...target, topic: value.topic ?? target.topic }
         : target;
+    if (!value.body && !value.reply) {
+      this.remove(slot);
+      return;
+    }
+    const previous = this.entries.get(key(slot));
+    if (previous && JSON.stringify(previous.value) === JSON.stringify(value))
+      return;
     this.entries.delete(key(slot));
-    if (!value.body && !value.reply) return;
     this.entries.set(key(slot), {
       target: slot,
       value: JSON.parse(JSON.stringify(value)) as ConversationDraft,
@@ -79,15 +86,17 @@ export class ConversationDrafts {
     while (this.entries.size > this.limit)
       this.entries.delete(this.entries.keys().next().value!);
     this.prune(state);
+    this.changed();
   }
   prune(state: LoopState) {
     if (state.currentUserId !== this.accountId) {
-      this.entries.clear();
+      this.clear();
       return;
     }
     for (const [id, entry] of this.entries) {
       if (!draftAllowed(state, entry.target)) {
         this.entries.delete(id);
+        this.changed();
         continue;
       }
       const reply = entry.value.reply;
@@ -96,8 +105,10 @@ export class ConversationDrafts {
         (state.preferences.blockedIds.includes(reply.authorId) ||
           entry.target.kind !== "channel" ||
           reply.channelId !== entry.target.id)
-      )
+      ) {
         entry.value.reply = null;
+        this.changed();
+      }
     }
   }
   list(state: LoopState): { target: DraftTarget; value: ConversationDraft }[] {
@@ -107,9 +118,11 @@ export class ConversationDrafts {
       .map((entry) => JSON.parse(JSON.stringify(entry)));
   }
   remove(target: DraftTarget) {
-    this.entries.delete(key(target));
+    if (this.entries.delete(key(target))) this.changed();
   }
   clear() {
+    if (!this.entries.size) return;
     this.entries.clear();
+    this.changed();
   }
 }

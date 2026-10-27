@@ -1,4 +1,5 @@
 import { PostDrafts, postDraftTarget, type PostDraft } from "./postDrafts";
+import { DraftChanges } from "./draftChanges";
 import { ImageDrafts } from "./imageDrafts";
 import { removeCreatedImage } from "./mediaFiles";
 import React, {
@@ -8,6 +9,7 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useSyncExternalStore,
 } from "react";
 import { useLoop } from "@theloop/client";
 import type { LoopState } from "@theloop/core";
@@ -21,30 +23,38 @@ const DraftContext = createContext<{
   book: ConversationDrafts;
   images: ImageDrafts;
   posts: PostDrafts;
+  changes: DraftChanges;
   state: () => LoopState;
 } | null>(null);
 export function DraftProvider({ children }: { children: React.ReactNode }) {
   const { state } = useLoop();
   const current = useRef(state);
   current.current = state;
+  const changes = useMemo(() => new DraftChanges(), [state.currentUserId]);
   const book = useMemo(
-    () => new ConversationDrafts(state.currentUserId),
-    [state.currentUserId],
+    () => new ConversationDrafts(state.currentUserId, 50, changes.changed),
+    [state.currentUserId, changes],
   );
   const images = useMemo(
     () =>
-      new ImageDrafts(state.currentUserId, (choice) => {
-        void removeCreatedImage(choice.uri);
-      }),
-    [state.currentUserId],
+      new ImageDrafts(
+        state.currentUserId,
+        (choice) => {
+          void removeCreatedImage(choice.uri);
+        },
+        10,
+        10 * 1024 * 1024,
+        changes.changed,
+      ),
+    [state.currentUserId, changes],
   );
   const posts = useMemo(
-    () => new PostDrafts(state.currentUserId),
-    [state.currentUserId],
+    () => new PostDrafts(state.currentUserId, changes.changed),
+    [state.currentUserId, changes],
   );
   const context = useMemo(
-    () => ({ book, images, posts, state: () => current.current }),
-    [book, images, posts],
+    () => ({ book, images, posts, changes, state: () => current.current }),
+    [book, images, posts, changes],
   );
   useEffect(() => {
     book.prune(state);
@@ -98,6 +108,11 @@ export function useImageDrafts() {
 export function useSessionDrafts() {
   const context = useContext(DraftContext);
   if (!context) throw new Error("Drafts require the signed-in workspace.");
+  useSyncExternalStore(
+    context.changes.subscribe,
+    context.changes.getSnapshot,
+    context.changes.getSnapshot,
+  );
   const state = context.state();
   const entries = new Map<
     string,
