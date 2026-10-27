@@ -2,9 +2,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { Linking, Platform, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLoop } from "@theloop/client";
-import type { LoopState } from "@theloop/core";
+import type { LoopState, Notification } from "@theloop/core";
 import { Button, s } from "./ui";
 import type { Nav } from "./navigation";
+import { notificationDestination } from "./notificationPresentation";
 
 const key = "theloop.device-push.v1";
 type Registration = { token: string; userId: string };
@@ -168,7 +169,7 @@ export function NativePushBridge({ nav }: { nav: Nav }) {
         type: "notification.read",
         notificationId: own.id,
       });
-      routeNotification(current, own.kind, own.targetId, navRef.current);
+      routeNotification(current, own, navRef.current);
     };
     void import("expo-notifications")
       .then(async (Notifications) => {
@@ -214,46 +215,11 @@ export function NativePushBridge({ nav }: { nav: Nav }) {
 }
 export function routeNotification(
   state: LoopState,
-  kind: string,
-  id: string,
+  notification: Notification,
   nav: Nav,
 ) {
-  if (kind === "squad") {
-    if (
-      state.squads?.some(
-        (squad) =>
-          squad.id === id &&
-          squad.memberIds.includes(state.currentUserId) &&
-          !squad.archived,
-      )
-    )
-      nav.open({ kind: "squad", id });
-    else nav.open({ kind: "squads" });
-    return;
-  }
-  if (kind === "event") {
-    nav.open({ kind: "event", id });
-    return;
-  }
-  if (kind === "message") {
-    nav.open({
-      kind: state.channels.some((c) => c.id === id) ? "channel" : "dm",
-      id,
-    });
-    return;
-  }
-  if (kind === "connection") {
-    const connection = state.connections.find((c) => c.id === id);
-    nav.open({
-      kind: "profile",
-      id: connection
-        ? connection.fromId === state.currentUserId
-          ? connection.toId
-          : connection.fromId
-        : id,
-    });
-    return;
-  }
-  if (state.posts.some((p) => p.id === id)) nav.open({ kind: "post", id });
-  else nav.navigate("Home");
+  const destination = notificationDestination(state, notification);
+  if (destination.route) nav.open(destination.route);
+  else if (destination.tab) nav.navigate(destination.tab);
+  if (destination.notice) nav.toast(destination.notice);
 }

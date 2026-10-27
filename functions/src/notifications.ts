@@ -59,6 +59,16 @@ export function shouldDeliverPush(
   preferences: Doc,
   now: Date,
 ): boolean {
+  if (
+    notification.actorId &&
+    preferences.blockedIds?.includes(notification.actorId)
+  )
+    return false;
+  if (
+    notification.dmSenderId &&
+    preferences.blockedIds?.includes(notification.dmSenderId)
+  )
+    return false;
   if (inQuietHours(preferences, now)) return false;
   if (
     notification.kind === "event" &&

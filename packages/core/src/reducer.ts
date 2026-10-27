@@ -555,7 +555,8 @@ export function applyCommand(
       s.notifications.forEach((n) => {
         if (
           n.userId === uid &&
-          (!cmd.notificationId || n.id === cmd.notificationId)
+          (!cmd.notificationId || n.id === cmd.notificationId) &&
+          (!cmd.notificationIds || cmd.notificationIds.includes(n.id))
         )
           n.read = true;
       });

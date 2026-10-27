@@ -15,6 +15,8 @@ import {
   Horizontal,
   Label,
   Logo,
+  MotionScene,
+  RelativeTime,
   s,
   Section,
   Touch,
@@ -27,6 +29,13 @@ import {
   routeNotification,
 } from "./devicePush";
 import { shareExport } from "./shareExport";
+import {
+  filterNotifications,
+  notificationDay,
+  notificationKinds,
+  visibleNotifications,
+  type NotificationFilter,
+} from "./notificationPresentation";
 
 export function You({ nav }: { nav: Nav }) {
   const {
@@ -959,53 +968,185 @@ export function Onboarding({ nav }: { nav: Nav }) {
 }
 
 export function Notifications({ nav }: { nav: Nav }) {
-  const { state } = useLoop();
-  const items = state.notifications
-    .filter((n) => n.userId === state.currentUserId)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const { state, mode } = useLoop();
+  const [filter, setFilter] = useState<NotificationFilter>("all");
+  const [busy, setBusy] = useState(false);
+  const items = visibleNotifications(state);
+  const filtered = filterNotifications(items, filter);
+  const unread = items.filter((n) => !n.read).length;
+  const selectedUnread = filtered.filter((n) => !n.read).slice(0, 100);
+  const filters: { key: NotificationFilter; title: string }[] = [
+    { key: "all", title: "All" },
+    { key: "unread", title: "Unread" },
+    { key: "message", title: "Chats" },
+    { key: "connection", title: "Connections" },
+    { key: "event", title: "Events" },
+    { key: "community", title: "Communities" },
+  ];
   return (
-    <ScrollView contentContainerStyle={s.content}>
-      <Section
-        title="Notifications"
-        action="Mark all read"
-        onAction={() => void nav.run({ type: "notification.read" })}
-      />
-      {items.map((n) => (
+    <ScrollView
+      contentContainerStyle={s.content}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={s.between}>
+        <View style={{ flex: 1, gap: 6 }}>
+          <Text style={s.overline}>YOUR UPDATES</Text>
+          <Text style={s.title}>Notifications</Text>
+          <Text style={s.small}>
+            {unread
+              ? `${unread} unread in your recent updates`
+              : "You're caught up on your recent updates."}
+          </Text>
+        </View>
         <Touch
-          key={n.id}
-          label={n.title}
-          onPress={() => {
-            void nav.run({ type: "notification.read", notificationId: n.id });
-            routeNotification(state, n.kind, n.targetId, nav);
-          }}
-          style={[
-            s.card,
-            { backgroundColor: n.read ? color.card : color.soft },
-          ]}
+          label="Notification settings"
+          onPress={() => nav.open({ kind: "settings" })}
+          style={{ padding: 12 }}
         >
-          <View style={s.between}>
-            <Label>{n.kind.toUpperCase()}</Label>
-            {!n.read && (
-              <View
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 4,
-                  backgroundColor: color.ink,
-                }}
-              />
-            )}
-          </View>
-          <Text style={s.h3}>{n.title}</Text>
-          <Text style={s.body}>{n.body}</Text>
-          <Text style={s.small}>{new Date(n.createdAt).toLocaleString()}</Text>
+          <Text style={{ fontSize: 23, color: color.ink }}>⚙</Text>
         </Touch>
-      ))}
-      {items.length === 0 && (
-        <Empty
-          title="No notifications"
-          body="Message, connection and event updates will appear here."
+      </View>
+      <Horizontal>
+        {filters.map((item) => (
+          <Chip
+            key={item.key}
+            title={item.title}
+            selected={filter === item.key}
+            count={item.key === "unread" ? unread : undefined}
+            onPress={() => setFilter(item.key)}
+          />
+        ))}
+      </Horizontal>
+      {selectedUnread.length > 0 && (
+        <Button
+          secondary
+          title={
+            busy
+              ? "Marking read…"
+              : `Mark ${selectedUnread.length} shown as read`
+          }
+          disabled={busy}
+          onPress={async () => {
+            setBusy(true);
+            try {
+              await nav.run({
+                type: "notification.read",
+                notificationIds: selectedUnread.map((n) => n.id),
+              });
+            } finally {
+              setBusy(false);
+            }
+          }}
         />
+      )}
+      <MotionScene identity={filter} style={{ gap: 10 }}>
+        {filtered.map((n, index) => {
+          const day = notificationDay(n.createdAt);
+          const meta = notificationKinds[n.kind];
+          return (
+            <React.Fragment key={n.id}>
+              {(index === 0 ||
+                notificationDay(filtered[index - 1].createdAt) !== day) && (
+                <Text
+                  style={[
+                    s.overline,
+                    { marginTop: index ? 16 : 4, marginBottom: 2 },
+                  ]}
+                >
+                  {day}
+                </Text>
+              )}
+              <Touch
+                label={`${n.read ? "" : "Unread. "}${n.title}. ${n.body}`}
+                onPress={() => {
+                  if (!n.read)
+                    void nav.run({
+                      type: "notification.read",
+                      notificationId: n.id,
+                    });
+                  routeNotification(state, n, nav);
+                }}
+                style={[
+                  s.card,
+                  {
+                    backgroundColor: n.read ? color.card : color.soft,
+                    padding: 16,
+                    gap: 9,
+                  },
+                ]}
+              >
+                <View style={[s.row, { alignItems: "flex-start", gap: 12 }]}>
+                  <View
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 13,
+                      backgroundColor: n.read ? color.soft : color.card,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={{ color: color.ink, fontSize: 23 }}>
+                      {meta.symbol}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, gap: 5 }}>
+                    <View style={s.between}>
+                      <Text style={s.overline}>{meta.label}</Text>
+                      {!n.read && (
+                        <View
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 4,
+                            backgroundColor: color.ink,
+                          }}
+                        />
+                      )}
+                    </View>
+                    <Text style={[s.h3, { fontSize: 16 }]}>{n.title}</Text>
+                    <Text style={s.body} numberOfLines={3}>
+                      {n.body}
+                    </Text>
+                    {n.topic && <Text style={s.small}># {n.topic}</Text>}
+                    <RelativeTime date={n.createdAt} />
+                  </View>
+                </View>
+              </Touch>
+            </React.Fragment>
+          );
+        })}
+        {!filtered.length && (
+          <Empty
+            title={
+              filter === "unread"
+                ? "All caught up"
+                : items.length
+                  ? "Nothing here yet"
+                  : "Your updates will land here"
+            }
+            body={
+              filter === "unread"
+                ? "New replies, connection requests and event updates will appear here."
+                : "Choose another filter or check back after your next conversation."
+            }
+          />
+        )}
+        {!filtered.length && (
+          <Button
+            secondary
+            title={items.length ? "Show all updates" : "Go to group chats"}
+            onPress={() =>
+              items.length ? setFilter("all") : nav.navigate("Chat")
+            }
+          />
+        )}
+      </MotionScene>
+      {mode === "live" && items.length > 0 && (
+        <Text style={s.small}>
+          Showing your 100 most recent updates. Your notification settings
+          control push alerts and digests.
+        </Text>
       )}
     </ScrollView>
   );

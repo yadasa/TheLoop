@@ -260,6 +260,7 @@ export async function execute(
     kind: string,
     targetId: string,
     suffix: string,
+    topic?: string,
   ): Promise<void> {
     if (userId === actor.uid) return;
     const recipient = await store.get(`users/${userId}`);
@@ -286,6 +287,8 @@ export async function execute(
       createdAt: now,
       read: false,
       unreadUserId: userId,
+      ...(["message", "connection", "community"].includes(kind) ? { actorId: actor.uid } : {}),
+      ...(topic ? { topic } : {}),
       ...(suffix === "dm" ? { dmSenderId: actor.uid } : {}),
       ...(kind === "event" && suffix === "promoted"
         ? { eventNoticeType: "promoted" }
@@ -734,6 +737,7 @@ export async function execute(
           "message",
           channel.id,
           "reply",
+          topic,
         );
       }
       const image = await linkImage(
@@ -1634,7 +1638,16 @@ export async function execute(
       break;
     }
     case "notification.read": {
-      if (command.notificationId) {
+      commandFields(command, ["type", "notificationId", "notificationIds"]);
+      assert(!(command.notificationId && command.notificationIds), "invalid-argument", "Choose one notification selection.");
+      if (command.notificationIds !== undefined) {
+        assert(Array.isArray(command.notificationIds) && command.notificationIds.length > 0 && command.notificationIds.length <= 100, "invalid-argument", "Choose 1 to 100 notifications.");
+        const ids = [...new Set(command.notificationIds.map((id: unknown) => text(id, "Notification ID", 260)))];
+        assert(ids.every(id => !id.includes("/")), "invalid-argument", "Invalid notification ID.");
+        const selected = await Promise.all(ids.map(id => requireDoc("notifications", id)));
+        assert(selected.every(notification => notification.userId === actor.uid), "permission-denied", "These notifications are private.");
+        for (const notification of selected) store.set(`notifications/${notification.id}`, { ...notification, read: true, unreadUserId: "" });
+      } else if (command.notificationId) {
         const notification = await requireDoc(
           "notifications",
           command.notificationId,

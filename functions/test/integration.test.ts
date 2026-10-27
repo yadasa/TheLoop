@@ -349,6 +349,20 @@ test(
         },
       );
 
+        await t.test("real callable notification batches preserve unseen updates and reject mixed ownership", async () => {
+          const ids = [nextId(), nextId(), nextId()];
+          for (let index = 0; index < ids.length; index++) {
+            const uid = index === 2 ? alice.uid : bob.uid;
+            await db.doc(`notifications/${remember("notifications", ids[index])}`).set({ id: ids[index], userId: uid, unreadUserId: uid, read: false, kind: "event", targetId: "test-event", title: "Test notice", body: "Disposable integration fixture", createdAt: new Date().toISOString() });
+          }
+          await denied(command(bob, { type: "notification.read", notificationIds: [ids[0], ids[2]] }));
+          assert.equal((await db.doc(`notifications/${ids[0]}`).get()).get("read"), false);
+          await command(bob, { type: "notification.read", notificationIds: [ids[0]] });
+          assert.equal((await db.doc(`notifications/${ids[0]}`).get()).get("read"), true);
+          assert.equal((await db.doc(`notifications/${ids[1]}`).get()).get("read"), false);
+          assert.equal((await db.doc(`notifications/${ids[2]}`).get()).get("read"), false);
+        });
+
         await t.test("real callable topic reads preserve unrelated markers and explicit mutes", async () => {
           for (const actor of [alice, bob]) await db.doc(`users/${actor.uid}/system/rate`).delete();
           await command(alice, { type: "topic.create", channelId: channel, name: "Read scope check" });

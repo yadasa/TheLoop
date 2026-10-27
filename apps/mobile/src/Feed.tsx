@@ -21,6 +21,7 @@ import {
   Touch,
 } from "./ui";
 import type { Nav } from "./navigation";
+import { visibleNotifications } from "./notificationPresentation";
 import {
   featuredConference,
   conferenceDateRange,
@@ -88,9 +89,7 @@ export function Feed({ nav }: { nav: Nav }) {
   const upcoming = state.events
     .filter((e) => e.status !== "cancelled" && new Date(e.endAt) > new Date())
     .sort((a, b) => a.startAt.localeCompare(b.startAt))[0];
-  const unread = state.notifications.filter(
-    (n) => n.userId === state.currentUserId && !n.read,
-  ).length;
+  const unread = visibleNotifications(state).filter((n) => !n.read).length;
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}

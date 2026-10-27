@@ -87,6 +87,23 @@ test("message replies stay in their authorized channel and original topic", asyn
   await assert.rejects(db.command("alice", { type: "message.send", channelId: "private", topic: "General", body: "Wrong channel", replyTo: "parent" }), /same group chat and topic/);
   const result = await db.command("alice", { type: "message.send", channelId: "lobby", topic: "General", body: "Same conversation", replyTo: "parent" });
   assert.equal(db.get(`messages/${result.id}`).replyTo, "parent");
+  const replyNotice = [...db.documents.entries()].find(([path, row]) => path.startsWith("notifications/") && row.targetId === "lobby")?.[1];
+  assert.equal(replyNotice?.topic, "General");
+  assert.equal(replyNotice?.actorId, "alice");
+});
+
+test("notification batch reads affect only selected owned updates and reject mixed ownership atomically", async () => {
+  const db = await database();
+  for (const [id, userId] of [["one", "alice"], ["two", "alice"], ["three", "bob"]]) db.documents.set(`notifications/${id}`, { id, userId, read: false, unreadUserId: userId });
+  await assert.rejects(db.command("alice", { type: "notification.read", notificationIds: ["one", "three"] }), /private/);
+  assert.equal(db.get("notifications/one").read, false);
+  await db.command("alice", { type: "notification.read", notificationIds: ["one", "one"] });
+  assert.equal(db.get("notifications/one").read, true);
+  assert.equal(db.get("notifications/one").unreadUserId, "");
+  assert.equal(db.get("notifications/two").read, false);
+  assert.equal(db.get("notifications/three").read, false);
+  for (const notificationIds of [[], Array(101).fill("one"), ["nested/id"], "one"]) await assert.rejects(db.command("alice", { type: "notification.read", notificationIds }), /notifications|Invalid/);
+  await assert.rejects(db.command("alice", { type: "notification.read", notificationId: "one", notificationIds: ["two"] }), /one notification selection/);
 });
 
 test("topic read markers preserve other topics, explicit mutes, old clients and private access", async () => {

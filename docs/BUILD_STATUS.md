@@ -3,14 +3,14 @@
 ## Product brief
 A community platform growing from four years of AfroTech group chat: conference hubs and topic chat, intentional subscriptions, Reddit-style communities and social feed, professional profiles, explainable trust, connection requests and follows, direct messages, event and global calendars, RSVP/waitlists, social links, polls, wins, and useful serendipity. Monochrome, calm, and distinctly community-first. Native Expo app shares the same domain and Firebase backend with the web app.
 
-## Work ownership
+## Initial work ownership (historical)
 - Primary agent: repository setup, shared core/client, web app, integration, QA, commits and deployment.
 - Backend agent: functions/, Firebase rules/indexes/configuration, backend tests and deployment documentation.
 - Mobile agent: apps/mobile/ only, native Expo implementation and device/export validation.
 - Research agent: open source evaluation and focused independent review.
 
 ## Operating rules
-Keep pushes small and coherent. Never commit credentials, build output or caches. Fictional demonstration data must be clearly labeled. Never claim historical membership or migrate chat history without user-provided data and authorization. Preserve explicit mutes. Trust is server-owned, explainable, and appealable. Use dedicated TheLoop infrastructure only. The October 27 instruction supersedes earlier limits: continue until 69% usage or a reset to 0%, whichever occurs first. Starting usage was 32%; latest check 39%, same reset timestamp 1793641476. Review between coherent batches and every 30 minutes; at the threshold/reset or if ordinary usage is disallowed, stop new work, save/push verified changes and pause the automation. Do not use reset credits or buy credits.
+Keep pushes small and coherent. Never commit credentials, build output or caches. Fictional demonstration data must be clearly labeled. Never claim historical membership or migrate chat history without user-provided data and authorization. Preserve explicit mutes. Trust is server-owned, explainable, and appealable. Use dedicated TheLoop infrastructure only. The October 27 instruction supersedes earlier limits: continue until 69% usage or a reset to 0%, whichever occurs first. Starting usage was 32%; latest check 56%, same reset timestamp 1793641476. Review between coherent batches and every 30 minutes; at the threshold/reset or if ordinary usage is disallowed, stop new work, save/push verified changes and pause the automation. Do not use reset credits or buy credits.
 
 ## Progress
 - Empty repository cloned; architecture and shared domain contracts established.
@@ -178,3 +178,10 @@ All units pass (core65/client93/web4/mobile33/functions119), workspace typecheck
 - Digests now honor both per-topic and legacy whole-chat read markers, so reading Introductions does not suppress unread Travel messages or resurface read introductions.
 - Functions tests: 120 passed, including mixed topic and legacy watermark regression coverage. Usage: 55%, same reset window; continuing toward 69% or reset.
 
+
+### October 27 — Expo notification inbox
+- Added unread and category filters, local date groups, accessible unread labels, subtle filter transitions, notification settings entry, and useful empty states.
+- Mark shown as read sends an explicit bounded ID list. The server checks every owner before writing, so other filters and newly arriving notifications stay unread; older clients retain their prior command behavior.
+- Reply notifications carry their topic and sender. Blocked senders are hidden from the Expo inbox/count and suppressed when a queued push is delivered. Missing group chats no longer route into a DM, and older post notifications open their document outside the feed window.
+- Whole-workspace types and unit tests passed: core 65, client 93, web 4, mobile 37, functions 122. Sample Expo UI confirmed marking Connections read preserved the unread Event. Real Auth/callable/Firestore/Storage checks passed 30/30, including atomic mixed-owner notification rejection and preserving unread updates outside the selected list.
+- b588f3f topic-specific read command successfully deployed to the dedicated live project. Usage is 56%, reset timestamp unchanged.

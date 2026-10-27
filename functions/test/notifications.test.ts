@@ -10,6 +10,23 @@ import {
 } from "../src/notifications";
 import { defaultPreferences } from "../src/policy";
 
+test("queued pushes from a newly blocked sender are suppressed", () => {
+  const prefs = { ...defaultPreferences(), blockedIds: ["blocked"] };
+  const now = new Date("2026-10-26T12:00:00Z");
+  assert.equal(
+    shouldDeliverPush({ kind: "community", actorId: "blocked" }, prefs, now),
+    false,
+  );
+  assert.equal(
+    shouldDeliverPush({ kind: "message", dmSenderId: "blocked" }, prefs, now),
+    false,
+  );
+  assert.equal(
+    shouldDeliverPush({ kind: "community", actorId: "friend" }, prefs, now),
+    true,
+  );
+});
+
 test("essential event changes and cancellation push do not inherit reminder opt-out, but quiet hours still apply", () => {
   const prefs = { ...defaultPreferences(), eventReminders: false };
   for (const eventNoticeType of ["updated", "cancelled", "promoted"])

@@ -18,7 +18,7 @@ export type SquadMember = { userId: string; name: string; initials: string; join
 export type Squad = { id: string; name: string; description: string; ownerId: string; memberIds: string[]; memberProfiles: Record<string, SquadMember>; pendingInviteeIds: string[]; createdAt: string; updatedAt: string; archived: boolean };
 export type SquadInvite = { id: string; squadId: string; squadName: string; description: string; fromId: string; toId: string; participantIds: string[]; status: 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired'; createdAt: string; expiresAt: string; respondedAt?: string };
 export type SquadMessage = { id: string; squadId: string; authorId: string; authorName: string; authorInitials: string; body: string; createdAt: string; editedAt?: string; audienceIds: string[]; reactions: Record<string, string[]>; replyTo?: string; image?: ImageAttachment };
-export type Notification = { id: string; userId: string; title: string; body: string; kind: 'message' | 'connection' | 'event' | 'community' | 'squad'; targetId: string; createdAt: string; read: boolean };
+export type Notification = { id: string; userId: string; title: string; body: string; kind: 'message' | 'connection' | 'event' | 'community' | 'squad'; targetId: string; createdAt: string; read: boolean; topic?: string; actorId?: string; dmSenderId?: string };
 export type Report = { id: string; reporterId: string; targetId: string; targetType: 'message' | 'post' | 'profile' | 'comment' | 'directMessage' | 'squadMessage'; postId?: string; reason: string; createdAt: string; status: 'open' | 'reviewed'; snapshot?: { body: string; authorId: string; capturedAt: string; title?: string; image?: ImageAttachment } };
 export type Preferences = { subscriptions: Record<string, Subscription>; joinedCommunityIds: string[]; followingIds: string[]; blockedIds: string[]; savedPostIds: string[]; readChannels: Record<string, string>; squadReadAt?: Record<string, string>; squadMutedIds?: string[]; dmMutedIds?: string[]; interests: string[]; onboardingComplete: boolean; quietHours: boolean; quietStart: string; quietEnd: string; timezone: string; digest: 'off' | 'daily' | 'weekly'; dmPolicy: 'connections' | 'everyone' | 'nobody'; hideUnsubscribed: boolean; eventReminders: boolean };
 export type DirectMessage = { id: string; fromId: string; toId: string; fromName?: string; fromInitials?: string; toName?: string; toInitials?: string; conversationId?: string; participantIds?: string[]; sequence?: number; body: string; createdAt: string; editedAt?: string; read: boolean; image?: ImageAttachment };
@@ -77,7 +77,7 @@ export type Command =
   | { type: 'dm.delete'; messageId: string }
   | { type: 'dm.mute'; userId: string; muted: boolean }
   | { type: 'dm.read'; userId: string }
-  | { type: 'notification.read'; notificationId?: string }
+  | { type: 'notification.read'; notificationId?: string; notificationIds?: string[] }
   | { type: 'preferences.update'; preferences: Partial<Preferences> }
   | { type: 'onboarding.complete'; interests: string[]; channelIds: string[]; replaceChannels?: boolean; channelScopeIds?: string[] }
   | { type: 'report.create'; targetId: string; targetType: Report['targetType']; postId?: string; reason: string }
