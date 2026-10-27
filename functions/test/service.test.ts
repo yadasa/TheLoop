@@ -89,6 +89,24 @@ test("message replies stay in their authorized channel and original topic", asyn
   assert.equal(db.get(`messages/${result.id}`).replyTo, "parent");
 });
 
+test("topic read markers preserve other topics, explicit mutes, old clients and private access", async () => {
+  const db = await database();
+  db.documents.set("channels/lobby", { ...db.get("channels/lobby"), topics: ["General", "Travel", "Hidden"] });
+  const preferences = db.get("users/alice").preferences;
+  preferences.subscriptions["lobby:Travel"] = "muted";
+  preferences.subscriptions["lobby:Hidden"] = "hidden";
+  await db.command("alice", { type: "channel.read", channelId: "lobby", topic: "General" });
+  assert.deepEqual(db.get("users/alice").preferences.readChannels, { "lobby:General": now });
+  await db.command("alice", { type: "channel.read", channelId: "lobby", visibleTopics: true });
+  assert.deepEqual(db.get("users/alice").preferences.readChannels, { "lobby:General": now });
+  assert.equal(db.get("users/alice").preferences.subscriptions["lobby:Travel"], "muted");
+  await assert.rejects(db.command("alice", { type: "channel.read", channelId: "lobby", topic: "Missing" }), /Choose a topic/);
+  await assert.rejects(db.command("alice", { type: "channel.read", channelId: "lobby", topic: "General", visibleTopics: true }), /one read scope/);
+  await assert.rejects(db.command("bob", { type: "channel.read", channelId: "private" }));
+  await db.command("alice", { type: "channel.read", channelId: "lobby" });
+  assert.equal(db.get("users/alice").preferences.readChannels.lobby, now);
+});
+
 test("bootstrap never seeds fabricated people, messages, badges or relationships", async () => {
   const db = new Database();
   await db.boot("new-member");

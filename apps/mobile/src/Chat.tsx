@@ -373,7 +373,16 @@ export function ChannelDetail({
   const [showJump, setShowJump] = useState(false);
   const reducedMotion = useReducedMotion();
   const newestMessageId = state.messages
-    .filter((message) => message.channelId === id)
+    .filter(
+      (message) =>
+        message.channelId === id &&
+        (topic === null || message.topic === topic) &&
+        !state.preferences.blockedIds.includes(message.authorId) &&
+        (topic !== null ||
+          !["hidden", "muted"].includes(
+            state.preferences.subscriptions[`${id}:${message.topic}`],
+          )),
+    )
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     .at(-1)?.id;
   useEffect(() => {
@@ -402,9 +411,14 @@ export function ChannelDetail({
       (channel.visibility === "public" ||
         channel.memberIds?.includes(state.currentUserId))
     )
-      void nav.run({ type: "channel.read", channelId: id });
+      void nav.run({
+        type: "channel.read",
+        channelId: id,
+        ...(topic !== null ? { topic } : { visibleTopics: true }),
+      });
   }, [
     id,
+    topic,
     newestMessageId,
     appActive,
     showJump,
@@ -641,6 +655,7 @@ export function ChannelDetail({
                 <Chip
                   key={t}
                   title={t}
+                  count={channelUnread(state, id, t) || undefined}
                   selected={topic === t}
                   onPress={() => selectTopic(t)}
                   disabled={locked}
@@ -753,10 +768,11 @@ export function ChannelDetail({
           )
           .map((name) => {
             const status = state.preferences.subscriptions[`${id}:${name}`];
+            const unread = channelUnread(state, id, name);
             return (
               <Touch
                 key={name}
-                label={`Open topic ${name}`}
+                label={`Open topic ${name}${unread ? `, ${unread} unread` : ""}`}
                 disabled={locked}
                 onPress={() => selectTopic(name)}
                 style={[
@@ -769,6 +785,7 @@ export function ChannelDetail({
               >
                 <View style={s.between}>
                   <Text style={[s.h3, { flex: 1 }]}>{name}</Text>
+                  {unread > 0 && <Label>{unread} unread</Label>}
                   <Text style={s.small}>{topic === name ? "✓" : "→"}</Text>
                 </View>
                 <Text style={s.small}>
@@ -1188,7 +1205,9 @@ export function ChannelDetail({
                       <Text style={s.small} numberOfLines={2}>
                         ↳ {quoted?.body || "Message unavailable"}
                       </Text>
-                      <Text style={[s.small, { fontSize: 10 }]}>View conversation →</Text>
+                      <Text style={[s.small, { fontSize: 10 }]}>
+                        View conversation →
+                      </Text>
                     </Touch>
                   )}
                   <LinkifiedText

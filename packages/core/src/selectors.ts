@@ -15,7 +15,9 @@ export const visibleChannels = (s: LoopState) =>
         subscriptionFor(s, c.id, c.conferenceId) === "following") &&
       (c.visibility === "public" || c.memberIds?.includes(s.currentUserId)),
   );
-export const channelUnread = (s: LoopState, id: string) => {
+export const channelUnread = (s: LoopState, id: string, topic?: string) => {
+  const channel = s.channels.find(c => c.id === id);
+  if (!channel || (channel.visibility === "private" && !channel.memberIds?.includes(s.currentUserId))) return 0;
   const inherited = subscriptionFor(
     s,
     id,
@@ -26,8 +28,10 @@ export const channelUnread = (s: LoopState, id: string) => {
     : s.messages.filter(
         (m) =>
           m.channelId === id &&
+          (topic === undefined || m.topic === topic) &&
           m.authorId !== s.currentUserId &&
           m.createdAt > (s.preferences.readChannels[id] ?? "") &&
+          m.createdAt > (s.preferences.readChannels[`${id}:${m.topic}`] ?? "") &&
           !s.preferences.blockedIds.includes(m.authorId) &&
           (s.preferences.subscriptions[`${id}:${m.topic}`] ?? inherited) ===
             "following",

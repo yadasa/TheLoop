@@ -52,7 +52,7 @@ export type Command =
   | { type: 'message.edit'; messageId: string; body: string }
   | { type: 'message.delete'; messageId: string }
   | { type: 'message.react'; messageId: string; emoji: string }
-  | { type: 'channel.read'; channelId: string }
+  | { type: 'channel.read'; channelId: string; topic?: string; visibleTopics?: boolean }
   | { type: 'post.create'; communityId: string; title: string; body: string; kind: Post['kind']; tags?: string[]; options?: string[]; url?: string; imageId?: string }
   | { type: 'post.edit'; postId: string; post: Partial<Pick<Post, 'title' | 'body' | 'tags' | 'url'>> }
   | { type: 'post.delete'; postId: string }

@@ -597,7 +597,7 @@ export function Chip({
   return (
     <Touch
       onPress={onPress}
-      label={title}
+      label={count !== undefined ? `${title}, ${count}` : title}
       selected={selected}
       disabled={disabled}
       style={[

@@ -363,8 +363,8 @@ export default function App() {
   }, [tourOpen]);
   useEffect(() => {
     if (page === "chat" && activeChannel && !tourOpen)
-      void act({ type: "channel.read", channelId: activeChannel.id });
-  }, [page, activeChannel?.id, tourOpen]);
+      void act({ type: "channel.read", channelId: activeChannel.id, ...(topic !== "All topics" ? { topic } : { visibleTopics: true }) });
+  }, [page, activeChannel?.id, topic, tourOpen]);
   useEffect(() => {
     setReplyTo(null);
   }, [channelId]);

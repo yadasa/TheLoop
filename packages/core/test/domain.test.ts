@@ -20,6 +20,31 @@ test('hidden channels disappear and never contribute unread messages', () => {
   assert.equal(channelUnread(state, 'the-lobby'), 0);
 });
 
+test('reading one topic preserves unread messages in other topics and keeps markers monotonic', () => {
+  let state = initialState();
+  assert.equal(channelUnread(state, 'the-lobby'), 4);
+  state = applyCommand(state, { type: 'channel.read', channelId: 'the-lobby', topic: 'Introductions' }, context);
+  assert.equal(channelUnread(state, 'the-lobby', 'Introductions'), 0);
+  assert.equal(channelUnread(state, 'the-lobby', 'Making plans'), 1);
+  assert.equal(channelUnread(state, 'the-lobby'), 1);
+  assert.equal(state.preferences.readChannels['the-lobby'], undefined);
+  state = applyCommand(state, { type: 'channel.read', channelId: 'the-lobby', topic: 'Introductions' }, { ...context, now: '2020-01-01T00:00:00Z' });
+  assert.equal(state.preferences.readChannels['the-lobby:Introductions'], context.now);
+});
+
+test('visible-topic catchup skips muted/hidden topics while legacy clients keep their channel marker', () => {
+  let state = initialState();
+  state.preferences.subscriptions['the-lobby:Making plans'] = 'muted';
+  state = applyCommand(state, { type: 'channel.read', channelId: 'the-lobby', visibleTopics: true }, context);
+  assert.equal(state.preferences.readChannels['the-lobby:Making plans'], undefined);
+  state.preferences.subscriptions['the-lobby:Making plans'] = 'following';
+  assert.equal(channelUnread(state, 'the-lobby'), 1);
+  state = applyCommand(state, { type: 'channel.read', channelId: 'the-lobby' }, context);
+  assert.equal(state.preferences.readChannels['the-lobby'], context.now);
+  assert.equal(channelUnread(state, 'the-lobby'), 0);
+  assert.throws(() => applyCommand(state, { type: 'channel.read', channelId: 'the-lobby', topic: 'Missing' }, context), /Choose a topic/);
+});
+
 test('conference following is inherited by a channel and its topics', () => {
   const state = initialState();
   delete state.preferences.subscriptions['the-lobby'];

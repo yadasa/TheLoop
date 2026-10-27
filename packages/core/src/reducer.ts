@@ -177,9 +177,16 @@ export function applyCommand(
         : [...(m.reactions[emoji] ?? []), uid];
       break;
     }
-    case "channel.read":
-      s.preferences.readChannels[cmd.channelId] = ctx.now;
+    case "channel.read": {
+      const channel = s.channels.find(value => value.id === cmd.channelId);
+      if (!channel || (channel.visibility === "private" && !channel.memberIds?.includes(uid))) throw new Error("You do not have access to this channel.");
+      if (cmd.topic !== undefined && !channel.topics.includes(cmd.topic)) throw new Error("Choose a topic in this group chat.");
+      if (cmd.topic !== undefined && cmd.visibleTopics) throw new Error("Choose one read scope.");
+      const topics = cmd.topic !== undefined ? [cmd.topic] : channel.topics.filter(topic => !["muted", "hidden"].includes(s.preferences.subscriptions[`${channel.id}:${topic}`]));
+      const keys = cmd.topic === undefined && !cmd.visibleTopics ? [channel.id] : topics.map(topic => `${channel.id}:${topic}`);
+      for (const key of keys) if (ctx.now > (s.preferences.readChannels[key] || "")) s.preferences.readChannels[key] = ctx.now;
       break;
+    }
     case "post.create": {
       if (!s.preferences.joinedCommunityIds.includes(cmd.communityId))
         throw new Error("Join this community before posting.");

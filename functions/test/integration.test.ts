@@ -349,6 +349,24 @@ test(
         },
       );
 
+        await t.test("real callable topic reads preserve unrelated markers and explicit mutes", async () => {
+          for (const actor of [alice, bob]) await db.doc(`users/${actor.uid}/system/rate`).delete();
+          await command(alice, { type: "topic.create", channelId: channel, name: "Read scope check" });
+          await command(bob, { type: "channel.read", channelId: channel, topic: "Read scope check" });
+          let prefs = (await db.doc(`users/${bob.uid}`).get()).data()!.preferences;
+          assert.equal(typeof prefs.readChannels[`${channel}:Read scope check`], "string");
+          assert.equal(prefs.readChannels[`${channel}:General`], undefined);
+          assert.equal(prefs.readChannels[channel], undefined);
+          await command(bob, { type: "channel.read", channelId: channel, visibleTopics: true });
+          prefs = (await db.doc(`users/${bob.uid}`).get()).data()!.preferences;
+          assert.equal(prefs.readChannels[`${channel}:General`], undefined);
+          assert.equal(prefs.subscriptions[`${channel}:General`], "muted");
+          await denied(command(bob, { type: "channel.read", channelId: channel, topic: "Missing topic" }), ["INVALID_ARGUMENT"]);
+          await command(bob, { type: "channel.read", channelId: channel });
+          assert.equal(typeof (await db.doc(`users/${bob.uid}`).get()).data()!.preferences.readChannels[channel], "string");
+          for (const actor of [alice, bob]) await db.doc(`users/${actor.uid}/system/rate`).delete();
+        });
+
       await t.test(
         "profile authority and private profile grants survive the full connection lifecycle",
         async () => {

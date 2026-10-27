@@ -828,8 +828,18 @@ export async function execute(
       break;
     }
     case "channel.read": {
+      commandFields(command, ["type", "channelId", "topic", "visibleTopics"]);
       const channel = await channelAccess(command.channelId);
-      prefs.readChannels = { ...prefs.readChannels, [channel.id]: now };
+      const topic = command.topic === undefined ? undefined : text(command.topic, "Topic", 80);
+      const available: string[] = channel.topics || [];
+      assert(command.visibleTopics === undefined || typeof command.visibleTopics === "boolean", "invalid-argument", "Choose a valid read scope.");
+      assert(topic === undefined || !command.visibleTopics, "invalid-argument", "Choose one read scope.");
+      assert(topic === undefined || available.includes(topic), "invalid-argument", "Choose a topic in this group chat.");
+      const topics = topic !== undefined ? [topic] : available.filter(name => !["muted", "hidden"].includes(prefs.subscriptions[`${channel.id}:${name}`]));
+      // Older installed clients still use the channel-wide marker.
+      const keys = topic === undefined && !command.visibleTopics ? [channel.id] : topics.map(name => `${channel.id}:${name}`);
+      prefs.readChannels = { ...prefs.readChannels };
+      for (const key of keys) if (now > (prefs.readChannels[key] || "")) prefs.readChannels[key] = now;
       savePreferences();
       break;
     }
