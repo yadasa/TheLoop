@@ -1,3 +1,4 @@
+import { ProfileCard } from "./src/ProfileCard";
 import { SessionDrafts } from "./src/SessionDrafts";
 import { SavedMessages } from "./src/SavedMessages";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -496,6 +497,7 @@ function LoopApp() {
       inbox: "Direct messages",
       drafts: "Drafts",
       "saved-messages": "Saved messages",
+      "profile-card": "Your profile card",
       compose: "Create post",
       communities: "Your communities",
       "create-community": "Create community",
@@ -566,6 +568,8 @@ function LoopApp() {
         return (
           <DirectChat key={`${scope}:${route.id}`} id={route.id} nav={nav} />
         );
+      case "profile-card":
+        return <ProfileCard key={scope} nav={nav} />;
       case "saved-messages":
         return <SavedMessages nav={nav} />;
       case "drafts":

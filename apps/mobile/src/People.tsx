@@ -591,6 +591,12 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
           />
         )}
       </View>
+      {mine && (
+        <Button
+          title="Show my QR card"
+          onPress={() => nav.open({ kind: "profile-card" })}
+        />
+      )}
       <Button
         secondary
         title={mine ? "Share your profile" : "Share profile"}

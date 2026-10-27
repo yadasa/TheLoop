@@ -195,7 +195,7 @@ export function DirectInbox({ nav }: { nav: Nav }) {
               query
                 ? "Search matches the conversations loaded so far. Load more or try another name."
                 : filter !== "all"
-                  ? "Switch to All to see your inbox, or load more conversations below. Muted messages can still be unread."
+                  ? `Switch to All to see your inbox.${directCatalog.hasMore ? " You can also load more conversations below." : ""} Muted messages can still be unread.`
                   : backfill
                     ? "Check for older conversations above, or find someone in People to message."
                     : "Find someone in People and select Message. Their message settings determine who can contact them."

@@ -111,6 +111,11 @@ export function You({ nav }: { nav: Nav }) {
           title="View your profile"
           onPress={() => nav.open({ kind: "profile", id: me.id })}
         />
+        <Button
+          secondary
+          title="Show my QR card"
+          onPress={() => nav.open({ kind: "profile-card" })}
+        />
       </View>
       <View style={[s.wrap, { gap: 10 }]}>
         {[

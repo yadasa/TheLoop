@@ -25,6 +25,7 @@ export type Route =
         | "inbox"
         | "drafts"
         | "saved-messages"
+        | "profile-card"
         | "create-community"
         | "create-event"
         | "notifications"

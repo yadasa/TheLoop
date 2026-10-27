@@ -220,3 +220,9 @@ All units pass (core65/client93/web4/mobile33/functions119), workspace typecheck
 ### October 27 — direct inbox filters
 - Direct messages now has All, Unread and Muted filters, accent-insensitive search, a useful empty-state reset and animated filter changes. Muting does not silently mark a conversation read. Counts and search explicitly cover loaded conversations, and pagination remains available under every filter.
 - Filtering rejects blocked peers, other-account records and malformed participant lists; photo-only previews say Photo. Mobile types and 41 tests pass, including filtering/privacy regression coverage. Usage 62%, same reset window.
+
+### October 27 — profile QR cards for in-person introductions
+- Your account and your own profile now open a monochrome QR card with your current name, headline and photo. Copy/share controls use the same existing profile deep link; the QR contains only that link, never account email or other profile fields. Existing sign-in/profile visibility rules remain unchanged. Sample cards are labeled, and installed-app requirements are explicit when no web URL is configured.
+- Uses Expo SDK58's recommended react-native-svg15.16.0 (https://docs.expo.dev/versions/v58.0.0/sdk/svg/) and MIT qrcode-generator2.0.4 (https://github.com/kazuhikoarase/qrcode-generator). Independent jsQR tests decode the actual generated path; OpenCV also decoded screenshots at 390px and 320px widths to the exact expected link. Native camera/app-link handoff remains a physical-device test.
+- 43 mobile tests and native types pass. Android/iOS Hermes exports pass at4.6MB each. Sample UI verified card, copy feedback and account entry. Also verified inbox All/Unread/reset behavior and corrected an empty-state suggestion when no more pages exist.
+- CI40477055598 passed for inbox4b52ee9 and CI40476621549 passed for menu/copya4bbf23. Usage62%, same reset timestamp; continuing.
