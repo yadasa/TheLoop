@@ -33,6 +33,13 @@ test("saved preview images preserve only validated local WebP payloads and targe
   assert.throws(() => restorePreview({ ...state, previewImages: { [id]: { ...entry, dataUrl: "data:text/html;base64,AAAA" } } }), /image/);
   assert.throws(() => restorePreview({ ...state, previewImages: { [id]: { ...entry, target: { kind: "channel", id: "not/a/document" } } } }), /scope/);
   assert.throws(() => restorePreview({ ...state, previewImages: { "different-id": entry } }), /image ID/);
+  const profilePhoto = { ...entry, target: { kind: "profile" as const, id: state.currentUserId }, linkedTo: { kind: "profile" as const, id: state.currentUserId } };
+  state.preferences.onboardingComplete = true;
+  state.profiles.find(profile => profile.id === state.currentUserId)!.image = entry.image;
+  const restoredPhoto = restorePreview(JSON.parse(JSON.stringify({ ...state, previewImages: { [id]: profilePhoto } })));
+  assert.equal(restoredPhoto.preferences.onboardingComplete, true);
+  assert.equal(restoredPhoto.profiles.find(profile => profile.id === state.currentUserId)?.image?.id, id);
+  assert.deepEqual(restoredPhoto.previewImages?.[id].linkedTo, profilePhoto.linkedTo);
 });
 
 test("legacy direct histories keep their messages and gain empty mute defaults", () => {

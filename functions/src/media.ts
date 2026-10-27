@@ -7,7 +7,7 @@ export const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
 export const MAX_IMAGE_BYTES = 1024 * 1024;
 export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 export type MediaTarget = {
-  kind: "channel" | "squad" | "directMessage" | "community";
+  kind: "channel" | "squad" | "directMessage" | "community" | "profile";
   id: string;
 };
 export function mediaTarget(input: unknown): MediaTarget {
@@ -19,7 +19,9 @@ export function mediaTarget(input: unknown): MediaTarget {
   const target = input as Doc;
   assert(
     Object.keys(target).every((key) => ["kind", "id"].includes(key)) &&
-      ["channel", "squad", "directMessage", "community"].includes(target.kind),
+      ["channel", "squad", "directMessage", "community", "profile"].includes(
+        target.kind,
+      ),
     "invalid-argument",
     "Invalid image destination.",
   );
@@ -43,7 +45,13 @@ export async function authorizeMediaTarget(
   target: MediaTarget,
 ): Promise<Doc> {
   const user = await activeMediaUser(store, uid);
-  if (target.kind === "channel") {
+  if (target.kind === "profile") {
+    assert(
+      target.id === uid && (await store.get(`profiles/${uid}`)),
+      "permission-denied",
+      "You can only change your own profile photo.",
+    );
+  } else if (target.kind === "channel") {
     const channel = await store.get(`channels/${target.id}`);
     assert(
       channel &&
@@ -369,6 +377,7 @@ const reportCollections: Record<string, string> = {
   post: "posts",
   directMessage: "directMessages",
   squadMessage: "squadMessages",
+  profile: "profiles",
 };
 export async function authorizeMediaRead(
   store: TransactionStore,
@@ -382,9 +391,13 @@ export async function authorizeMediaRead(
   assert(
     media?.state === "ready" &&
       media.sanitizedPath &&
-      ["messages", "posts", "directMessages", "squadMessages"].includes(
-        media.linkedCollection,
-      ),
+      [
+        "messages",
+        "posts",
+        "directMessages",
+        "squadMessages",
+        "profiles",
+      ].includes(media.linkedCollection),
     "not-found",
     "This image is no longer available.",
   );
@@ -394,7 +407,7 @@ export async function authorizeMediaRead(
   assert(
     source && source.image?.id === media.id,
     "not-found",
-    "This image's message is no longer available.",
+    "This image is no longer attached to its content.",
   );
   if (reportId !== undefined) {
     const report = await store.get(`reports/${id(reportId)}`);
@@ -406,6 +419,26 @@ export async function authorizeMediaRead(
         report.targetId === media.linkedId,
       "permission-denied",
       "This image is not part of an authorized moderation report.",
+    );
+  } else if (media.linkedCollection === "profiles") {
+    const owner = await store.get(`users/${source.id}`);
+    assert(
+      owner &&
+        !owner.disabled &&
+        !owner.deletionPending &&
+        !user.preferences?.blockedIds?.includes(source.id) &&
+        !owner.preferences?.blockedIds?.includes(uid),
+      "permission-denied",
+      "This profile photo is unavailable.",
+    );
+    const access =
+      uid === source.id ||
+      source.visibility === "public" ||
+      (await store.get(`profileAccess/${source.id}/members/${uid}`));
+    assert(
+      access,
+      "permission-denied",
+      "This profile photo is visible to connections only.",
     );
   } else if (media.linkedCollection === "messages") {
     const channel = await store.get(`channels/${source.channelId}`);

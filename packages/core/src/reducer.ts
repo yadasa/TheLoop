@@ -440,22 +440,29 @@ export function applyCommand(
       break;
     case "profile.update": {
       if (!me) throw new Error("Profile not available.");
+      if (cmd.imageId && cmd.removeImage) throw new Error("Choose a photo or remove it.");
       const p = cmd.profile;
       if (p.name !== undefined) me.name = clean(p.name, 80);
       for (const key of ["headline", "company", "location", "bio"] as const)
         if (p[key] !== undefined)
-          me[key] = clean(p[key]!, key === "bio" ? 1500 : 160, false);
+          me[key] = clean(p[key]!, { bio: 2000, headline: 160, company: 100, location: 120 }[key], false);
       for (const key of ["skills", "interests", "openTo"] as const)
-        if (p[key]) me[key] = p[key]!.slice(0, 12).map((v) => clean(v, 50));
+        if (p[key]) {
+          if (p[key]!.length > 20) throw new Error("Use up to 20 profile tags.");
+          me[key] = [...new Set(p[key]!.map(v => clean(v, 60)))];
+        }
       if (p.links) {
-        if (p.links.length > 5 || p.links.some((l) => !safeURL(l.url)))
-          throw new Error("Add up to five valid http or https links.");
+        if (p.links.length > 8 || p.links.some((l) => {
+          try { const url = new URL(l.url); return url.protocol !== "https:" || !!url.username || !!url.password || /\s/.test(l.url) || l.url.length > 2048; } catch { return true; }
+        })) throw new Error("Add up to eight valid HTTPS links.");
         me.links = p.links.map((l) => ({
           label: clean(l.label, 40),
           url: l.url,
         }));
       }
       if (p.visibility) me.visibility = p.visibility;
+      if (cmd.imageId) me.image = bindPreviewImage(s, cmd.imageId, { kind: "profile", id: uid }, { kind: "profile", id: uid }, ctx.now);
+      else if (cmd.removeImage) delete me.image;
       me.initials = me.name
         .split(" ")
         .slice(0, 2)

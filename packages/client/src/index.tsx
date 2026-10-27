@@ -170,10 +170,10 @@ export function restorePreview(saved: LoopState): LoopState {
     if (!object(saved.previewImages) || Object.keys(saved.previewImages).length > 64) throw new Error("Invalid saved preview images.");
     let total = 0;
     for (const [id, entry] of Object.entries(saved.previewImages)) {
-      if (!object(entry) || !object(entry.target) || !["channel", "squad", "directMessage", "community"].includes(entry.target.kind as string) || !safeMediaId(entry.target.id) || typeof entry.ownerId !== "string" || !Number.isFinite(Date.parse(entry.createdAt as string))) throw new Error("Invalid saved preview image scope.");
+      if (!object(entry) || !object(entry.target) || !["channel", "squad", "directMessage", "community", "profile"].includes(entry.target.kind as string) || !safeMediaId(entry.target.id) || typeof entry.ownerId !== "string" || !Number.isFinite(Date.parse(entry.createdAt as string))) throw new Error("Invalid saved preview image scope.");
       const parsed = previewImageData(entry);
       if (parsed.image.id !== id) throw new Error("Invalid saved preview image ID.");
-      if (entry.linkedTo !== undefined && (!object(entry.linkedTo) || !["message", "squadMessage", "directMessage", "post"].includes(entry.linkedTo.kind as string) || !safeMediaId(entry.linkedTo.id))) throw new Error("Invalid saved preview image source.");
+      if (entry.linkedTo !== undefined && (!object(entry.linkedTo) || !["message", "squadMessage", "directMessage", "post", "profile"].includes(entry.linkedTo.kind as string) || !safeMediaId(entry.linkedTo.id))) throw new Error("Invalid saved preview image source.");
       total += parsed.image.size;
     }
     if (total > 2 * 1024 * 1024) throw new Error("Saved preview images exceed 2 MB.");
@@ -458,7 +458,8 @@ export function LoopProvider({
     const authority = currentMediaAuthority(), selectedMode = modeRef.current;
     const ownerId = stateRef.current.currentUserId;
     try {
-      if (!ownerId || !["channel", "squad", "directMessage", "community"].includes(target.kind) || !safeMediaId(target.id)) throw new Error("Choose a conversation before adding an image.");
+      if (!ownerId || !["channel", "squad", "directMessage", "community", "profile"].includes(target.kind) || !safeMediaId(target.id)) throw new Error("Choose a conversation before adding an image.");
+      if (target.kind === "profile" && target.id !== ownerId) throw new Error("You can only change your own profile photo.");
       const bytes = await imageUploadBytes(input, selectedMode === "demo");
       synchronizeMedia();
       if (authority !== currentMediaAuthority()) throw new MediaScopeChanged();

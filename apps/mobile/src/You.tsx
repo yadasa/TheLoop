@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, ScrollView, Switch, Text, View } from "react-native";
+import { Image, Platform, ScrollView, Switch, Text, View } from "react-native";
 import { useLoop } from "@theloop/client";
 import { interests, subscriptionFor } from "@theloop/core";
 import { ProfileLinks, ProfileTags } from "./ProfileFields";
@@ -29,6 +29,7 @@ import {
   routeNotification,
 } from "./devicePush";
 import { shareExport } from "./shareExport";
+import { useImageAttachment } from "./Media";
 import {
   filterNotifications,
   notificationDay,
@@ -381,6 +382,8 @@ function VerificationCard({ nav }: { nav: Nav }) {
 export function EditProfile({ nav }: { nav: Nav }) {
   const { state } = useLoop();
   const me = state.profiles.find((p) => p.id === state.currentUserId);
+  const photo = useImageAttachment(nav, undefined, true);
+  const [removePhoto, setRemovePhoto] = useState(false);
   const [name, setName] = useState(me?.name || "");
   const [headline, setHeadline] = useState(me?.headline || "");
   const [company, setCompany] = useState(me?.company || "");
@@ -394,7 +397,7 @@ export function EditProfile({ nav }: { nav: Nav }) {
   const [formError, setFormError] = useState("");
   const [visibility, setVisibility] = useState(me?.visibility || "public");
   const [busy, setBusy] = useState(false);
-  useNavigationBusy(nav, "edit-profile", busy);
+  useNavigationBusy(nav, "edit-profile", busy || photo.busy);
   return (
     <ScrollView
       keyboardShouldPersistTaps="handled"
@@ -404,6 +407,61 @@ export function EditProfile({ nav }: { nav: Nav }) {
       <Text style={s.body}>
         Add the work, skills and interests you want to share.
       </Text>
+      <View style={[s.card, { alignItems: "center", gap: 14 }]}>
+        {photo.choice ? (
+          <Image
+            source={{ uri: photo.choice.uri }}
+            accessibilityLabel="New profile photo preview"
+            style={{ width: 100, height: 100, borderRadius: 50 }}
+            resizeMode="cover"
+          />
+        ) : (
+          <Avatar
+            profile={removePhoto && me ? { ...me, image: undefined } : me}
+            size={100}
+          />
+        )}
+        <Button
+          secondary
+          title={
+            photo.busy
+              ? "Preparing photo…"
+              : photo.choice || (me?.image && !removePhoto)
+                ? "Choose another photo"
+                : "Add a profile photo"
+          }
+          disabled={busy || photo.busy}
+          onPress={() => void photo.pick()}
+        />
+        {(photo.choice || (me?.image && !removePhoto)) && (
+          <Button
+            small
+            secondary
+            title="Remove photo"
+            disabled={busy || photo.busy}
+            onPress={() => {
+              photo.clear();
+              setRemovePhoto(true);
+            }}
+          />
+        )}
+        {(photo.choice || removePhoto) && (
+          <Button
+            small
+            secondary
+            title="Undo photo change"
+            disabled={busy || photo.busy}
+            onPress={() => {
+              photo.clear();
+              setRemovePhoto(false);
+            }}
+          />
+        )}
+        <Text style={[s.small, { textAlign: "center" }]}>
+          Photo changes save with your profile. Choose a JPEG, PNG or WebP under
+          5 MB.
+        </Text>
+      </View>
       <Field
         label="Your name"
         value={name}
@@ -483,14 +541,14 @@ export function EditProfile({ nav }: { nav: Nav }) {
         />
       </View>
       <Text style={s.small}>
-        Your name and initials can appear with content you share. Professional
-        details follow this visibility setting. Trust signals are managed by the
-        platform.
+        Your name and initials can appear with content you share. Your photo and
+        professional details follow this visibility setting. Trust signals are
+        managed by the platform.
       </Text>
       <Button
         title={busy ? "Saving…" : "Save profile"}
-        disabled={busy || !name.trim()}
-        onPress={() => {
+        disabled={busy || photo.busy || !name.trim()}
+        onPress={async () => {
           let parsed, parsedSkills, parsedOpen;
           try {
             parsed = profileLinks(links);
@@ -502,10 +560,19 @@ export function EditProfile({ nav }: { nav: Nav }) {
           }
           setFormError("");
           setBusy(true);
-          void nav
-            .run(
+          try {
+            const image = await photo.resolve({
+              kind: "profile",
+              id: state.currentUserId,
+            });
+            const ok = await nav.run(
               {
                 type: "profile.update",
+                ...(image
+                  ? { imageId: image.id }
+                  : removePhoto
+                    ? { removeImage: true }
+                    : {}),
                 profile: {
                   name,
                   headline,
@@ -519,11 +586,20 @@ export function EditProfile({ nav }: { nav: Nav }) {
                 },
               },
               "Profile updated",
-            )
-            .then((ok) => {
-              if (ok) nav.closeIfTop("edit-profile");
-            })
-            .finally(() => setBusy(false));
+            );
+            if (ok) {
+              photo.clear();
+              nav.closeIfTop("edit-profile");
+            }
+          } catch (error) {
+            setFormError(
+              error instanceof Error
+                ? error.message
+                : "Could not save this photo. Try another image.",
+            );
+          } finally {
+            setBusy(false);
+          }
         }}
       />
       {!!formError && (

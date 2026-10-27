@@ -156,7 +156,7 @@ test("image upload input rejects excess bytes, malformed base64, MIME types, and
     { base64: "=AAA" },
     { contentType: "image/svg+xml" },
     { ownerId: "eve" },
-    { target: { kind: "profile", id: "alice" } },
+    { target: { kind: "unknown", id: "alice" } },
     { requestId: "../path" },
     { base64: "A".repeat(Math.ceil((MAX_SOURCE_BYTES + 3) / 3) * 4) },
   ])
@@ -180,6 +180,110 @@ test("image upload authority follows private membership, community membership an
     preferences: { dmPolicy: "nobody" },
   });
   await rejects(db.ready({ kind: "directMessage", id: "bob" }));
+});
+
+test("profile photos enforce owner, profile visibility, both block directions, replacement and removal", async () => {
+  const db = await fixture();
+  await rejects(db.ready({ kind: "profile", id: "bob" }, "alice"));
+  const photo = await db.ready({ kind: "profile", id: "alice" });
+  await rejects(
+    db.command("bob", {
+      type: "profile.update",
+      profile: {},
+      imageId: photo.id,
+    }),
+    "failed-precondition",
+  );
+  await db.command("alice", {
+    type: "profile.update",
+    profile: {},
+    imageId: photo.id,
+  });
+  assert.equal(db.get("profiles/alice").image.id, photo.id);
+  assert.equal(db.get("users/alice").mediaIntents[photo.id], undefined);
+  await db.read("bob", photo.id);
+  await db.command("alice", {
+    type: "profile.update",
+    profile: { visibility: "connections" },
+  });
+  await rejects(db.read("eve", photo.id));
+  await db.read("alice", photo.id);
+  db.docs.set("profileAccess/alice/members/bob", { userId: "bob" });
+  await db.read("bob", photo.id);
+  db.docs.delete("profileAccess/alice/members/bob");
+  await rejects(db.read("bob", photo.id));
+  await db.command("alice", {
+    type: "profile.update",
+    profile: { visibility: "public" },
+  });
+  db.docs.set("users/bob", {
+    ...db.get("users/bob"),
+    preferences: { ...db.get("users/bob").preferences, blockedIds: ["alice"] },
+  });
+  await rejects(db.read("bob", photo.id));
+  db.docs.set("users/bob", {
+    ...db.get("users/bob"),
+    preferences: { ...db.get("users/bob").preferences, blockedIds: [] },
+  });
+  db.docs.set("users/alice", {
+    ...db.get("users/alice"),
+    preferences: { ...db.get("users/alice").preferences, blockedIds: ["bob"] },
+  });
+  await rejects(db.read("bob", photo.id));
+  const replacement = await db.ready({ kind: "profile", id: "alice" });
+  await db.command("alice", {
+    type: "profile.update",
+    profile: {},
+    imageId: replacement.id,
+  });
+  await rejects(db.read("alice", photo.id), "not-found");
+  assert.equal(
+    mediaNeedsCleanup(
+      db.get(`privateMedia/${photo.id}`),
+      db.get("profiles/alice"),
+      db.now,
+    ),
+    true,
+  );
+  assert.equal(
+    mediaNeedsCleanup(
+      db.get(`privateMedia/${replacement.id}`),
+      db.get("profiles/alice"),
+      db.now,
+    ),
+    false,
+  );
+  await db.command("alice", {
+    type: "profile.update",
+    profile: {},
+    removeImage: true,
+  });
+  await rejects(db.read("alice", replacement.id), "not-found");
+  assert.equal(db.get("profiles/alice").image, undefined);
+});
+
+test("reported profile photos are limited to the matching moderator report", async () => {
+  const db = await fixture();
+  const photo = await db.ready({ kind: "profile", id: "alice" });
+  await db.command("alice", {
+    type: "profile.update",
+    profile: {},
+    imageId: photo.id,
+  });
+  const report = await db.command("bob", {
+    type: "report.create",
+    targetType: "profile",
+    targetId: "alice",
+    reason: "Photo concern",
+  });
+  assert.equal(db.get(`reports/${report.id}`).snapshot.image.id, photo.id);
+  await db.command("alice", {
+    type: "profile.update",
+    profile: { visibility: "connections" },
+  });
+  await rejects(db.read("mod", photo.id));
+  await db.read("mod", photo.id, report.id);
+  await rejects(db.read("eve", photo.id, report.id));
 });
 
 test("image processing claims reject concurrent/change retries and stale workers cannot finalize another claim", async () => {
@@ -465,6 +569,22 @@ test("real image codec rotates pixels, strips EXIF/ICC, bounds output and emits 
   assert.ok(sanitized.bytes.length <= 1024 * 1024);
   assert.equal(sanitized.image.size, sanitized.bytes.length);
   assert.equal(sanitized.bytes.readUInt32LE(4) + 8, sanitized.bytes.length);
+});
+
+test("profile photo encoding produces small square images without metadata", async () => {
+  const original = await sharp({
+    create: { width: 1800, height: 1200, channels: 3, background: "#777777" },
+  })
+    .jpeg()
+    .withMetadata({ orientation: 6 })
+    .toBuffer();
+  const result = await sanitizeImage(original, "image/jpeg", "avatar", true);
+  const metadata = await sharp(result.bytes).metadata();
+  assert.equal(metadata.width, 512);
+  assert.equal(metadata.height, 512);
+  assert.equal(metadata.exif, undefined);
+  assert.equal(metadata.icc, undefined);
+  assert.ok(result.bytes.length <= 128 * 1024);
 });
 
 test("real image codec rejects mismatches, SVG, malformed/animated bytes, oversized sources and decoded pixel bombs", async () => {

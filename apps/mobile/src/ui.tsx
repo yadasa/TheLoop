@@ -33,6 +33,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Profile } from "@theloop/core";
 import { safeURL } from "@theloop/core";
+import { useProfileImage } from "./useProfileImage";
 
 const MotionContext = createContext(true);
 const MotionActiveContext = createContext(false);
@@ -633,11 +634,15 @@ export function Horizontal({ children }: { children: React.ReactNode }) {
   );
 }
 export function displayIdentity(
-  profile: Pick<Profile, "name" | "initials"> | undefined,
+  profile:
+    | (Pick<Profile, "name" | "initials"> &
+        Partial<Pick<Profile, "id" | "image">>)
+    | undefined,
   name?: string,
   initials?: string,
-): Pick<Profile, "name" | "initials"> {
+): Pick<Profile, "name" | "initials"> & Partial<Pick<Profile, "id" | "image">> {
   return {
+    ...(profile?.id ? { id: profile.id, image: profile.image } : {}),
     name:
       profile?.name ||
       (typeof name === "string" && name.trim()) ||
@@ -654,10 +659,12 @@ export function Avatar({
   size = 40,
   inverse = false,
 }: {
-  profile?: Pick<Profile, "name" | "initials">;
+  profile?: Pick<Profile, "name" | "initials"> &
+    Partial<Pick<Profile, "id" | "image">>;
   size?: number;
   inverse?: boolean;
 }) {
+  const photo = useProfileImage(profile?.id, profile?.image?.id);
   const shades = [color.avatar1, color.avatar2, color.avatar3, color.avatar4];
   const shade = shades[(profile?.name.charCodeAt(0) || 0) % shades.length];
   return (
@@ -674,16 +681,31 @@ export function Avatar({
         borderColor: inverse ? color.heroLine : color.card,
       }}
     >
-      <Text
-        style={{
-          color: inverse ? color.onHero : color.ink,
-          fontWeight: "600",
-          fontSize: size * 0.3,
-          letterSpacing: -1,
-        }}
-      >
-        {profile?.initials || "LP"}
-      </Text>
+      {!photo && (
+        <Text
+          style={{
+            color: inverse ? color.onHero : color.ink,
+            fontWeight: "600",
+            fontSize: size * 0.3,
+            letterSpacing: -1,
+          }}
+        >
+          {profile?.initials || "LP"}
+        </Text>
+      )}
+      {photo && (
+        <Image
+          source={{ uri: photo }}
+          accessibilityLabel={`${profile?.name || "Member"}'s profile photo`}
+          resizeMode="cover"
+          style={{
+            position: "absolute",
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+          }}
+        />
+      )}
     </View>
   );
 }

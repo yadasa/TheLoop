@@ -69,6 +69,7 @@ export function confirmContentReport(
 
 async function normalizeImage(
   asset: ImagePicker.ImagePickerAsset,
+  profile = false,
 ): Promise<Choice> {
   if (asset.fileSize && asset.fileSize > sourceLimit)
     throw new Error("Choose an image smaller than 5 MB.");
@@ -78,8 +79,8 @@ async function normalizeImage(
   if (!imageFormat(source))
     throw new Error("Choose a JPEG, PNG, or WebP image.");
   const context = ImageManipulator.manipulate(asset.uri, {
-    maxWidth: 2048,
-    maxHeight: 2048,
+    maxWidth: profile ? 512 : 2048,
+    maxHeight: profile ? 512 : 2048,
   });
   let rendered = await context.renderAsync();
   try {
@@ -128,7 +129,11 @@ async function normalizeImage(
   }
 }
 
-export function useImageAttachment(nav: Nav, target?: DraftTarget | null) {
+export function useImageAttachment(
+  nav: Nav,
+  target?: DraftTarget | null,
+  profile = false,
+) {
   const { state, uploadImage, discardImage } = useLoop();
   const drafts = useImageDrafts();
   const scope = JSON.stringify([
@@ -182,7 +187,8 @@ export function useImageAttachment(nav: Nav, target?: DraftTarget | null) {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
         allowsMultipleSelection: false,
-        allowsEditing: false,
+        allowsEditing: profile,
+        ...(profile ? { aspect: [1, 1] as [number, number] } : {}),
         quality: 1,
         exif: false,
         base64: false,
@@ -195,7 +201,7 @@ export function useImageAttachment(nav: Nav, target?: DraftTarget | null) {
         !result.assets[0]
       )
         return;
-      const next = await normalizeImage(result.assets[0]);
+      const next = await normalizeImage(result.assets[0], profile);
       if (request !== generation.current) {
         await removeCreatedImage(next.uri);
         return;

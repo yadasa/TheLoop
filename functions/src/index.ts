@@ -255,7 +255,7 @@ export const uploadMedia = onCall(
         "invalid-argument",
         "Use canonical base64 image bytes without a data URL prefix.",
       );
-      const sanitized = await sanitizeImage(bytes, input.contentType, claim.id);
+      const sanitized = await sanitizeImage(bytes, input.contentType, claim.id, input.target.kind === "profile");
       outputPath = `sanitized/${identity.uid}/${claim.id}/${claimId}.webp`;
       await bucket.file(outputPath).save(sanitized.bytes, {
         resumable: false,
@@ -363,6 +363,7 @@ async function removePrivateMedia(
       "posts",
       "squadMessages",
       "directMessages",
+      "profiles",
     ].includes(current.linkedCollection)
       ? await store.get(`${current.linkedCollection}/${id(current.linkedId)}`)
       : undefined;

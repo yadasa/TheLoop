@@ -129,6 +129,8 @@ export function mediaAuthority(state: LoopState, options: MediaContext): string 
 /** Permission-relevant context only; ordinary text edits do not discard image bytes. */
 export function mediaScope(state: LoopState, options: MediaContext): string {
   const records = [...state.messages, ...state.posts, ...state.directMessages, ...state.squadMessages].filter(record => record.image).map(record => JSON.stringify([record.id, record.image!.id, "audienceIds" in record ? record.audienceIds.slice().sort() : undefined, "fromId" in record ? [record.fromId, record.toId] : undefined, "channelId" in record ? record.channelId : undefined, "communityId" in record ? record.communityId : undefined, "authorId" in record ? record.authorId : undefined])).sort();
+  records.push(...state.profiles.filter(profile => profile.image).map(profile => JSON.stringify(["profile", profile.id, profile.image!.id, profile.visibility, state.connections.filter(connection => connection.status === "accepted" && [connection.fromId, connection.toId].includes(profile.id) && [connection.fromId, connection.toId].includes(state.currentUserId)).map(connection => connection.id).sort()])));
+  records.sort();
   return JSON.stringify([mediaAuthority(state, options), records, state.reports.filter(report => report.snapshot?.image).map(report => JSON.stringify([report.id, report.snapshot!.image!.id])).sort()]);
 }
 function onlyAddsSources(previous: string, next: string): boolean {
@@ -143,7 +145,7 @@ export class ImageMemoryCache {
   private generation = 0;
   private values = new Map<string, ImageDataResult>();
   private pending = new Map<string, Promise<ImageDataResult>>();
-  constructor(private byteBudget = 4 * maximumImage, private entryBudget = 6) {}
+  constructor(private byteBudget = 4 * maximumImage, private entryBudget = 64) {}
   get revision(): number { return this.generation; }
   setContext(context: string): boolean { if (context === this.context) return false; const compatible = onlyAddsSources(this.context, context); this.context = context; if (compatible) return false; this.clear(); return true; }
   clear(): void { this.generation++; this.values.clear(); this.pending.clear(); }

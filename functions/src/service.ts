@@ -1484,7 +1484,13 @@ export async function execute(
       break;
     }
     case "profile.update": {
+      commandFields(command, ["type", "profile", "imageId", "removeImage"]);
+      assert(command.removeImage === undefined || typeof command.removeImage === "boolean", "invalid-argument", "Invalid photo selection.");
+      assert(!(command.imageId && command.removeImage), "invalid-argument", "Choose a photo or remove it.");
       Object.assign(profile, validateProfile(command.profile));
+      const image = await linkImage(store, actor.uid, user, command.imageId, { kind: "profile", id: actor.uid }, "profiles", actor.uid, profile.name, now);
+      if (image) { profile.image = image; savePreferences(); }
+      else if (command.removeImage) delete profile.image;
       profileChanged = true;
       break;
     }
@@ -1751,10 +1757,10 @@ export async function execute(
           ? { title: String(target.title || "").slice(0, 180) }
           : {}),
       };
-      if (target.image && !["profile", "comment"].includes(targetType)) {
+      if (target.image && targetType !== "comment") {
         const media = await store.get(`privateMedia/${id(target.image.id)}`);
         const collection =
-          targetType === "message"
+          targetType === "profile" ? "profiles" : targetType === "message"
             ? "messages"
             : targetType === "directMessage"
               ? "directMessages"

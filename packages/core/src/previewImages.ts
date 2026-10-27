@@ -40,6 +40,23 @@ export function canReadPreviewImage(
   if (!uid) return false;
   const link = entry.linkedTo;
   if (!link) return entry.ownerId === uid;
+  if (link.kind === "profile") {
+    const profile = s.profiles.find(
+      (p) => p.id === link.id && p.image?.id === entry.image.id,
+    );
+    return (
+      !!profile &&
+      !s.preferences.blockedIds.includes(profile.id) &&
+      (profile.id === uid ||
+        profile.visibility === "public" ||
+        s.connections.some(
+          (c) =>
+            c.status === "accepted" &&
+            [c.fromId, c.toId].includes(uid) &&
+            [c.fromId, c.toId].includes(profile.id),
+        ))
+    );
+  }
   if (link.kind === "message") {
     const m = s.messages.find(
       (x) => x.id === link.id && x.image?.id === entry.image.id,
@@ -99,9 +116,11 @@ export function prunePreviewImages(s: LoopState, now: string): void {
             ? s.directMessages.some(
                 (m) => m.id === link.id && m.image?.id === id,
               )
-            : link?.kind === "post"
-              ? s.posts.some((p) => p.id === link.id && p.image?.id === id)
-              : Date.parse(now) - Date.parse(entry.createdAt) <= 3600000;
+            : link?.kind === "profile"
+              ? s.profiles.some((p) => p.id === link.id && p.image?.id === id)
+              : link?.kind === "post"
+                ? s.posts.some((p) => p.id === link.id && p.image?.id === id)
+                : Date.parse(now) - Date.parse(entry.createdAt) <= 3600000;
     if (!exists) delete s.previewImages![id];
   }
 }

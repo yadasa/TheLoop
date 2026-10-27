@@ -47,7 +47,12 @@ import type { Nav } from "./navigation";
 import { useNavigationBusy } from "./useNavigationBusy";
 import { useConversationDraft } from "./DraftProvider";
 import { shareTargetURL } from "./sharedLinks";
-import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
+import {
+  confirmContentReport,
+  ImageAttachmentPicker,
+  MediaImage,
+  useImageAttachment,
+} from "./Media";
 
 export function People({ nav }: { nav: Nav }) {
   const { state, directory, setDirectoryQuery, loadMoreDirectory, pending } =
@@ -612,14 +617,15 @@ export function ProfileDetail({ id, nav }: { id: string; nav: Nav }) {
                 {
                   text: "Report profile",
                   onPress: () =>
-                    void nav.run(
+                    confirmContentReport(
+                      nav,
                       {
                         type: "report.create",
                         targetId: id,
                         targetType: "profile",
                         reason: "Profile safety or authenticity concern",
                       },
-                      "Report sent to moderators",
+                      !!p.image,
                     ),
                 },
                 { text: "Cancel", style: "cancel" },

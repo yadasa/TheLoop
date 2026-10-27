@@ -479,6 +479,26 @@ test(
           );
         },
       );
+      await t.test("profile photos use private Storage and live visibility, connection and block checks", async () => {
+        const owner = await actor("photo-owner"), viewer = await actor("photo-viewer");
+        const profileInput = { ...input, requestId: next(), target: { kind: "profile", id: owner.uid } };
+        await denied(callable(viewer, "uploadMedia", { ...profileInput, requestId: next() }));
+        const photo = (await callable(owner, "uploadMedia", profileInput)).image;
+        assert.ok(photo.width <= 512 && photo.height <= 512 && photo.size <= 128 * 1024);
+        await command(owner, { type: "profile.update", profile: {}, imageId: photo.id });
+        const publicRead = await callable(viewer, "getMedia", { mediaId: photo.id });
+        assert.equal(publicRead.image.id, photo.id);
+        await command(owner, { type: "profile.update", profile: { visibility: "connections" } });
+        await denied(callable(viewer, "getMedia", { mediaId: photo.id }));
+        const request = await command(owner, { type: "connection.request", userId: viewer.uid });
+        remember("connections", request.id);
+        await command(viewer, { type: "connection.respond", connectionId: request.id, accept: true });
+        assert.equal((await callable(viewer, "getMedia", { mediaId: photo.id })).image.id, photo.id);
+        await command(viewer, { type: "profile.block", userId: owner.uid });
+        await denied(callable(viewer, "getMedia", { mediaId: photo.id }));
+        await command(owner, { type: "profile.update", profile: {}, removeImage: true });
+        await denied(callable(owner, "getMedia", { mediaId: photo.id }), "NOT_FOUND");
+      });
     } finally {
       // Cleanup only disposable UID namespaces and IDs created by this exact run.
       for (const actor of actors) {

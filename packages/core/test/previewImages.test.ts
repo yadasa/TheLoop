@@ -28,6 +28,61 @@ const imageState = (target: MediaTarget): LoopState => {
   return s;
 };
 
+test("profile photo binding, visibility and removal work in the sample account", () => {
+  const state = imageState({ kind: "profile", id: "me" });
+  const next = applyCommand(
+    state,
+    {
+      type: "profile.update",
+      profile: { visibility: "connections" },
+      imageId: "photo",
+    },
+    ctx,
+  );
+  assert.equal(next.profiles.find((p) => p.id === "me")?.image?.id, "photo");
+  assert.equal(canReadPreviewImage(next, next.previewImages!.photo), true);
+  next.currentUserId = "stranger";
+  assert.equal(canReadPreviewImage(next, next.previewImages!.photo), false);
+  next.currentUserId = "me";
+  const removed = applyCommand(
+    next,
+    { type: "profile.update", profile: {}, removeImage: true },
+    ctx,
+  );
+  assert.equal(removed.previewImages?.photo, undefined);
+  assert.equal(removed.profiles.find((p) => p.id === "me")?.image, undefined);
+  assert.throws(
+    () =>
+      applyCommand(
+        imageState({ kind: "profile", id: "other" }),
+        { type: "profile.update", profile: {}, imageId: "photo" },
+        ctx,
+      ),
+    /fresh image/,
+  );
+});
+
+test("sample profile editor preserves the same tag, link and bio limits as live", () => {
+  const state = initialState();
+  const skills = Array.from({ length: 20 }, (_, i) => `Skill ${i}`);
+  const links = Array.from({ length: 8 }, (_, i) => ({
+    label: `Link ${i}`,
+    url: `https://example.com/${i}`,
+  }));
+  const next = applyCommand(
+    state,
+    {
+      type: "profile.update",
+      profile: { skills, links, bio: "a".repeat(2000) },
+    },
+    ctx,
+  );
+  const me = next.profiles.find((p) => p.id === next.currentUserId)!;
+  assert.deepEqual(me.skills, skills);
+  assert.deepEqual(me.links, links);
+  assert.equal(me.bio.length, 2000);
+});
+
 test("an image is owned, bound to its selected conversation and used once", () => {
   const s = imageState({ kind: "channel", id: "the-lobby" });
   assert.throws(

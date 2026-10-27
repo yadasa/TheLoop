@@ -24,6 +24,7 @@ export async function sanitizeImage(
   bytes: Buffer,
   declaredType: string,
   mediaId: string,
+  avatar = false,
 ): Promise<{ bytes: Buffer; image: Doc }> {
   assert(
     bytes.length > 0 &&
@@ -92,18 +93,27 @@ export async function sanitizeImage(
       "invalid-argument",
       "Choose a still image of at most 12 million pixels.",
     );
-    for (const [size, quality] of [
-      [2048, 80],
-      [1536, 70],
-      [1024, 60],
-    ]) {
+    for (const [size, quality] of avatar
+      ? [
+          [512, 80],
+          [320, 70],
+          [256, 60],
+        ]
+      : [
+          [2048, 80],
+          [1536, 70],
+          [1024, 60],
+        ]) {
       const result = await sharp(bytes, options)
         .rotate()
-        .resize(size, size, { fit: "inside", withoutEnlargement: true })
+        .resize(size, size, {
+          fit: avatar ? "cover" : "inside",
+          withoutEnlargement: true,
+        })
         .webp({ quality, effort: 4 })
         .timeout({ seconds: 15 })
         .toBuffer({ resolveWithObject: true });
-      if (result.data.length <= MAX_IMAGE_BYTES)
+      if (result.data.length <= (avatar ? 128 * 1024 : MAX_IMAGE_BYTES))
         return {
           bytes: result.data,
           image: {

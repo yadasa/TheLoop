@@ -120,3 +120,15 @@ test("media context changes for membership, blocks and deleted sources, not ordi
   const squadState = { ...state, squadMessages: [{ id: "squad-message", image: payload().image, audienceIds: ["alice", "bob"] }] as typeof state.squadMessages };
   assert.notEqual(mediaScope(squadState, options), mediaScope({ ...squadState, squadMessages: [{ ...squadState.squadMessages[0], audienceIds: ["bob"] }] }, options));
 });
+
+test("profile photo caches clear after privacy, image, connection and profile changes", () => {
+  const state = emptyState("alice"), options = { mode: "live", role: "member", conversation: null, squad: null };
+  state.profiles = [{ id: "bob", visibility: "connections", name: "Bob", image: payload().image }] as typeof state.profiles;
+  state.connections = [{ id: "friendship", fromId: "alice", toId: "bob", status: "accepted" }] as typeof state.connections;
+  const scope = mediaScope(state, options);
+  assert.equal(mediaScope({ ...state, profiles: [{ ...state.profiles[0], name: "Updated name" }] }, options), scope);
+  assert.notEqual(mediaScope({ ...state, profiles: [{ ...state.profiles[0], visibility: "public" }] }, options), scope);
+  assert.notEqual(mediaScope({ ...state, connections: [] }, options), scope);
+  assert.notEqual(mediaScope({ ...state, profiles: [] }, options), scope);
+  assert.notEqual(mediaScope({ ...state, profiles: [{ ...state.profiles[0], image: { ...payload().image, id: "replacement" } }] }, options), scope);
+});

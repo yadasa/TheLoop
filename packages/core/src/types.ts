@@ -1,8 +1,8 @@
 export type Subscription = 'following' | 'muted' | 'hidden';
-export type MediaTarget = { kind: 'channel' | 'squad' | 'directMessage' | 'community'; id: string };
+export type MediaTarget = { kind: 'channel' | 'squad' | 'directMessage' | 'community' | 'profile'; id: string };
 export type ImageAttachment = { id: string; mimeType: 'image/webp'; width: number; height: number; size: number };
-export type PreviewImage = { image: ImageAttachment; dataUrl: string; target: MediaTarget; ownerId: string; createdAt: string; linkedTo?: { kind: 'message' | 'squadMessage' | 'directMessage' | 'post'; id: string } };
-export type Profile = { id: string; name: string; handle: string; headline: string; company: string; location: string; bio: string; initials: string; skills: string[]; interests: string[]; links: { label: string; url: string }[]; joinedAt: string; verified: boolean; foundingYear?: number; trust: { score: number; reasons: string[] }; visibility: 'public' | 'connections'; openTo: string[]; followerCount?: number; followingCount?: number; nameKey?: string; searchKeys?: string[] };
+export type PreviewImage = { image: ImageAttachment; dataUrl: string; target: MediaTarget; ownerId: string; createdAt: string; linkedTo?: { kind: 'message' | 'squadMessage' | 'directMessage' | 'post' | 'profile'; id: string } };
+export type Profile = { id: string; image?: ImageAttachment; name: string; handle: string; headline: string; company: string; location: string; bio: string; initials: string; skills: string[]; interests: string[]; links: { label: string; url: string }[]; joinedAt: string; verified: boolean; foundingYear?: number; trust: { score: number; reasons: string[] }; visibility: 'public' | 'connections'; openTo: string[]; followerCount?: number; followingCount?: number; nameKey?: string; searchKeys?: string[] };
 export type Conference = { id: string; name: string; shortName: string; city: string; startDate: string; endDate: string; description: string; members: number; tagline: string; organizerIds?: string[] };
 export type Channel = { id: string; conferenceId: string; name: string; description: string; icon: string; members: number; topics: string[]; visibility: 'public' | 'private'; memberIds?: string[]; communityId?: string; moderatorIds?: string[]; creatorId?: string; pinnedMessageIds?: string[] };
 export type Message = { id: string; channelId: string; topic: string; authorId: string; authorName?: string; authorInitials?: string; body: string; createdAt: string; replyTo?: string; reactions: Record<string, string[]>; editedAt?: string; image?: ImageAttachment; attachment?: { name: string; url: string; type: string; size: number } };
@@ -71,7 +71,7 @@ export type Command =
   | { type: 'connection.respond'; connectionId: string; accept: boolean }
   | { type: 'profile.follow'; userId: string }
   | { type: 'profile.block'; userId: string }
-  | { type: 'profile.update'; profile: Partial<Pick<Profile, 'name' | 'headline' | 'company' | 'location' | 'bio' | 'skills' | 'interests' | 'links' | 'visibility' | 'openTo'>> }
+  | { type: 'profile.update'; imageId?: string; removeImage?: boolean; profile: Partial<Pick<Profile, 'name' | 'headline' | 'company' | 'location' | 'bio' | 'skills' | 'interests' | 'links' | 'visibility' | 'openTo'>> }
   | { type: 'dm.send'; userId: string; body: string; imageId?: string }
   | { type: 'dm.edit'; messageId: string; body: string }
   | { type: 'dm.delete'; messageId: string }
