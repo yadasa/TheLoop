@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
-import { collection, connectFirestoreEmulator, doc, getFirestore, getDoc, getDocs, onSnapshot, query, where, type Firestore } from "firebase/firestore";
+import { collection, connectFirestoreEmulator, doc, getFirestore, getDoc, getDocs, getDocsFromServer, onSnapshot, query, where, type Firestore } from "firebase/firestore";
 import type { Message } from "@theloop/core";
 import { directoryFields } from "../../../functions/src/directory";
 import { messageCursor } from "./data";
+import { HistorySearch, emptyHistorySearch, matchesMessageSearch } from "./historySearch";
 import { directoryPageQuery, messagePageQuery, squadIncomingInvitesQuery, squadMembershipQuery, squadMessagePageQuery, squadOwnerInvitesQuery, squadParticipantInvitesQuery, type DirectoryCursor } from "./queries";
 
 // Explicit opt-in emulator suite; it never points at the deployed TheLoop project.
@@ -91,6 +92,25 @@ test("actual active/topic query reaches old records beyond preview rooms and las
   assert.equal(ids.length, 301);
   assert.equal(new Set(ids).size, 301);
   assert.ok(ids.every(id => id.includes("-archive-")));
+});
+
+test("progressive search finds an archive match beyond the newest 300 and preserves private-room rules", async () => {
+  let state = emptyHistorySearch();
+  const search = new HistorySearch({
+    readPage: async request => {
+      const page = await getDocsFromServer(messagePageQuery(db, request.channelId, request.topic, request.cursor));
+      const rows = page.docs.map(record => ({ ...record.data(), id: record.id }) as Message);
+      assert.ok(rows.length <= 100);
+      return { matches: rows.filter(message => typeof message.body === "string" && matchesMessageSearch(message, request.query)),
+        scanned: rows.length, cursor: messageCursor(rows), hasMore: rows.length === 100 };
+    }, publish: next => state = next, errorText: String,
+  });
+  await search.start({ channelId: room, query: "Archive 0" });
+  assert.equal(state.scanned, 300); assert.equal(state.hasMore, true); assert.equal(state.matches.length, 0);
+  await search.more();
+  assert.equal(state.scanned, 411); assert.equal(state.hasMore, false); assert.equal(state.error, null);
+  assert.deepEqual(state.matches.map(message => message.id), [`${uid}-archive-0000`]);
+  await assert.rejects(getDocsFromServer(messagePageQuery(recipientDb, privateRoom)), error => (error as { code?: string }).code === "permission-denied");
 });
 
 test("actual normalized public directory pages all equal-name records in groups of50", async () => {

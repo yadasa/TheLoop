@@ -35,6 +35,7 @@ import type { Nav } from "./navigation";
 import { SquadSummary } from "./Squads";
 import { ImageAttachmentPicker, MediaImage, useImageAttachment } from "./Media";
 import { Sheet } from "./Sheet";
+import { ConversationSearch } from "./ConversationSearch";
 import { useSubscriptionPicker } from "./SubscriptionPicker";
 import {
   dayKey,
@@ -280,7 +281,11 @@ export function ChannelDetail({
   nav: Nav;
 }) {
   const { state, watchConversation, loadOlderMessages, history } = useLoop();
-  const { pickSubscription, subscriptionSheet } = useSubscriptionPicker();
+  const {
+    pickSubscription,
+    subscriptionSheet,
+    isOpen: subscriptionOpen,
+  } = useSubscriptionPicker();
   const appActive = useAppActive();
   const attachment = useImageAttachment(nav);
   const channel = state.channels.find((c) => c.id === id);
@@ -296,6 +301,7 @@ export function ChannelDetail({
   const [newTopic, setNewTopic] = useState("");
   const [addingTopic, setAddingTopic] = useState(false);
   const [topicSheet, setTopicSheet] = useState(false);
+  const [searchVisible, setSearchVisible] = useState(false);
   const [topicSearch, setTopicSearch] = useState("");
   const [body, setBody] = useState("");
   const [reply, setReply] = useState<Message | null>(null);
@@ -335,6 +341,10 @@ export function ChannelDetail({
       appActive &&
       isAppActive() &&
       !showJump &&
+      !topicSheet &&
+      !searchVisible &&
+      !actionMessage &&
+      !subscriptionOpen &&
       !history.loading &&
       newestMessageId &&
       channel &&
@@ -342,7 +352,17 @@ export function ChannelDetail({
         channel.memberIds?.includes(state.currentUserId))
     )
       void nav.run({ type: "channel.read", channelId: id });
-  }, [id, newestMessageId, appActive, showJump, history.loading]);
+  }, [
+    id,
+    newestMessageId,
+    appActive,
+    showJump,
+    history.loading,
+    topicSheet,
+    searchVisible,
+    actionMessage,
+    subscriptionOpen,
+  ]);
   if (
     !channel ||
     (channel.visibility === "private" &&
@@ -469,6 +489,19 @@ export function ChannelDetail({
       keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
     >
       {subscriptionSheet}
+      <ConversationSearch
+        channelId={id}
+        initialTopic={topic === "all" ? undefined : topic}
+        visible={searchVisible}
+        onClose={() => setSearchVisible(false)}
+        onReply={(message) => {
+          if (editing) restoreDraft();
+          setEditing(null);
+          setReply(message);
+          setTopic(message.topic);
+          requestAnimationFrame(() => composerInput.current?.focus());
+        }}
+      />
       <View
         style={{
           padding: 16,
@@ -540,20 +573,38 @@ export function ChannelDetail({
             <Text style={{ color: color.ink, fontSize: 20 }}>☷</Text>
           </Touch>
         </View>
-        {topic !== "all" && (
+        <View style={s.between}>
+          {topic !== "all" ? (
+            <Touch
+              label={`Manage ${topic} notifications`}
+              disabled={locked}
+              onPress={() => subscription(`${id}:${topic}`, topic)}
+            >
+              <Text style={s.small}>
+                Topic:{" "}
+                {state.preferences.subscriptions[`${id}:${topic}`] ||
+                  "uses group chat setting"}{" "}
+                ▾
+              </Text>
+            </Touch>
+          ) : (
+            <Text style={s.small}>Across your visible topics</Text>
+          )}
           <Touch
-            label={`Manage ${topic} notifications`}
+            label="Search group chat history"
             disabled={locked}
-            onPress={() => subscription(`${id}:${topic}`, topic)}
+            onPress={() => setSearchVisible(true)}
+            style={{
+              minHeight: 40,
+              paddingHorizontal: 8,
+              justifyContent: "center",
+            }}
           >
-            <Text style={s.small}>
-              Topic:{" "}
-              {state.preferences.subscriptions[`${id}:${topic}`] ||
-                "uses group chat setting"}{" "}
-              ▾
+            <Text style={{ fontSize: 12, color: color.ink, fontWeight: "600" }}>
+              ⌕ Search
             </Text>
           </Touch>
-        )}
+        </View>
       </View>
       <Sheet
         visible={topicSheet}
@@ -910,7 +961,17 @@ export function ChannelDetail({
                   <View style={{ width: 33 }} />
                 )}
                 <View style={{ flex: 1, gap: 6 }}>
-                  <View style={[s.between, continuation && { position: "absolute", right: 0, top: 0, zIndex: 1 }]}>
+                  <View
+                    style={[
+                      s.between,
+                      continuation && {
+                        position: "absolute",
+                        right: 0,
+                        top: 0,
+                        zIndex: 1,
+                      },
+                    ]}
+                  >
                     <View
                       style={[s.row, { gap: 7, flex: 1, flexWrap: "wrap" }]}
                     >
@@ -967,7 +1028,14 @@ export function ChannelDetail({
                       </Text>
                     </View>
                   )}
-                  <LinkifiedText text={m.body} style={continuation ? { paddingRight: 44, minHeight: 36 } : undefined} />
+                  <LinkifiedText
+                    text={m.body}
+                    style={
+                      continuation
+                        ? { paddingRight: 44, minHeight: 36 }
+                        : undefined
+                    }
+                  />
                   <MediaImage image={m.image} caption={m.body} nav={nav} />
                   <View style={[s.row, { gap: 6, flexWrap: "wrap" }]}>
                     {Object.entries(m.reactions)

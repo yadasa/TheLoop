@@ -4,7 +4,7 @@ import { getFirestore, connectFirestoreEmulator, type Firestore } from "firebase
 import { getFunctions, connectFunctionsEmulator, type Functions } from "firebase/functions";
 
 export { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut as firebaseSignOut, sendPasswordResetEmail, sendEmailVerification, reload } from "firebase/auth";
-export { collection, doc, onSnapshot, query, where, limit, orderBy, documentId, getDocs } from "firebase/firestore";
+export { collection, doc, onSnapshot, query, where, limit, orderBy, documentId, getDocs, getDocsFromServer } from "firebase/firestore";
 export { httpsCallable } from "firebase/functions";
 export { directoryPageQuery, messagePageQuery, squadMessagePageQuery, squadMembershipQuery, squadParticipantInvitesQuery, squadIncomingInvitesQuery, squadOwnerInvitesQuery } from "./queries";
 export { directMessagePageQuery, directCatalogPageQuery } from "./directQueries";

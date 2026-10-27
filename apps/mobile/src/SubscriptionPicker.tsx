@@ -44,6 +44,7 @@ export function useSubscriptionPicker() {
     onPick: (value: Subscription) => void,
   ) => setRequest({ title, current, onPick });
   return {
+    isOpen: !!request,
     pickSubscription,
     subscriptionSheet: (
       <Sheet

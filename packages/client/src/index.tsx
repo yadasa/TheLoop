@@ -31,6 +31,8 @@ import {
 } from "@theloop/core";
 import { documentIdBatches, matchesDirectory, mergeMessages, mergeSquadInvites, normalizeDirectoryQuery, previewChannelIds, revokePrivateProfiles, visibleSquadMessages } from "./data";
 import { MessagePages } from "./messagePages";
+import { canSearchChannel, filterHistoryResults, validMessageSearch, type HistorySearchRequest, type HistorySearchPage } from "./historySearch";
+export { HistorySearch, emptyHistorySearch, canSearchChannel, normalizeMessageSearch, validMessageSearch, type HistorySearchState, type HistorySearchRequest } from "./historySearch";
 import { directConversationId, isDirectConversation, mergeDirectMessages, type DirectSnapshot } from "./directData";
 import { lazyRuntime, resolveLiveRuntime } from "./lazyRuntime";
 import { readableError } from "./errorCopy";
@@ -91,6 +93,7 @@ type LoopContextValue = {
   refreshVerification(): Promise<boolean>;
   watchConversation(channelId: string | null, topic?: string): void;
   loadOlderMessages(): Promise<void>;
+  readChannelSearchPage(request: HistorySearchRequest): Promise<HistorySearchPage>;
   history: { loading: boolean; hasMore: boolean };
   directory: { results: Profile[]; loading: boolean; hasMore: boolean };
   setDirectoryQuery(query: string): void;
@@ -265,6 +268,32 @@ export function LoopProvider({
     else setHistory({ loading: false, hasMore: false });
   }, []);
   const loadOlderMessages = useCallback(async () => { await liveActions.current.loadOlderMessages?.(); }, []);
+  const readChannelSearchPage = async (request: HistorySearchRequest): Promise<HistorySearchPage> => {
+    if (!validMessageSearch(request.query)) throw new Error("Enter between 2 and 100 characters to search.");
+    const userId = stateRef.current.currentUserId, generation = transportGeneration.current, requestMode = modeRef.current;
+    const current = () => generation === transportGeneration.current && requestMode === modeRef.current &&
+      stateRef.current.currentUserId === userId && canSearchChannel(stateRef.current, request.channelId);
+    if (!current()) throw new Error("This group chat is no longer available to you.");
+    let rows: Message[];
+    if (requestMode === "demo") {
+      rows = stateRef.current.messages.filter(message => message.channelId === request.channelId &&
+        (request.topic === undefined || message.topic === request.topic) &&
+        (!request.cursor || message.createdAt < request.cursor.createdAt ||
+          (message.createdAt === request.cursor.createdAt && message.id < request.cursor.id)))
+        .sort((a, b) => a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0).slice(0, 100);
+    } else {
+      const { sdk, c } = await liveCloud();
+      if (!current() || !readyRef.current || c.auth.currentUser?.uid !== userId) throw new MediaScopeChanged();
+      const page = await sdk.getDocsFromServer(sdk.messagePageQuery(c.db, request.channelId, request.topic, request.cursor));
+      if (!current() || !readyRef.current || c.auth.currentUser?.uid !== userId) throw new MediaScopeChanged();
+      rows = page.docs.map(record => ({ ...record.data(), id: record.id }) as Message);
+    }
+    if (!current()) throw new MediaScopeChanged();
+    const last = rows.at(-1);
+    if (last && (typeof last.createdAt !== "string" || !Number.isFinite(Date.parse(last.createdAt)))) throw new Error("Could not read this part of the message history.");
+    return { matches: filterHistoryResults(rows, request, stateRef.current), scanned: rows.length,
+      hasMore: rows.length === 100, ...(last ? { cursor: { id: last.id, createdAt: last.createdAt } } : {}) };
+  };
   const watchSquad = useCallback((squadId: string | null) => {
     if (squadRef.current === squadId) return;
     squadRef.current = squadId;
@@ -1900,6 +1929,7 @@ export function LoopProvider({
         refreshVerification,
         watchConversation,
         loadOlderMessages,
+        readChannelSearchPage,
         history,
         directory,
         setDirectoryQuery,

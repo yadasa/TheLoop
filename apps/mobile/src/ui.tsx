@@ -709,6 +709,8 @@ export function Logo({
 }
 export function Field({
   inputRef,
+  onSubmit,
+  returnKeyType,
   label,
   value,
   onChangeText,
@@ -723,6 +725,8 @@ export function Field({
   disabled = false,
 }: {
   inputRef?: React.Ref<React.ComponentRef<typeof TextInput>>;
+  onSubmit?: () => void;
+  returnKeyType?: "done" | "go" | "next" | "search" | "send";
   label?: string;
   value: string;
   onChangeText: (s: string) => void;
@@ -742,6 +746,8 @@ export function Field({
       {label && <Text style={s.label}>{label}</Text>}
       <TextInput
         ref={inputRef}
+        onSubmitEditing={onSubmit}
+        returnKeyType={returnKeyType}
         accessibilityLabel={label || placeholder}
         accessibilityState={{ disabled }}
         editable={!disabled}
