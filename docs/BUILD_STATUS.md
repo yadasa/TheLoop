@@ -248,3 +248,6 @@ DMs and Squads now use the same local-calendar date dividers as group chats, inc
 
 ## October 27 — live draft counts
 Conversation, photo and post draft mutations now notify mounted draft lists and badges directly. Empty/unchanged writes do not churn; multiple synchronous changes coalesce, privacy pruning refreshes the view, and subscriptions detach on account/screen changes. The Drafts screen no longer needs a manual render workaround. All49 mobile tests and typecheck pass. Expo-web QA restored a community post with its destination and text, then discarded it and verified the Home resume entry disappeared immediately. No post was published.
+
+## Android 0.4.0 / build6 preparation
+Version metadata advances to0.4.0/build6 for a new internal LIVE preview. It includes profile photos and profile QR cards, saved messages, topic read/unread handling, reply navigation, notification filters, sharing, session post/text/photo drafts, offline feedback and private chat date dividers. Both config suites pass. This is preparation only: APK5 remains the latest verified download until the exact-source CI, EAS build and archive checks finish.
