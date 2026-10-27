@@ -10,7 +10,7 @@ A community platform growing from four years of AfroTech group chat: conference 
 - Research agent: open source evaluation and focused independent review.
 
 ## Operating rules
-Keep pushes small and coherent. Never commit credentials, build output or caches. Fictional demonstration data must be clearly labeled. Never claim historical membership or migrate chat history without user-provided data and authorization. Preserve explicit mutes. Trust is server-owned, explainable, and appealable. Use dedicated TheLoop infrastructure only. The October 27 instruction supersedes earlier limits: continue until 69% usage or a reset to 0%, whichever occurs first. Starting usage was 32%; latest check 63%, same reset timestamp 1793641476. Review between coherent batches and every 30 minutes; at the threshold/reset or if ordinary usage is disallowed, stop new work, save/push verified changes and pause the automation. Do not use reset credits or buy credits.
+Keep pushes small and coherent. Never commit credentials, build output or caches. Fictional demonstration data must be clearly labeled. Never claim historical membership or migrate chat history without user-provided data and authorization. Preserve explicit mutes. Trust is server-owned, explainable, and appealable. Use dedicated TheLoop infrastructure only. The October 27 instruction supersedes earlier limits: continue until 69% usage or a reset to 0%, whichever occurs first. Starting usage was 32%; latest check 64%, same reset timestamp 1793641476. Review between coherent batches and every 30 minutes; at the threshold/reset or if ordinary usage is disallowed, stop new work, save/push verified changes and pause the automation. Do not use reset credits or buy credits.
 
 ## Progress
 - Empty repository cloned; architecture and shared domain contracts established.
@@ -237,3 +237,8 @@ All units pass (core65/client93/web4/mobile33/functions119), workspace typecheck
 - Group reply alerts now require the recipient's current chat membership and a following setting for the topic. Explicit hidden parents stay hidden; neither replies nor push delivery override mutes. New alerts store a generic prompt and source message ID rather than copying reply text.
 - Delivery rereads the notification and suppresses deleted/read alerts, then rechecks chat access, subscription, source existence and topic read markers. Older DM alerts without the newer sender field also honor blocks. The Expo and web inboxes hide group alerts when current membership or hidden-topic settings make their source inaccessible.
 - Workspace types and units pass:70 core,98 client,4 web,46 mobile,128 functions. Real Auth/callable/Firestore/Storage integration passes33/33, including muted/following/departed-member reply behavior. This batch awaits full CI before executeCommand and deliverPushNotification deployment.
+
+## October 27 — connection feedback
+The Expo app now shows a compact, motion-aware offline notice in tabs and full-screen conversations. Unknown network signals do not produce a false warning; returning to the foreground refreshes connectivity, and late checks cannot overwrite newer network events. Sample mode stays local. Drafts remain session-only; the notice does not promise background delivery or server availability. Mobile typecheck, 47 mobile tests and both native exports pass. Real airplane-mode/reconnect testing remains a device gate.
+
+Reply-alert access/mute fixes from 4dab3f2 passed full CI40480130121 and deployed successfully to executeCommand and deliverPushNotification in the dedicated project.

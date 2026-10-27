@@ -82,3 +82,6 @@ Verified CI 40470588145 at 9a144f52a727459eb35d145b95ca66270f29eb77. Deployed ex
 
 ### October 27 profile photos and saved messages deployment
 Verified backend through 0b0ad67 (CI40475404717). Successfully deployed uploadMedia, getMedia, executeCommand, cleanupPrivateMedia and deleteAccount. No new collections, indexes or rules were required. Profile media is owner-uploaded, authorized against current profile visibility/blocks, and deleted/replaced photos lose access. Message saves are private user preferences containing references only.
+
+## October 27 — reply alert access and mute enforcement
+Verified commit4dab3f2 passed full GitHub CI40480130121 and all33 real callable/media integration cases. executeCommand and deliverPushNotification were successfully updated in theloop-community-2026. New group replies require current membership and following the topic, store a generic body plus source message ID, and recheck source access/read state before push. No production test messages or device pushes were sent.

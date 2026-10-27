@@ -1,4 +1,5 @@
 import { ProfileCard } from "./src/ProfileCard";
+import { ConnectionBanner, ConnectionProvider } from "./src/Connection";
 import { SessionDrafts } from "./src/SessionDrafts";
 import { SavedMessages } from "./src/SavedMessages";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -117,7 +118,7 @@ export default function App() {
             emulators={runtime.mode === "emulator" ? runtime.emulators : undefined}
           >
             <MotionProvider>
-              <DraftProvider><LoopApp /></DraftProvider>
+              <ConnectionProvider><DraftProvider><LoopApp /></DraftProvider></ConnectionProvider>
             </MotionProvider>
           </LoopProvider>
         ) : (
@@ -711,6 +712,7 @@ function LoopApp() {
           )}
         </View>
       </View>
+      {!active && <ConnectionBanner />}
       {!!error && (
         <MotionScene identity={error} distance={4}>
           <Touch
@@ -837,6 +839,7 @@ function LoopApp() {
                 )}
                 <ThemeSwitcher />
               </View>
+              <ConnectionBanner />
               <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={
